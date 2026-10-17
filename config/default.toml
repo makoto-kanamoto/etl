@@ -1,0 +1,28 @@
+[node]
+wallet  = ""
+port    = 3000
+datadir = "~/.etl/chain"
+pruning = true
+
+[network]
+bootstrap = [
+  "etl1.etalon-etl.fr:3000",
+]
+
+[block]
+time_utc  = "23:00"
+reward    = 10.0
+halving_years = 2
+
+[transaction]
+fee_percent = 0.1
+confirm_small = 1
+confirm_large = 2
+confirm_threshold = 10.0
+
+[oracle]
+ipc_url       = "https://www.insee.fr/fr/statistiques/serie/001763852"
+ipc_frequency = "quarterly"
+
+[dashboard]
+port = 3001
