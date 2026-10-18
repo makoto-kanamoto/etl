@@ -22,6 +22,7 @@ confirm_threshold = 10.0
 
 [oracle]
 ipc_url       = "https://www.insee.fr/fr/statistiques/serie/001763852"
+ipc_country   = "FR"
 ipc_frequency = "quarterly"
 
 [dashboard]

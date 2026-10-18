@@ -21,8 +21,28 @@
 | Dashboard local | localhost:3001 |
 | Site public | etalon-etl.fr |
 | Explorateur | explorer.etalon-etl.fr |
-| Référence IPC | INSEE — Série 001763852 (IPC France entière) |
+| Référence IPC | Configurable — défaut : INSEE Série 001763852 (IPC France entière) |
 | Fréquence IPC | Trimestrielle (gouvernable par vote) |
+| Protocole | Forkable par toute communauté nationale |
+
+---
+
+## ETL comme protocole universel
+
+ETL est conçu pour être **forké par n'importe quelle communauté nationale**.
+Chaque fork a son propre genesis, sa propre communauté, son propre ancrage IPC.
+
+```
+ETL-FR  →  IPC France (INSEE)                         ← implémentation de référence
+ETL-DE  →  IPC Allemagne (Destatis)                   ← fork communauté allemande
+ETL-JP  →  IPC Japon (Statistics Bureau of Japan)     ← fork communauté japonaise
+ETL-CN  →  IPC Chine (NBS)                            ← fork communauté chinoise
+```
+
+**Principe :** l'oracle IPC n'est pas codé en dur. Il est configurable dans default.toml.
+Un fork change uniquement `ipc_url` et `ipc_country`. Tout le reste du protocole est identique.
+
+Comme Linux — une base commune, des adaptations locales.
 
 ---
 
@@ -30,8 +50,8 @@
 
 - Site public : **etalon-etl.fr**
 - Code source : **GitHub public** (comme Satoshi)
-- Manifeste fondateur disponible sur le site et GitHub
-- Deux versions : complète (MANIFESTE_FONDATEUR.md) et courte (MANIFESTE_COURT.md)
+- Manifeste disponible en FR / EN / JA / ZH (docs/fr/ docs/en/ docs/ja/ docs/zh/)
+- Deux versions : complète et courte
 
 ---
 
