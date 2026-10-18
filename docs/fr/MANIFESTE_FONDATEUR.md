@@ -121,7 +121,7 @@ Chaque membre détient ses propres ETL. Ses propres clés. Sa propre liberté.
 5. **Pseudonymité garantie** — le protocole n'exige aucune identité réelle
 6. **Aucune autorité extérieure** — ni état, ni banque centrale, ni Union Européenne, ni aucune organisation. La seule autorité est la communauté des opérateurs de nœuds
 7. **1 membre = 1 nœud maximum** — protection contre la manipulation
-8. **Toutes les transactions sont chiffrées et signées cryptographiquement**
+8. **Toutes les transactions sont signées cryptographiquement** — vérifiables par tous, non falsifiables
 9. **Chaque bloc contient l'empreinte cryptographique du bloc précédent** — modifier un bloc passé casse toute la chaîne et est mathématiquement détectable par tous
 10. **Le code source d'ETL est et restera public, ouvert et auditable par tous**
 11. **Si l'INSEE ne publie pas l'IPC un trimestre, la valeur précédente est maintenue** jusqu'au vote des nœuds

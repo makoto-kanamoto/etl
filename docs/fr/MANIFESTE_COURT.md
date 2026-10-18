@@ -52,7 +52,7 @@ Bitcoin voulait supprimer les banques → les gens ont eu peur de gérer leurs c
 5. Pseudonymité garantie
 6. Aucune autorité extérieure — la seule autorité est la communauté
 7. 1 membre = 1 nœud maximum
-8. Toutes les transactions sont chiffrées et signées
+8. Toutes les transactions sont signées cryptographiquement — vérifiables par tous, non falsifiables
 9. Chaque bloc est lié au précédent — rien ne peut être falsifié
 10. Le code source est et restera public, ouvert, auditable par tous
 11. Si l'INSEE ne publie pas, la valeur précédente est maintenue
