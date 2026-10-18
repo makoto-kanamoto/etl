@@ -3,6 +3,12 @@
 
 ---
 
+Votre argent perd de la valeur pendant que vous dormez. Ce n'est pas une fatalité. C'est un choix que d'autres ont fait à votre place, sans vous demander votre avis.
+
+Il est temps de reprendre le contrôle.
+
+---
+
 Depuis l'abandon de l'étalon-or, aucune monnaie ne protège votre pouvoir d'achat. L'inflation érode vos économies chaque année. Ce que vous mettez de côté aujourd'hui vaudra moins demain.
 
 **L'ETL change ça.**

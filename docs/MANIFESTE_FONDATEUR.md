@@ -3,6 +3,14 @@
 
 ---
 
+Votre argent perd de la valeur pendant que vous dormez. Ce n'est pas une fatalité. C'est un choix que d'autres ont fait à votre place, sans vous demander votre avis.
+
+Il est temps de reprendre le contrôle.
+
+Nous ne sommes pas les premiers à avoir eu cette idée. Satoshi Nakamoto l'a eue avant nous. Mais Bitcoin a répété les erreurs du passé — capturé par les banques, vendu en bourse comme une action. Nous connaissons ces erreurs. Nous ne les répéterons pas.
+
+---
+
 **Genève, 3 janvier 2009.**
 Satoshi Nakamoto grave dans le tout premier bloc Bitcoin :
 *"Chancellor on brink of second bailout for banks."*
