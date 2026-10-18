@@ -34,7 +34,7 @@ Le code est public. Chaque transaction est vérifiable. Chaque mise à jour IPC 
 
 Napster voulait libérer la musique → vendue à 9,99 € par mois.
 Internet voulait décentraliser l'information → capturé par Google et Facebook.
-OpenAI voulait libérer l'IA pour l'humanité → racheté par Microsoft à 13 milliards.
+OpenAI voulait libérer l'IA pour l'humanité → dans lequel Microsoft a investi 13 milliards de dollars.
 Bitcoin voulait supprimer les banques → les gens ont eu peur de gérer leurs clés → Wall Street est arrivé → aujourd'hui BlackRock vend du "Bitcoin" comme une action en bourse.
 
 *La révolution devient toujours un abonnement.*

@@ -15,13 +15,13 @@ reward    = 10.0
 halving_years = 2
 
 [transaction]
-fee_percent = 0.1
+fee_bps = 10           # points de base : 10 = 0.1%
 confirm_small = 1
 confirm_large = 2
 confirm_threshold = 10.0
 
 [oracle]
-ipc_url       = "https://www.insee.fr/fr/statistiques/serie/001763852"
+ipc_url       = "https://api.insee.fr/series/BDM/V1/data/SERIES_BDM/011814630"
 ipc_country   = "FR"
 ipc_frequency = "quarterly"
 

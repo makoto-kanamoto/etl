@@ -23,10 +23,16 @@ The code is public. Every transaction is verifiable. Every IPC update is verifia
 
 ---
 
-## Manifeste / Manifesto
+## Manifeste / Manifesto / マニフェスト / 宣言
 
-- [Version complète / Full version](docs/MANIFESTE_FONDATEUR.md)
-- [Version courte / Short version](docs/MANIFESTE_COURT.md)
+| Langue / Language | Version complète / Full | Version courte / Short |
+|---|---|---|
+| 🇫🇷 Français (original) | [Manifeste fondateur](docs/fr/MANIFESTE_FONDATEUR.md) | [Manifeste court](docs/fr/MANIFESTE_COURT.md) |
+| 🇬🇧 English | [Founding Manifesto](docs/en/FOUNDERS_MANIFESTO.md) | [Short Manifesto](docs/en/SHORT_MANIFESTO.md) |
+| 🇯🇵 日本語 | [創設マニフェスト](docs/ja/FOUNDERS_MANIFESTO.md) | [短縮版](docs/ja/SHORT_MANIFESTO.md) |
+| 🇨🇳 中文 | [创始宣言](docs/zh/FOUNDERS_MANIFESTO.md) | [简短版](docs/zh/SHORT_MANIFESTO.md) |
+
+*En cas de divergence, la version française fait foi. / In case of discrepancy, the French version prevails.*
 
 ## Architecture technique / Technical architecture
 

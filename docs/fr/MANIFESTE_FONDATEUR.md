@@ -11,7 +11,7 @@ Nous ne sommes pas les premiers à avoir eu cette idée. Satoshi Nakamoto l'a eu
 
 ---
 
-**Genève, 3 janvier 2009.**
+**3 janvier 2009.**
 Satoshi Nakamoto grave dans le tout premier bloc Bitcoin :
 *"Chancellor on brink of second bailout for banks."*
 Un message au monde : le système bancaire est brisé. Il existe une autre voie.
@@ -66,12 +66,12 @@ Napster invente le partage de musique pair-à-pair. Gratuit. Sans intermédiaire
 > *Napster voulait libérer la musique. L'industrie a tué Napster et vendu sa liberté à 9,99 € par mois.*
 
 **Internet**
-Conçu comme un réseau décentralisé où chaque ordinateur était égal. Pas de centre. Pas de patron. Aujourd'hui 90% du trafic mondial passe par les serveurs de cinq entreprises américaines : Google, Amazon, Facebook, Apple, Microsoft.
+Conçu comme un réseau décentralisé où chaque ordinateur était égal. Pas de centre. Pas de patron. Aujourd'hui la grande majorité du trafic mondial passe par les serveurs de cinq entreprises américaines : Google, Amazon, Facebook, Apple, Microsoft.
 
 > *Internet voulait décentraliser l'information. La Silicon Valley l'a centralisée plus que jamais.*
 
 **OpenAI — 2015**
-Fondé comme une association à but non lucratif. Mission officielle : développer l'intelligence artificielle "pour le bénéfice de l'humanité entière". Le nom dit tout : *Open* AI. Ouvert. Pour tous. En 2023, Microsoft investit 13 milliards d'euros. Aujourd'hui les modèles les plus puissants sont fermés, derrière un abonnement payant.
+Fondé comme une association à but non lucratif. Mission officielle : développer l'intelligence artificielle "pour le bénéfice de l'humanité entière". Le nom dit tout : *Open* AI. Ouvert. Pour tous. En 2023, Microsoft investit 13 milliards de dollars. Aujourd'hui les modèles les plus puissants sont fermés, derrière un abonnement payant.
 
 > *OpenAI voulait libérer l'intelligence artificielle pour l'humanité. Aujourd'hui vous payez 20 € par mois à Microsoft.*
 
