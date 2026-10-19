@@ -97,7 +97,7 @@ func (n *Net) Build(tb testing.TB, d int, edit func(*blockchain.Block)) blockcha
 	}
 	b.Header.TxRoot = blockchain.TxRoot(b.Txs)
 	b.Header.ParticipantsRoot = blockchain.ParticipantsRoot(b.Participants)
-	b.Header.RegistryRoot = blockchain.RegistryRoot(b.Registrations, b.Observations, b.Equivocations)
+	b.Header.RegistryRoot = blockchain.RegistryRoot(b.Registrations, b.Observations, b.Equivocations, b.VoteEquivocations)
 	if root, err := n.State.PreviewRoot(&b, n.P); err == nil {
 		b.Header.StateRoot = root
 	}
@@ -107,19 +107,44 @@ func (n *Net) Build(tb testing.TB, d int, edit func(*blockchain.Block)) blockcha
 	return b
 }
 
-// Next construit le bloc du jour d et l'applique à l'état de Net.
-func (n *Net) Next(tb testing.TB, d int, edit func(*blockchain.Block)) blockchain.Block {
+// Next construit le bloc du jour d, le fait finaliser par tous les nœuds admis
+// et l'applique à l'état de Net. Renvoie le bloc et son certificat de finalité.
+func (n *Net) Next(tb testing.TB, d int, edit func(*blockchain.Block)) (blockchain.Block, blockchain.Certificate) {
 	tb.Helper()
 	b := n.Build(tb, d, edit)
 	if err := blockchain.ValidateBlock(&b, &n.Tip, n.P, n.State.IsAdmitted); err != nil {
 		tb.Fatal(err)
 	}
+	c := n.Certify(tb, &b.Header, len(n.keys))
 	if err := n.State.ApplyBlock(&b, n.P); err != nil {
 		tb.Fatal(err)
 	}
 	n.Tip = b.Header
-	return b
+	return b, c
 }
+
+// Certify fait voter jusqu'à max nœuds admis (état courant, donc AVANT le bloc) pour l'en-tête h.
+func (n *Net) Certify(tb testing.TB, h *blockchain.Header, max int) blockchain.Certificate {
+	tb.Helper()
+	var votes []blockchain.Vote
+	for addr, key := range n.keys {
+		if len(votes) == max {
+			break
+		}
+		if !n.State.IsAdmitted(addr) {
+			continue
+		}
+		v, err := blockchain.SignVote(key, h, n.P)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		votes = append(votes, v)
+	}
+	return blockchain.NewCertificate(h, votes, n.P)
+}
+
+// Track enregistre la clé d'un portefeuille (pour qu'il puisse voter une fois admis).
+func (n *Net) Track(w Wallet) { n.keys[w.Addr] = w.Key }
 
 // Tx crée une transaction signée.
 func (n *Net) Tx(tb testing.TB, from Wallet, to crypto.Address, amount, nonce uint64, ts int64) blockchain.Transaction {

@@ -43,8 +43,8 @@ func newChain(t *testing.T, opt Options) (*Store, *chaintest.Net, string) {
 func grow(t *testing.T, s *Store, net *chaintest.Net, from, to int) {
 	t.Helper()
 	for d := from; d <= to; d++ {
-		b := net.Next(t, d, nil)
-		if err := s.Append(&b); err != nil {
+		b, c := net.Next(t, d, nil)
+		if err := s.Append(&b, &c); err != nil {
 			t.Fatalf("jour %d : %v", d, err)
 		}
 	}
@@ -54,8 +54,8 @@ func TestPersistence(t *testing.T) {
 	s, net, path := newChain(t, DefaultOptions())
 	grow(t, s, net, 1, 5)
 	tx := net.Tx(t, net.Founders[0], net.Founders[1].Addr, blockchain.UnitsPerETL/2, 0, chaintest.Day(5))
-	b := net.Next(t, 6, func(b *blockchain.Block) { b.Txs = []blockchain.Transaction{tx} })
-	if err := s.Append(&b); err != nil {
+	b, c := net.Next(t, 6, func(b *blockchain.Block) { b.Txs = []blockchain.Transaction{tx} })
+	if err := s.Append(&b, &c); err != nil {
 		t.Fatal(err)
 	}
 	tip := s.Tip()
@@ -108,8 +108,8 @@ func TestNotInitialized(t *testing.T) {
 	net := chaintest.New(t, chaintest.Params())
 	s := open(t, dbPath(t), net.P, DefaultOptions())
 	defer s.Close()
-	b := net.Next(t, 1, nil)
-	if err := s.Append(&b); !errors.Is(err, ErrNotInitialized) {
+	b, c := net.Next(t, 1, nil)
+	if err := s.Append(&b, &c); !errors.Is(err, ErrNotInitialized) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -120,7 +120,8 @@ func TestInvalidBlockLeavesNoTrace(t *testing.T) {
 	grow(t, s, net, 1, 2)
 	bad := net.Build(t, 3, nil)
 	bad.Header.StateRoot[0] ^= 1
-	if err := s.Append(&bad); err == nil {
+	badCert := net.Certify(t, &bad.Header, 10)
+	if err := s.Append(&bad, &badCert); err == nil {
 		t.Fatal("bloc invalide accepté")
 	}
 	if s.Tip().Height != 2 {
@@ -143,9 +144,9 @@ func TestCrashDuringWriteIsAtomic(t *testing.T) {
 	grow(t, s, net, 1, 2)
 	before := s.Account(net.Founders[0].Addr)
 
-	b := net.Build(t, 3, nil)
+	b, c := net.Next(t, 3, nil)
 	s.failBeforeCommit = func() error { return errors.New("coupure simulée") }
-	if err := s.Append(&b); err == nil {
+	if err := s.Append(&b, &c); err == nil {
 		t.Fatal("panne non remontée")
 	}
 	s.failBeforeCommit = nil
@@ -160,7 +161,7 @@ func TestCrashDuringWriteIsAtomic(t *testing.T) {
 		t.Fatal("écriture partielle sur disque")
 	}
 	// Le même bloc passe une fois la panne réparée.
-	if err := s.Append(&b); err != nil {
+	if err := s.Append(&b, &c); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -256,8 +257,8 @@ func TestTamperedBlockDetected(t *testing.T) {
 	s, net, path := newChain(t, DefaultOptions())
 	tx := net.Tx(t, net.Founders[0], net.Founders[1].Addr, 1000, 0, chaintest.Day(0))
 	grow(t, s, net, 1, 1)
-	b := net.Next(t, 2, func(b *blockchain.Block) { b.Txs = []blockchain.Transaction{tx} })
-	if err := s.Append(&b); err != nil {
+	b, c := net.Next(t, 2, func(b *blockchain.Block) { b.Txs = []blockchain.Transaction{tx} })
+	if err := s.Append(&b, &c); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -302,8 +303,10 @@ func TestConcurrentReads(t *testing.T) {
 	s, net, _ := newChain(t, DefaultOptions())
 	defer s.Close()
 	blocks := make([]blockchain.Block, 0, 10)
+	certs := make([]blockchain.Certificate, 0, 10)
 	for d := 1; d <= 10; d++ {
-		blocks = append(blocks, net.Next(t, d, nil))
+		b, c := net.Next(t, d, nil)
+		blocks, certs = append(blocks, b), append(certs, c)
 	}
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
@@ -324,7 +327,7 @@ func TestConcurrentReads(t *testing.T) {
 		}()
 	}
 	for i := range blocks {
-		if err := s.Append(&blocks[i]); err != nil {
+		if err := s.Append(&blocks[i], &certs[i]); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -362,10 +365,10 @@ func TestTamperedEmbeddedHeaderDetected(t *testing.T) {
 func TestRegistryDeletionPersisted(t *testing.T) {
 	s, net, path := newChain(t, DefaultOptions())
 	cand := chaintest.NewWallet(t, net.P)
-	b := net.Next(t, 1, func(b *blockchain.Block) {
+	b, c := net.Next(t, 1, func(b *blockchain.Block) {
 		b.Registrations = []blockchain.Registration{net.Register(t, cand, net.Founders[0], 1)}
 	})
-	if err := s.Append(&b); err != nil {
+	if err := s.Append(&b, &c); err != nil {
 		t.Fatal(err)
 	}
 	if s.Node(cand.Addr).Status != blockchain.StatusCandidate {
@@ -380,5 +383,96 @@ func TestRegistryDeletionPersisted(t *testing.T) {
 	defer s.Close()
 	if s.Node(cand.Addr).Status != blockchain.StatusUnknown {
 		t.Fatal("candidature retirée réapparue après réouverture")
+	}
+}
+
+func TestAppendRequiresCertificate(t *testing.T) {
+	s, net, _ := newChain(t, DefaultOptions())
+	defer s.Close()
+	b := net.Build(t, 1, nil)
+	six := net.Certify(t, &b.Header, 6) // 6 sur 10 : pas plus de 2/3
+	if err := s.Append(&b, &six); !errors.Is(err, blockchain.ErrQuorum) {
+		t.Fatalf("6 votes sur 10 : err = %v", err)
+	}
+	other := net.Build(t, 1, func(b *blockchain.Block) { b.Participants = b.Participants[:9] })
+	otherCert := net.Certify(t, &other.Header, 10)
+	if err := s.Append(&b, &otherCert); !errors.Is(err, blockchain.ErrCertificateTarget) {
+		t.Fatalf("certificat d'un autre bloc : err = %v", err)
+	}
+	if s.Tip().Height != 0 {
+		t.Fatal("bloc non finalisé écrit")
+	}
+	seven := net.Certify(t, &b.Header, 7)
+	if err := s.Append(&b, &seven); err != nil {
+		t.Fatalf("7 votes sur 10 : %v", err)
+	}
+}
+
+func TestCertificatesStoredAndPruned(t *testing.T) {
+	s, net, path := newChain(t, Options{Pruning: true, KeepBlocks: 3})
+	grow(t, s, net, 1, 6)
+	if _, err := s.CertificateAt(0); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("certificat du genesis : err = %v", err)
+	}
+	for h := uint64(1); h <= 3; h++ {
+		if _, err := s.CertificateAt(h); !errors.Is(err, ErrPruned) {
+			t.Fatalf("certificat %d : err = %v, attendu ErrPruned", h, err)
+		}
+	}
+	s.Close()
+	s = open(t, path, net.P, Options{Pruning: true, KeepBlocks: 3})
+	defer s.Close()
+	for h := uint64(4); h <= 6; h++ {
+		c, err := s.CertificateAt(h)
+		if err != nil {
+			t.Fatalf("certificat %d : %v", h, err)
+		}
+		hdr, _ := s.HeaderAt(h)
+		if c.BlockHash != hdr.Hash() || len(c.Votes) < blockchain.Quorum(10) {
+			t.Fatalf("certificat %d incohérent", h)
+		}
+	}
+}
+
+// Même avec KeepBlocks = 0, le dernier bloc et son certificat restent disponibles.
+func TestLatestCertificateAlwaysKept(t *testing.T) {
+	s, net, _ := newChain(t, Options{Pruning: true, KeepBlocks: 0})
+	defer s.Close()
+	grow(t, s, net, 1, 4)
+	if _, err := s.CertificateAt(4); err != nil {
+		t.Fatalf("dernier certificat : %v", err)
+	}
+	if _, err := s.BlockAt(4); err != nil {
+		t.Fatalf("dernier bloc : %v", err)
+	}
+}
+
+func TestRecordVote(t *testing.T) {
+	s, net, path := newChain(t, DefaultOptions())
+	b1 := net.Build(t, 1, nil)
+	alt := net.Build(t, 1, func(b *blockchain.Block) { b.Participants = b.Participants[:9] })
+	h1, hAlt := b1.Header.Hash(), alt.Header.Hash()
+
+	if err := s.RecordVote(1, h1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordVote(1, h1); err != nil {
+		t.Fatalf("rediffusion du même vote : %v", err)
+	}
+	if err := s.RecordVote(1, hAlt); !errors.Is(err, ErrAlreadyVoted) {
+		t.Fatalf("second vote à la même hauteur : err = %v", err)
+	}
+	s.Close()
+	// Après redémarrage, la protection tient toujours.
+	s = open(t, path, net.P, DefaultOptions())
+	defer s.Close()
+	if err := s.RecordVote(1, hAlt); !errors.Is(err, ErrAlreadyVoted) {
+		t.Fatalf("après redémarrage : err = %v", err)
+	}
+	if err := s.RecordVote(2, hAlt); err != nil {
+		t.Fatalf("hauteur suivante : %v", err)
+	}
+	if err := s.RecordVote(1, h1); !errors.Is(err, ErrAlreadyVoted) {
+		t.Fatalf("vote pour une hauteur passée : err = %v", err)
 	}
 }

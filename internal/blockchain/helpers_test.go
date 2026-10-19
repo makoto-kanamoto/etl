@@ -135,7 +135,7 @@ func (n *testNet) finalize(t testing.TB, b *Block) {
 	t.Helper()
 	b.Header.TxRoot = TxRoot(b.Txs)
 	b.Header.ParticipantsRoot = ParticipantsRoot(b.Participants)
-	b.Header.RegistryRoot = RegistryRoot(b.Registrations, b.Observations, b.Equivocations)
+	b.Header.RegistryRoot = RegistryRoot(b.Registrations, b.Observations, b.Equivocations, b.VoteEquivocations)
 	b.Header.StateRoot = crypto.Hash{}
 	if root, err := n.st.PreviewRoot(b, n.p); err == nil { // bloc invalide : racine laissée nulle
 		b.Header.StateRoot = root

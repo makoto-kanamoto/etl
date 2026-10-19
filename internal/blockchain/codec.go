@@ -21,6 +21,8 @@ var ErrDecode = errors.New("blockchain: encodage invalide")
 const (
 	participationSize = crypto.AddressHashSize + 8 + crypto.SignatureSize
 	registrationSize  = 2*crypto.AddressHashSize + 8 + 2*crypto.SignatureSize
+	voteSize          = crypto.AddressHashSize + 8 + crypto.HashSize + crypto.SignatureSize
+	certVoteSize      = crypto.AddressHashSize + crypto.SignatureSize
 	txSize            = txBodySize + crypto.SignatureSize
 	accountSize       = 16
 	nodeSize          = 1 + crypto.AddressHashSize + 1 + 8 + 4 + 1 + 8 + 8 + 1 + 8 + 8
@@ -52,6 +54,29 @@ func appendRegistration(b []byte, r *Registration) []byte {
 	b = append(b, r.message()...)
 	b = append(b, r.CandidateSig[:]...)
 	return append(b, r.SponsorSig[:]...)
+}
+
+func appendVote(b []byte, v *Vote) []byte {
+	b = appendAddr(b, v.Voter)
+	b = binary.BigEndian.AppendUint64(b, v.Height)
+	b = append(b, v.BlockHash[:]...)
+	return append(b, v.Signature[:]...)
+}
+
+// EncodeVote renvoie l'encodage d'un vote (pour le réseau).
+func EncodeVote(v *Vote) []byte { return appendVote(nil, v) }
+
+// EncodeCertificate renvoie l'encodage compact d'un certificat :
+// hauteur et hash une seule fois, puis (votant, signature) pour chaque vote.
+func EncodeCertificate(c *Certificate) []byte {
+	b := binary.BigEndian.AppendUint64(nil, c.Height)
+	b = append(b, c.BlockHash[:]...)
+	b = binary.BigEndian.AppendUint32(b, uint32(len(c.Votes)))
+	for i := range c.Votes {
+		b = appendAddr(b, c.Votes[i].Voter)
+		b = append(b, c.Votes[i].Signature[:]...)
+	}
+	return b
 }
 
 // AppendAccount ajoute l'encodage d'un compte.
@@ -102,6 +127,11 @@ func EncodeBlock(blk *Block) []byte {
 	for i := range blk.Equivocations {
 		b = appendParticipation(b, &blk.Equivocations[i].A)
 		b = appendParticipation(b, &blk.Equivocations[i].B)
+	}
+	b = binary.BigEndian.AppendUint32(b, uint32(len(blk.VoteEquivocations)))
+	for i := range blk.VoteEquivocations {
+		b = appendVote(b, &blk.VoteEquivocations[i].A)
+		b = appendVote(b, &blk.VoteEquivocations[i].B)
 	}
 	b = binary.BigEndian.AppendUint32(b, uint32(len(blk.Founders)))
 	for _, f := range blk.Founders {
@@ -193,6 +223,10 @@ func (r *reader) tx() Transaction {
 	return tx
 }
 
+func (r *reader) vote() Vote {
+	return Vote{Voter: r.addr(), Height: r.u64(), BlockHash: r.hash(), Signature: r.sig()}
+}
+
 func (r *reader) registration() Registration {
 	reg := Registration{Candidate: r.addr(), Sponsor: r.addr(), Day: r.i64()}
 	reg.CandidateSig, reg.SponsorSig = r.sig(), r.sig()
@@ -227,6 +261,26 @@ func DecodeTransaction(b []byte, hrp string) (Transaction, error) {
 	r := &reader{b: b, hrp: hrp}
 	tx := r.tx()
 	return tx, r.done()
+}
+
+// DecodeVote décode un vote.
+func DecodeVote(b []byte, hrp string) (Vote, error) {
+	r := &reader{b: b, hrp: hrp}
+	v := r.vote()
+	return v, r.done()
+}
+
+// DecodeCertificate décode un certificat.
+func DecodeCertificate(b []byte, hrp string) (Certificate, error) {
+	r := &reader{b: b, hrp: hrp}
+	c := Certificate{Height: r.u64(), BlockHash: r.hash()}
+	if n := r.count(certVoteSize); n > 0 {
+		c.Votes = make([]Vote, n)
+		for i := range c.Votes {
+			c.Votes[i] = Vote{Voter: r.addr(), Height: c.Height, BlockHash: c.BlockHash, Signature: r.sig()}
+		}
+	}
+	return c, r.done()
 }
 
 // DecodeAccount décode un compte.
@@ -289,6 +343,12 @@ func DecodeBlock(b []byte, hrp string) (Block, error) {
 		blk.Equivocations = make([]Equivocation, n)
 		for i := range blk.Equivocations {
 			blk.Equivocations[i] = Equivocation{A: r.participation(), B: r.participation()}
+		}
+	}
+	if n := r.count(2 * voteSize); n > 0 {
+		blk.VoteEquivocations = make([]VoteEquivocation, n)
+		for i := range blk.VoteEquivocations {
+			blk.VoteEquivocations[i] = VoteEquivocation{A: r.vote(), B: r.vote()}
 		}
 	}
 	if n := r.count(crypto.AddressHashSize); n > 0 {

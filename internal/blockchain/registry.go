@@ -143,7 +143,7 @@ func (e *Equivocation) verify(prevHash crypto.Hash, blockTime int64, p Params) e
 }
 
 // RegistryRoot engage l'en-tête sur les enregistrements, observations et preuves du bloc.
-func RegistryRoot(regs []Registration, obs []Participation, eqs []Equivocation) crypto.Hash {
+func RegistryRoot(regs []Registration, obs []Participation, eqs []Equivocation, veqs []VoteEquivocation) crypto.Hash {
 	regIDs := make([]crypto.Hash, len(regs))
 	for i := range regs {
 		regIDs[i] = regs[i].ID()
@@ -152,7 +152,11 @@ func RegistryRoot(regs []Registration, obs []Participation, eqs []Equivocation) 
 	for i := range eqs {
 		eqIDs[i] = eqs[i].ID()
 	}
-	return merkleRoot([]crypto.Hash{merkleRoot(regIDs), ParticipantsRoot(obs), merkleRoot(eqIDs)})
+	veqIDs := make([]crypto.Hash, len(veqs))
+	for i := range veqs {
+		veqIDs[i] = veqs[i].ID()
+	}
+	return merkleRoot([]crypto.Hash{merkleRoot(regIDs), ParticipantsRoot(obs), merkleRoot(eqIDs), merkleRoot(veqIDs)})
 }
 
 // dayOf renvoie le jour UTC d'un horodatage.
@@ -209,6 +213,26 @@ func (r registry) applyEquivocations(eqs []Equivocation, prevHash crypto.Hash, b
 		}
 		node.Status = StatusExcluded
 		r[e.A.Miner.Hash] = node
+	}
+	return nil
+}
+
+// applyVoteEquivocations exclut les nœuds pris en double vote.
+func (r registry) applyVoteEquivocations(veqs []VoteEquivocation, blockHeight uint64, p Params) error {
+	for i := range veqs {
+		e := &veqs[i]
+		if i > 0 && bytes.Compare(veqs[i-1].A.Voter.Hash[:], e.A.Voter.Hash[:]) >= 0 {
+			return ErrRegistryOrder
+		}
+		if err := e.verify(blockHeight, p); err != nil {
+			return err
+		}
+		node := r[e.A.Voter.Hash]
+		if node.Status == StatusUnknown || node.Status == StatusExcluded {
+			return ErrVoteEquivocation
+		}
+		node.Status = StatusExcluded
+		r[e.A.Voter.Hash] = node
 	}
 	return nil
 }

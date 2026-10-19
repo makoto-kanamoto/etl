@@ -2,7 +2,8 @@
 //
 // Chaque bloc est écrit dans UNE transaction bbolt (bloc, index, changements d'état, tête,
 // pruning) : une coupure en plein milieu ne laisse jamais une chaîne à moitié écrite.
-// Seuls les blocs finalisés sont ajoutés : pas de réorganisation de chaîne.
+// Seuls les blocs finalisés sont ajoutés, avec leur certificat (plus de 2/3 des votes) :
+// pas de réorganisation de chaîne.
 //
 // Pruning : les en-têtes sont gardés pour toujours ; le contenu des blocs au-delà des
 // KeepBlocks derniers est supprimé (le genesis est toujours conservé). Mode archive : Pruning = false.
@@ -28,6 +29,7 @@ var (
 	ErrWrongNetwork   = errors.New("storage: la base appartient à un autre réseau")
 	ErrCorrupt        = errors.New("storage: base corrompue")
 	ErrNotInitialized = errors.New("storage: base non initialisée (genesis absent)")
+	ErrAlreadyVoted   = errors.New("storage: ce nœud a déjà voté pour un autre bloc à cette hauteur")
 )
 
 // DefaultKeepBlocks : contenu conservé par défaut, 90 blocs (~90 jours).
@@ -48,6 +50,7 @@ var (
 	bucketMeta     = []byte("meta")
 	bucketHeaders  = []byte("headers")  // hauteur → en-tête
 	bucketBlocks   = []byte("blocks")   // hauteur → bloc complet (élagué au-delà de KeepBlocks)
+	bucketCerts    = []byte("certs")    // hauteur → certificat de finalité (élagué comme les blocs)
 	bucketHashes   = []byte("hashes")   // hash → hauteur
 	bucketAccounts = []byte("accounts") // adresse → compte
 	bucketNodes    = []byte("nodes")    // adresse → entrée du registre
@@ -55,6 +58,7 @@ var (
 	keyChainID = []byte("chain_id")
 	keyGenesis = []byte("genesis")
 	keyTip     = []byte("tip")
+	keyVoted   = []byte("voted") // dernier vote émis par ce nœud : hauteur | hash
 )
 
 // Store est la chaîne locale. Ses méthodes sont sûres en accès concurrent.
@@ -81,6 +85,9 @@ func Open(path string, p blockchain.Params, opt Options) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	if opt.Pruning && opt.KeepBlocks == 0 {
+		opt.KeepBlocks = 1 // le dernier bloc et son certificat sont toujours conservés
+	}
 	s := &Store{db: db, p: p, opt: opt, state: blockchain.NewState()}
 	if err := s.load(); err != nil {
 		db.Close()
@@ -96,7 +103,7 @@ func (s *Store) Close() error {
 
 func (s *Store) load() error {
 	return s.db.Update(func(tx *bolt.Tx) error {
-		for _, name := range [][]byte{bucketMeta, bucketHeaders, bucketBlocks, bucketHashes, bucketAccounts, bucketNodes} {
+		for _, name := range [][]byte{bucketMeta, bucketHeaders, bucketBlocks, bucketCerts, bucketHashes, bucketAccounts, bucketNodes} {
 			if _, err := tx.CreateBucketIfNotExists(name); err != nil {
 				return err
 			}
@@ -192,9 +199,9 @@ func (s *Store) Init(genesis *blockchain.Block) error {
 	return nil
 }
 
-// Append valide un bloc finalisé, l'applique et l'écrit, le tout atomiquement :
+// Append valide un bloc finalisé et son certificat, l'applique et l'écrit, le tout atomiquement :
 // en cas d'erreur, ni la base ni l'état en mémoire ne changent.
-func (s *Store) Append(b *blockchain.Block) error {
+func (s *Store) Append(b *blockchain.Block, cert *blockchain.Certificate) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.ready {
@@ -203,11 +210,21 @@ func (s *Store) Append(b *blockchain.Block) error {
 	if err := blockchain.ValidateBlock(b, &s.tip, s.p, s.state.IsAdmitted); err != nil {
 		return err
 	}
+	// Le certificat se vérifie contre l'état AVANT le bloc : qui pouvait voter, combien de nœuds actifs.
+	if err := blockchain.VerifyCertificate(cert, &b.Header, s.state, s.p); err != nil {
+		return err
+	}
 	c, err := s.state.Prepare(b, s.p)
 	if err != nil {
 		return err
 	}
-	if err := s.db.Update(func(tx *bolt.Tx) error { return s.write(tx, b, c) }); err != nil {
+	err = s.db.Update(func(tx *bolt.Tx) error {
+		if err := tx.Bucket(bucketCerts).Put(u64(b.Header.Height), blockchain.EncodeCertificate(cert)); err != nil {
+			return err
+		}
+		return s.write(tx, b, c)
+	})
+	if err != nil {
 		return err
 	}
 	s.state.Commit(c)
@@ -265,13 +282,21 @@ func (s *Store) prune(tx *bolt.Tx, height uint64) error {
 	cutoff := height - s.opt.KeepBlocks
 	blocks := tx.Bucket(bucketBlocks)
 	// Clés collectées d'abord : supprimer pendant le parcours d'un curseur bbolt peut sauter des clés.
+	certs := tx.Bucket(bucketCerts)
 	var old [][]byte
 	c := blocks.Cursor()
 	for k, _ := c.Seek(u64(1)); k != nil && binary.BigEndian.Uint64(k) <= cutoff; k, _ = c.Next() {
 		old = append(old, append([]byte(nil), k...))
 	}
+	cc := certs.Cursor()
+	for k, _ := cc.Seek(u64(1)); k != nil && binary.BigEndian.Uint64(k) <= cutoff; k, _ = cc.Next() {
+		old = append(old, append([]byte(nil), k...))
+	}
 	for _, k := range old {
 		if err := blocks.Delete(k); err != nil {
+			return err
+		}
+		if err := certs.Delete(k); err != nil {
 			return err
 		}
 	}
@@ -346,12 +371,52 @@ func (s *Store) BlockAt(height uint64) (b blockchain.Block, err error) {
 		if b.Header.Hash() != h.Hash() ||
 			b.Header.TxRoot != blockchain.TxRoot(b.Txs) ||
 			b.Header.ParticipantsRoot != blockchain.ParticipantsRoot(b.Participants) ||
-			b.Header.RegistryRoot != blockchain.RegistryRoot(b.Registrations, b.Observations, b.Equivocations) {
+			b.Header.RegistryRoot != blockchain.RegistryRoot(b.Registrations, b.Observations, b.Equivocations, b.VoteEquivocations) {
 			return ErrCorrupt
 		}
 		return nil
 	})
 	return b, err
+}
+
+// CertificateAt renvoie le certificat de finalité d'un bloc, ou ErrPruned s'il a été élagué.
+// Le certificat du dernier bloc est toujours disponible ; le genesis n'en a pas.
+func (s *Store) CertificateAt(height uint64) (c blockchain.Certificate, err error) {
+	err = s.db.View(func(tx *bolt.Tx) error {
+		h, err := s.headerAt(tx, height)
+		if err != nil {
+			return err
+		}
+		if height == 0 {
+			return ErrNotFound
+		}
+		v := tx.Bucket(bucketCerts).Get(u64(height))
+		if v == nil {
+			return ErrPruned
+		}
+		if c, err = blockchain.DecodeCertificate(v, s.p.AddressHRP); err != nil || c.BlockHash != h.Hash() {
+			return ErrCorrupt
+		}
+		return nil
+	})
+	return c, err
+}
+
+// RecordVote enregistre sur disque, AVANT diffusion, le vote que ce nœud s'apprête à émettre.
+// Refuse tout second vote pour un autre bloc à la même hauteur, ou pour une hauteur passée :
+// un nœud qui redémarre ne peut pas se faire exclure pour double vote.
+// Revoter pour le même bloc (rediffusion) est permis.
+func (s *Store) RecordVote(height uint64, hash crypto.Hash) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		meta := tx.Bucket(bucketMeta)
+		if last := meta.Get(keyVoted); len(last) == 8+crypto.HashSize {
+			lastHeight := binary.BigEndian.Uint64(last)
+			if height < lastHeight || (height == lastHeight && string(last[8:]) != string(hash[:])) {
+				return ErrAlreadyVoted
+			}
+		}
+		return meta.Put(keyVoted, append(u64(height), hash[:]...))
+	})
 }
 
 // HeightOf renvoie la hauteur d'un bloc à partir de son hash.

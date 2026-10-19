@@ -156,7 +156,7 @@ func (s *State) prepare(b *Block, p Params) (*Changes, error) {
 
 	if h.Height == 0 {
 		if len(b.Txs) > 0 || len(b.Participants) > 0 || len(b.Registrations) > 0 ||
-			len(b.Observations) > 0 || len(b.Equivocations) > 0 {
+			len(b.Observations) > 0 || len(b.Equivocations) > 0 || len(b.VoteEquivocations) > 0 {
 			return nil, ErrGenesisContent
 		}
 		if err := nodes.applyFounders(b.Founders, day, p); err != nil {
@@ -168,6 +168,9 @@ func (s *State) prepare(b *Block, p Params) (*Changes, error) {
 	// Registre : le nombre de nœuds actifs est compté au début du bloc.
 	activeBefore := nodes.activeCount()
 	if err := nodes.applyEquivocations(b.Equivocations, h.PrevHash, h.Timestamp, p); err != nil {
+		return nil, err
+	}
+	if err := nodes.applyVoteEquivocations(b.VoteEquivocations, h.Height, p); err != nil {
 		return nil, err
 	}
 	if err := nodes.applyParticipants(b.Participants, day); err != nil {

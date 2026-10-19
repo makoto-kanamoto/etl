@@ -98,10 +98,11 @@ type Block struct {
 	Signature    crypto.Signature // signature du proposant sur le hash de l'en-tête (usage block-proposal)
 
 	// Registre des nœuds
-	Registrations []Registration   // candidatures et réactivations, triées par candidat
-	Observations  []Participation  // participations des candidats en observation, triées par adresse
-	Equivocations []Equivocation   // preuves de double participation, triées par nœud
-	Founders      []crypto.Address // genesis uniquement : fondateurs admis d'office
+	Registrations     []Registration     // candidatures et réactivations, triées par candidat
+	Observations      []Participation    // participations des candidats en observation, triées par adresse
+	Equivocations     []Equivocation     // preuves de double participation, triées par nœud
+	VoteEquivocations []VoteEquivocation // preuves de double vote, triées par votant
+	Founders          []crypto.Address   // genesis uniquement : fondateurs admis d'office
 }
 
 // Sign signe le bloc avec la clé du proposant.
@@ -171,7 +172,7 @@ func ValidateBlock(b *Block, prev *Header, p Params, isAdmitted func(crypto.Addr
 		return ErrBlockTxRoot
 	case h.ParticipantsRoot != ParticipantsRoot(b.Participants):
 		return ErrBlockPartRoot
-	case h.RegistryRoot != RegistryRoot(b.Registrations, b.Observations, b.Equivocations):
+	case h.RegistryRoot != RegistryRoot(b.Registrations, b.Observations, b.Equivocations, b.VoteEquivocations):
 		return ErrBlockRegistryRoot
 	case len(b.Founders) > 0:
 		return ErrBlockFounders
