@@ -29,7 +29,7 @@ type Transaction struct {
 	From      crypto.Address   // adresse de l'expéditeur
 	To        crypto.Address   // adresse du destinataire
 	Amount    uint64           // montant en unités (1 ETL = 10^8 unités)
-	Fee       uint64           // Amount × fee_bps / 10000
+	Fee       uint64           // max(Amount × fee_bps / 10000, MinFee) — exactement
 	Nonce     uint64           // = nonce du compte expéditeur : anti-rejeu
 	Timestamp int64            // heure Unix de création
 	Signature crypto.Signature // signature récupérable de l'expéditeur
@@ -82,7 +82,7 @@ func (tx *Transaction) Verify(p Params) error {
 	if tx.From.HRP != p.AddressHRP || tx.To.HRP != p.AddressHRP {
 		return ErrTxNetwork
 	}
-	fee, err := Fee(tx.Amount, p.FeeBps)
+	fee, err := RequiredFee(tx.Amount, p)
 	if err != nil {
 		return err
 	}

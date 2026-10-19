@@ -88,6 +88,16 @@ func Fee(amount, bps uint64) (uint64, error) {
 	return q, nil
 }
 
+// RequiredFee renvoie les frais exigés d'une transaction : max(amount × FeeBps / 10000, MinFee).
+// Le minimum rend le spam coûteux ; un paiement de 0.1 ETL ou plus n'est pas concerné.
+func RequiredFee(amount uint64, p Params) (uint64, error) {
+	fee, err := Fee(amount, p.FeeBps)
+	if err != nil {
+		return 0, err
+	}
+	return max(fee, p.MinFee), nil
+}
+
 func checkedAdd(a, b uint64) (uint64, error) {
 	s, carry := bits.Add64(a, b, 0)
 	if carry != 0 {

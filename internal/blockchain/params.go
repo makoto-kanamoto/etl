@@ -15,6 +15,8 @@ type Params struct {
 	AddressHRP string // préfixe des adresses (ex. "etl")
 
 	FeeBps      uint64 // frais en points de base (10 = 0.1%) — gouvernable
+	MinFee      uint64 // frais minimum par transaction en unités (anti-spam) — gouvernable
+	MaxBlockTxs int    // transactions par bloc au maximum (= débit quotidien) — gouvernable
 	DailyReward uint64 // récompense du jour en unités, partagée entre les participants — gouvernable
 
 	Target crypto.Hash // cible PoW fixe — gouvernable
@@ -49,6 +51,8 @@ func DefaultParams() Params {
 		ChainID:          "ETL-FR",
 		AddressHRP:       "etl",
 		FeeBps:           10,
+		MinFee:           10_000,           // 0.0001 ETL
+		MaxBlockTxs:      100_000,          // ~14 Mo
 		DailyReward:      10 * UnitsPerETL, // émission constante, pas de halving
 		Target:           TargetFromBits(DefaultTargetBits),
 		BlockTimeOfDay:   23 * time.Hour,

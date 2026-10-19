@@ -52,7 +52,7 @@ func addrs(ws []wallet) []crypto.Address {
 
 func makeTx(t testing.TB, p Params, from wallet, to crypto.Address, amount, nonce uint64, ts int64) Transaction {
 	t.Helper()
-	fee, err := Fee(amount, p.FeeBps)
+	fee, err := RequiredFee(amount, p)
 	if err != nil {
 		t.Fatal(err)
 	}

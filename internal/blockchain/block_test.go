@@ -192,3 +192,21 @@ func TestValidateBlock(t *testing.T) {
 		}
 	}
 }
+
+func TestMaxBlockTxs(t *testing.T) {
+	p := testParams()
+	p.MaxBlockTxs = 2
+	n := newNet(t, p)
+	n.produce(t, 1, n.founders, nil)
+	f := n.founders
+	txs := []Transaction{
+		makeTx(t, p, f[0], f[1].addr, 1000, 0, day(1)),
+		makeTx(t, p, f[2], f[3].addr, 1000, 0, day(1)),
+		makeTx(t, p, f[4], f[5].addr, 1000, 0, day(1)),
+	}
+	b := n.build(t, 2, f, func(b *Block) { b.Txs = txs })
+	if err := ValidateBlock(&b, &n.tip, p, n.st.IsAdmitted); err != ErrBlockTooManyTxs {
+		t.Fatalf("3 transactions pour un maximum de 2 : err = %v", err)
+	}
+	n.produce(t, 2, f, func(b *Block) { b.Txs = txs[:2] })
+}

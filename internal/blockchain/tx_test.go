@@ -79,3 +79,20 @@ func TestTxReplayOtherChainID(t *testing.T) {
 		t.Fatal("transaction rejouée sur un autre chain_id")
 	}
 }
+
+// Une micro-transaction doit payer le minimum : 0 ou 1 unité de frais est refusé.
+func TestTxMinFeeEnforced(t *testing.T) {
+	p := testParams()
+	marie, paul := newWallet(t, p), newWallet(t, p)
+	tx := Transaction{From: marie.addr, To: paul.addr, Amount: 1, Fee: 0, Timestamp: day(1)}
+	if err := tx.Sign(marie.key, p.ChainID); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Verify(p); err != ErrTxFee {
+		t.Fatalf("frais nuls : err = %v", err)
+	}
+	ok := makeTx(t, p, marie, paul.addr, 1, 0, day(1))
+	if ok.Fee != p.MinFee || ok.Verify(p) != nil {
+		t.Fatalf("frais minimum : %d", ok.Fee)
+	}
+}

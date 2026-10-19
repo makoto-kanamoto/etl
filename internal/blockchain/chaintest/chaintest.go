@@ -152,7 +152,7 @@ func (n *Net) Track(w Wallet) { n.keys[w.Addr] = w.Key }
 // Tx crée une transaction signée.
 func (n *Net) Tx(tb testing.TB, from Wallet, to crypto.Address, amount, nonce uint64, ts int64) blockchain.Transaction {
 	tb.Helper()
-	fee, err := blockchain.Fee(amount, n.P.FeeBps)
+	fee, err := blockchain.RequiredFee(amount, n.P)
 	if err != nil {
 		tb.Fatal(err)
 	}

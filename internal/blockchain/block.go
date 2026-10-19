@@ -24,6 +24,7 @@ var (
 	ErrBlockNotAdmitted   = errors.New("blockchain: participant non admis")
 	ErrBlockProposer      = errors.New("blockchain: le proposant ne correspond pas au tour annoncé")
 	ErrBlockRound         = errors.New("blockchain: tour de proposition hors limites")
+	ErrBlockTooManyTxs    = errors.New("blockchain: trop de transactions dans le bloc")
 	ErrBlockRegistryRoot  = errors.New("blockchain: racine du registre incorrecte")
 	ErrBlockVotesRoot     = errors.New("blockchain: racine des votes incorrecte")
 	ErrBlockFounders      = errors.New("blockchain: fondateurs hors du genesis")
@@ -175,6 +176,8 @@ func ValidateBlock(b *Block, prev *Header, p Params, isAdmitted func(crypto.Addr
 		return ErrBlockPrev
 	case h.Timestamp <= prev.Timestamp || !isBlockTime(h.Timestamp, p):
 		return ErrBlockTime
+	case len(b.Txs) > p.MaxBlockTxs:
+		return ErrBlockTooManyTxs
 	case h.TxRoot != TxRoot(b.Txs):
 		return ErrBlockTxRoot
 	case h.ParticipantsRoot != ParticipantsRoot(b.Participants):

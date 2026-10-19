@@ -94,3 +94,21 @@ func TestFee(t *testing.T) {
 		t.Error("bps > 10000 accepté")
 	}
 }
+
+// Frais exigés : max(0.1 %, 0.0001 ETL). Un paiement de 0.1 ETL ou plus n'est pas touché par le minimum.
+func TestRequiredFee(t *testing.T) {
+	p := DefaultParams()
+	for amount, want := range map[uint64]uint64{
+		1:                     10_000, // 1 unité : minimum
+		999:                   10_000,
+		UnitsPerETL / 100:     10_000, // 0.01 ETL → 0.00001 au taux, relevé au minimum
+		UnitsPerETL / 10:      10_000, // 0.1 ETL → exactement le minimum
+		UnitsPerETL:           100_000,
+		5 * UnitsPerETL:       500_000,
+		UnitsPerETL/10 + 1000: 10_001,
+	} {
+		if got, err := RequiredFee(amount, p); err != nil || got != want {
+			t.Errorf("RequiredFee(%s ETL) = %s, attendu %s", FormatETL(amount), FormatETL(got), FormatETL(want))
+		}
+	}
+}
