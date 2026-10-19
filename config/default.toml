@@ -2,7 +2,8 @@
 wallet  = ""
 port    = 3000
 datadir = "~/.etl/chain"
-pruning = true
+pruning = true             # false = nœud archive (explorateur, bootstrap) : garde tout
+prune_keep_blocks = 90     # contenu des blocs conservé (~90 jours) ; en-têtes et genesis toujours gardés
 
 [network]
 chain_id    = "ETL-FR"   # inclus dans toute signature — fixé au genesis

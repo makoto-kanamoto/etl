@@ -19,7 +19,9 @@
 | Genesis | ≥ 10 fondateurs indépendants ; aucune récompense si < 10 nœuds actifs |
 | Consensus | Supermajorité 2/3 des nœuds |
 | Format de config | .toml |
-| Pruning | Activé dès le départ (pas en V2) |
+| Pruning | Activé dès le départ : 90 derniers blocs gardés, en-têtes toujours (mode archive possible) |
+| Stockage | bbolt (pur Go, transactions ACID) |
+| Racine d'état | `StateRoot` dans chaque en-tête, validé par vote 2/3 |
 | Dashboard local | localhost:3001 |
 | Site public | etalon-etl.fr |
 | Explorateur | explorer.etalon-etl.fr |
@@ -230,6 +232,37 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
 - Les frais sont exprimés en **points de base** (`fee_bps = 10` → 0.1%) pour un calcul 100% entier
 
 ---
+
+### Racine d'état (StateRoot)
+- Chaque en-tête contient la **racine de Merkle de l'état** (soldes + registre des nœuds) **après** application du bloc
+- Validée par le vote 2/3 comme le reste du bloc : un bloc dont la racine ne correspond pas est rejeté
+- Permet de vérifier n'importe quel instantané de l'état sans rejouer la chaîne depuis le genesis :
+  *« Ne faites pas confiance. Vérifiez. »* — même quand les anciens blocs ont été élagués
+- Calcul : feuilles triées par adresse (`A | adresse | solde | nonce`, `N | adresse | entrée du registre`), Blake3
+
+### Stockage et pruning
+- **bbolt** : un fichier, transactions ACID. Un bloc, son index, les changements d'état et la tête de chaîne
+  sont écrits dans **une seule transaction** : une coupure de courant ne laisse jamais une chaîne à moitié écrite
+- L'état est écrit sur disque **avant** d'être modifié en mémoire : un échec d'écriture ne change rien
+- **Seuls les blocs finalisés** (vote 2/3) sont stockés : pas de réorganisation de chaîne
+- Au démarrage, l'état rechargé est vérifié contre le `StateRoot` du dernier bloc : une base altérée est refusée
+- Chaque bloc relu est revérifié contre son en-tête : une corruption du disque est détectée
+- Fichiers en `0600`, répertoire en `0700`
+
+| Donnée | Conservation |
+|---|---|
+| En-têtes (~250 o/jour) | Toujours |
+| Genesis complet | Toujours |
+| Contenu des blocs | 90 derniers blocs (`prune_keep_blocks`), puis élagué |
+| État (soldes + registre) | Toujours, à jour au dernier bloc |
+
+- **Mode archive** (`pruning = false`) : garde tout — pour l'explorateur et le nœud de bootstrap
+- Le pruning est un choix local à chaque nœud, pas une règle de consensus
+
+### Encodage binaire
+- Format canonique unique pour le stockage **et** le réseau : un objet = une seule suite d'octets possible
+- Décodeurs durcis contre les entrées hostiles (tronquées, trop longues, tailles de liste démesurées) et testés par fuzzing
+- L'identifiant d'une transaction n'est jamais transmis : il est recalculé
 
 ## Step 5 — Confirmation de transaction
 
