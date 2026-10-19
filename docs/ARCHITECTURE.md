@@ -198,13 +198,30 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
   triées par ticket croissant (la sienne en premier), et le signe (usage `block-proposal`)
 - Si son bloc n'est pas accepté, le suivant dans l'ordre des tickets prend le relais
 
-**Phase 3 — Vote**
-- Les nœuds **votent** sur ce bloc — **supermajorité 2/3** requise
-- Un nœud vote contre un bloc qui **omet une participation valide** qu'il a reçue dans la fenêtre
-  (le proposant aurait intérêt à écarter des participants pour grossir sa part)
-  - **Tolérance réseau** : seules les participations reçues **avant 23:00:25 UTC** sont contrôlées.
-    Une participation arrivée entre 23:00:25 et 23:00:30 a pu ne pas atteindre le proposant à temps :
-    son absence ne justifie pas un vote contre
+**Phase 3 — Vote de finalisation**
+- Votent : les nœuds **admis et actifs** selon le registre **avant** le bloc (ni candidats, ni inactifs)
+- Un vote = signature de `{hauteur, hash du bloc}` (usage `block-vote`). On ne vote que **pour** ; l'absence vaut refus
+- **Seuil : strictement plus de 2/3** des nœuds actifs — 7 sur 10, 7 sur 9, 667 sur 1 000.
+  Tant que moins d'un tiers des nœuds trichent, deux blocs concurrents ne peuvent jamais être finalisés tous les deux
+- Un nœud honnête vote pour un bloc seulement si :
+  - le bloc est valide et s'applique à l'état (`StateRoot` compris) ;
+  - il contient **toutes les participations valides** que ce nœud a reçues **avant 23:00:25 UTC**
+    (le proposant aurait intérêt à écarter des participants pour grossir sa part).
+    **Tolérance réseau** : une participation arrivée entre 23:00:25 et 23:00:30 a pu ne pas atteindre
+    le proposant à temps, son absence ne justifie pas un refus ;
+  - il n'inclut pas un nœud que ce nœud a vu participer deux fois **avant 23:00:25**
+    (même tolérance : sinon un seul tricheur, en envoyant sa seconde participation à 23:00:29 à une partie
+    des nœuds, pourrait faire sauter la journée)
+- **Certificat de finalité** : les votes qui atteignent le seuil, stockés avec le bloc.
+  Quiconque se synchronise vérifie lui-même la finalité, sans faire confiance à personne.
+  Le stockage refuse tout bloc sans certificat valide
+- **Un seul vote par hauteur.** Voter pour deux blocs différents à la même hauteur est une faute prouvable
+  (deux signatures du même nœud) → **exclusion automatique** (preuve incluse dans un bloc ultérieur).
+  Chaque nœud enregistre son vote sur disque **avant** de le diffuser : un redémarrage ne peut pas
+  lui faire voter deux fois
+- **Sécurité avant continuité** : si aucun bloc n'atteint le seuil, la journée est sautée.
+  Jamais deux blocs finalisés ; au pire, un jour sans bloc
+- Certificats élagués avec le contenu des blocs (90 jours), **sauf le dernier, toujours conservé**
 - Simple, déterministe, pas d'élection
 
 ### Récompense
