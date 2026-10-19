@@ -135,7 +135,8 @@ Chaque membre détient ses propres ETL. Ses propres clés. Sa propre liberté.
 - Fréquence de mise à jour IPC *(défaut : trimestrielle)*
 - Récompense quotidienne *(défaut : 10 ETL par jour, partagés entre tous les nœuds participants)*
 - Critères d'admission d'un nouveau nœud
-- Frais de transaction *(défaut : 0.1% au proposant du bloc)*
+- Frais de transaction *(défaut : 0.1%, minimum 0,0001 ETL, au proposant du bloc)*
+- Taille maximale d'un bloc *(défaut : 100 000 transactions par jour)*
 
 ---
 

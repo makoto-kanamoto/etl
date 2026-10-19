@@ -12,7 +12,8 @@
 | Modèle de compte | Account (pas UTXO) |
 | Cryptographie | ECDSA secp256k1 |
 | Fréquence des blocs | 1 bloc/jour à 23:00 UTC |
-| Frais de transaction | 0.1% au proposant du bloc |
+| Frais de transaction | max(0.1%, 0,0001 ETL) au proposant du bloc |
+| Taille de bloc | 100 000 transactions maximum (≈ 14 Mo) — débit quotidien, gouvernable |
 | Récompense | 10 ETL/jour, partagée entre tous les participants (défaut gouvernable) |
 | Halving | Aucun — émission constante |
 | Admission | Parrainage (1/30 j, 6 mois d'ancienneté) + observation 5/7 jours |
@@ -153,7 +154,7 @@ type Transaction struct {
     From      crypto.Address   // adresse ETL de l'expéditeur
     To        crypto.Address   // adresse ETL du destinataire
     Amount    uint64           // montant en unités ETL (1 ETL = 10^8 unités) — jamais float64
-    Fee       uint64           // Amount * fee_bps / 10000 (fee_bps = 10 → 0.1%)
+    Fee       uint64           // max(Amount * fee_bps / 10000, MinFee) — exactement
     Nonce     uint64           // compteur par compte — protection anti-rejeu
     Timestamp int64            // heure Unix de création
     Signature crypto.Signature // ECDSA récupérable, 65 octets
@@ -272,6 +273,20 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
 - Tous les montants sont des **uint64** en unités : 1 ETL = 10^8 unités
 - La config (`default.toml`) garde des décimaux lisibles (`daily_reward = 10.0`) ; le nœud Go les convertit en uint64 au chargement
 - Les frais sont exprimés en **points de base** (`fee_bps = 10` → 0.1%) pour un calcul 100% entier
+- **Frais minimum : 0,0001 ETL** par transaction — `frais = max(0.1 %, 0,0001 ETL)`, montant exact exigé.
+  Sans minimum, les micro-transactions seraient gratuites et un attaquant pourrait remplir chaque bloc.
+  Un paiement de 0,1 ETL ou plus n'est pas concerné ; saturer un bloc coûte 10 ETL par jour
+- **Taille de bloc : 100 000 transactions maximum** (gouvernable) — avec 1 bloc/jour, c'est le débit quotidien
+
+### Mempool (salle d'attente des transactions)
+- **Admission**, contre l'état du dernier bloc : transaction valide ; nonce ni passé ni trop en avance ;
+  solde suffisant pour **toutes** les transactions en attente de l'expéditeur (sans dépassement de capacité) ;
+  à nonce égal, la première arrivée gagne (frais fixes : pas d'enchère) ; ni datée du futur, ni de plus de 7 jours
+- **Sélection** par le proposant : premier arrivé, premier servi, dans l'ordre des nonces de chaque compte,
+  horodatage ≤ 23:00:00 ; simulation des soldes : le bloc s'applique toujours sans erreur
+- **Après chaque bloc** : retrait des transactions incluses, au nonce dépassé, expirées, ou que le nouveau solde
+  ne couvre plus (avec celles qui en dépendent)
+- En mémoire uniquement ; limites locales (non consensus) : 16 par compte, 200 000 au total, 7 jours
 
 ---
 

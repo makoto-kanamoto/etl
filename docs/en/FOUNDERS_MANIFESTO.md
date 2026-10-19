@@ -135,7 +135,8 @@ Every member holds their own ETL. Their own keys. Their own freedom.
 - CPI update frequency *(default: quarterly)*
 - Daily reward *(default: 10 ETL per day, shared among all participating nodes)*
 - Admission criteria for a new node
-- Transaction fees *(default: 0.1%, to the block proposer)*
+- Transaction fees *(default: 0.1%, minimum 0.0001 ETL, to the block proposer)*
+- Maximum block size *(default: 100,000 transactions per day)*
 
 ---
 

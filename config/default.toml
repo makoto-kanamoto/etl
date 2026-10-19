@@ -19,9 +19,17 @@ target_bits = 21   # difficulté PoW fixe (~2 s CPU) — gouvernable par vote 2/
 
 [transaction]
 fee_bps = 10           # points de base : 10 = 0.1%
+fee_min = 0.0001       # frais minimum par transaction (ETL) — anti-spam
+max_block_txs = 100000 # transactions par bloc (= débit quotidien) — gouvernable
+
 confirm_small = 1
 confirm_large = 2
 confirm_threshold = 10.0
+
+[mempool]               # limites locales au nœud (pas des règles de consensus)
+max_per_account = 16
+max_total = 200000
+max_age_days = 7
 
 [oracle]
 ipc_url       = "https://api.insee.fr/series/BDM/V1/data/SERIES_BDM/011814630"
