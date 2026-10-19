@@ -16,7 +16,6 @@
 *.out
 /vendor/
 /dist/
-go.sum
 
 # ETL node data
 ~/.etl/

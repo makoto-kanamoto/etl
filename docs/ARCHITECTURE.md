@@ -60,12 +60,16 @@ Comme Linux — une base commune, des adaptations locales.
 - Génération des clés **dans le navigateur** (JavaScript)
 - **Subresource Integrity (SRI) obligatoire** sur tous les scripts JS web
 - Algorithme : ECDSA secp256k1 (même que Bitcoin)
-- Format d'adresse : inspiré Bitcoin (ETL1...)
+- Format d'adresse : **bech32m** (BIP-350, comme les adresses Bitcoin récentes), préfixe réseau `etl`
+  - Corps : version (0) + 20 premiers octets de Blake3(clé publique compressée)
+  - Détecte les fautes de frappe, pas de casse mixte, lisible à voix haute, compact en QR code
+  - Chaque fork a son préfixe (`etl` pour ETL-FR, `etlde` pour ETL-DE…) : une adresse d'un fork est refusée sur un autre
 - La clé privée **ne quitte jamais le client** — jamais envoyée au serveur
 - Stockage clé privée opérateur nœud : `~/.etl/wallet.key` (chiffré)
 
 ```
-Exemple d'adresse : ETL1xK9f3mP2qR8vL7nT4uW6sA5dF1gH3jK
+Exemple d'adresse : etl1qnwxsgqx9c4phyx8vjt6650fl5zgxzcaav8qcw0
+                    (clé privée = 1 — vecteur de référence, ne jamais utiliser)
 ```
 
 ---
@@ -120,16 +124,26 @@ bootstrap = [
 
 ```go
 type Transaction struct {
-    ID        string    // hash unique de la transaction
-    From      string    // adresse ETL de l'expéditeur
-    To        string    // adresse ETL du destinataire
-    Amount    uint64    // montant en unités ETL (1 ETL = 10^8 unités) — jamais float64
-    Fee       uint64    // Amount * fee_bps / 10000 (fee_bps = 10 → 0.1%)
-    Nonce     uint64    // compteur par compte — protection anti-rejeu
-    Timestamp int64     // heure Unix de création
-    Signature string    // signature ECDSA de l'expéditeur
+    ID        crypto.Hash      // Blake3 de l'encodage binaire canonique
+    From      crypto.Address   // adresse ETL de l'expéditeur
+    To        crypto.Address   // adresse ETL du destinataire
+    Amount    uint64           // montant en unités ETL (1 ETL = 10^8 unités) — jamais float64
+    Fee       uint64           // Amount * fee_bps / 10000 (fee_bps = 10 → 0.1%)
+    Nonce     uint64           // compteur par compte — protection anti-rejeu
+    Timestamp int64            // heure Unix de création
+    Signature crypto.Signature // ECDSA récupérable, 65 octets
 }
 ```
+
+- **Octets en interne**, texte (hex, bech32m) uniquement à l'affichage et dans l'API
+- Ce qui est signé et hashé est un **encodage binaire fixe**, jamais du JSON
+- **Signature récupérable** : la clé publique se déduit de la signature ; le nœud vérifie qu'elle correspond à `From`
+- Nonce déterministe (RFC 6979), signatures **low-S** uniquement : une transaction n'a qu'une seule signature valide
+
+### Séparation des signatures
+Toute signature porte sur `Blake3(chain_id | usage | message)` :
+- `chain_id` (`"ETL-FR"`, fixé au genesis) — une transaction ETL-FR ne peut pas être rejouée sur ETL-DE
+- `usage` (`tx`, `block-vote`, `ipc-vote`) — une transaction ne peut pas passer pour un vote, et inversement
 
 ### Flux
 
@@ -141,6 +155,14 @@ type Transaction struct {
 5. À 23:00 UTC : le nœud validateur l'intègre dans le bloc
 6. Les frais (0.1%) sont distribués au nœud validateur
 ```
+
+### Production du bloc quotidien
+- À 23:00 UTC, **tous les nœuds minent** le bloc du jour (PoW Blake3)
+- **Fenêtre de soumission : 23:00:00 → 23:00:30 UTC** — toute soumission hors fenêtre est ignorée
+- **1 seule soumission par nœud** — soumission immédiate dès qu'une PoW valide est trouvée
+- Parmi les soumissions reçues dans la fenêtre → **le hash le plus bas gagne**
+- Les nœuds **votent** sur ce bloc — **supermajorité 2/3** requise
+- Simple, déterministe, pas d'élection
 
 ### Sécurité
 - Signature ECDSA côté client

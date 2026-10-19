@@ -5,6 +5,8 @@ datadir = "~/.etl/chain"
 pruning = true
 
 [network]
+chain_id    = "ETL-FR"   # inclus dans toute signature — fixé au genesis
+address_hrp = "etl"      # préfixe des adresses bech32m (etl1…)
 bootstrap = [
   "etl1.etalon-etl.fr:3000",
 ]
