@@ -26,7 +26,22 @@ var (
 	ErrVoteEquivocation     = errors.New("blockchain: preuve de double vote invalide")
 	ErrMissingParticipation = errors.New("blockchain: le bloc omet une participation reçue avant la tolérance")
 	ErrEquivocatorIncluded  = errors.New("blockchain: le bloc inclut un nœud pris en double participation")
+	ErrRoundTooEarly        = errors.New("blockchain: bloc reçu avant le début de son tour")
 )
+
+// Proposant de secours : si le bloc du tour 0 n'est pas finalisé, le 2e ticket propose au tour 1,
+// et ainsi de suite jusqu'à MaxRounds tours ; au-delà, la journée est sautée.
+//
+//	tour 0 : 23:00:30   tour 1 : 23:02:30   …   tour 4 : 23:08:30
+//
+// La sécurité ne dépend pas des tours : un nœud ne vote qu'une fois par hauteur, tous tours
+// confondus. Deux blocs finalisés exigeraient deux groupes de plus de 2/3 des nœuds, qui
+// auraient plus d'un tiers des nœuds en commun — ayant donc voté deux fois.
+
+// RoundStart renvoie le début du tour round : fin de la fenêtre de participation + round tours.
+func RoundStart(blockTime int64, round uint8, p Params) time.Time {
+	return time.Unix(blockTime, 0).Add(p.SubmissionWindow + time.Duration(round)*p.RoundDuration)
+}
 
 // Quorum renvoie le nombre de votes nécessaires parmi n nœuds actifs : strictement plus de 2/3.
 // 10 nœuds → 7 ; 9 → 7 ; 1000 → 667.
@@ -158,6 +173,8 @@ func (e *VoteEquivocation) verify(blockHeight uint64, p Params) error {
 }
 
 // CheckProposal est ce qu'un nœud honnête vérifie avant de voter pour un bloc :
+//   - le bloc n'arrive pas avant le début de son tour (à ClockTolerance près) : sinon le
+//     proposant d'un tour suivant pourrait prendre de vitesse le proposant légitime ;
 //   - le bloc est valide et s'applique à l'état (StateRoot compris) ;
 //   - il contient toutes les participations valides que ce nœud a reçues AVANT
 //     blockTime + InclusionCutoff (23:00:25) : une participation arrivée plus tard a pu
@@ -166,8 +183,12 @@ func (e *VoteEquivocation) verify(blockHeight uint64, p Params) error {
 //     Sinon, un seul nœud malveillant pourrait envoyer une seconde participation à 23:00:29
 //     à un tiers des nœuds seulement, les faire refuser, et faire sauter la journée.
 //
-// recv : toutes les participations reçues par ce nœud pour ce jour.
-func CheckProposal(b *Block, prev *Header, st *State, recv []Received, p Params) error {
+// recv : toutes les participations reçues par ce nœud pour ce jour ; now : heure de réception du bloc.
+// Le nœud vote pour le premier bloc qui passe ce contrôle, s'il n'a pas encore voté à cette hauteur.
+func CheckProposal(b *Block, prev *Header, st *State, recv []Received, now time.Time, p Params) error {
+	if now.Before(RoundStart(b.Header.Timestamp, b.Header.Round, p).Add(-p.ClockTolerance)) {
+		return ErrRoundTooEarly
+	}
 	if err := ValidateBlock(b, prev, p, st.IsAdmitted); err != nil {
 		return err
 	}

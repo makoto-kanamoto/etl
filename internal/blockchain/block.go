@@ -22,7 +22,8 @@ var (
 	ErrBlockNoParticipant = errors.New("blockchain: aucune participation")
 	ErrBlockPartOrder     = errors.New("blockchain: participations non triées par ticket croissant")
 	ErrBlockNotAdmitted   = errors.New("blockchain: participant non admis")
-	ErrBlockProposer      = errors.New("blockchain: le proposant n'a pas le ticket le plus bas")
+	ErrBlockProposer      = errors.New("blockchain: le proposant ne correspond pas au tour annoncé")
+	ErrBlockRound         = errors.New("blockchain: tour de proposition hors limites")
 	ErrBlockRegistryRoot  = errors.New("blockchain: racine du registre incorrecte")
 	ErrBlockVotesRoot     = errors.New("blockchain: racine des votes incorrecte")
 	ErrBlockFounders      = errors.New("blockchain: fondateurs hors du genesis")
@@ -55,6 +56,7 @@ type Header struct {
 	Height           uint64
 	PrevHash         crypto.Hash
 	Timestamp        int64       // 23:00:00 UTC du jour du bloc, heure Unix
+	Round            uint8       // tour de proposition : le proposant est Participants[Round]
 	TxRoot           crypto.Hash // racine de Merkle des identifiants de transactions
 	ParticipantsRoot crypto.Hash // racine de Merkle des identifiants de participations
 	RegistryRoot     crypto.Hash // racine des enregistrements, observations et preuves de double participation
@@ -71,6 +73,7 @@ func (h *Header) Encode() []byte {
 	b = binary.BigEndian.AppendUint64(b, h.Height)
 	b = append(b, h.PrevHash[:]...)
 	b = binary.BigEndian.AppendUint64(b, uint64(h.Timestamp))
+	b = append(b, h.Round)
 	b = append(b, h.TxRoot[:]...)
 	b = append(b, h.ParticipantsRoot[:]...)
 	b = append(b, h.RegistryRoot[:]...)
@@ -184,6 +187,8 @@ func ValidateBlock(b *Block, prev *Header, p Params, isAdmitted func(crypto.Addr
 		return ErrBlockFounders
 	case len(b.Participants) == 0:
 		return ErrBlockNoParticipant
+	case int(h.Round) >= p.MaxRounds || int(h.Round) >= len(b.Participants):
+		return ErrBlockRound
 	}
 
 	// Ordre strictement croissant des tickets : canonique, et un seul ticket par nœud.
@@ -203,7 +208,7 @@ func ValidateBlock(b *Block, prev *Header, p Params, isAdmitted func(crypto.Addr
 		prevTicket = t
 	}
 
-	if h.Proposer != b.Participants[0].Miner {
+	if h.Proposer != b.Participants[h.Round].Miner {
 		return ErrBlockProposer
 	}
 	hash := h.Hash()

@@ -219,7 +219,8 @@ func TestCheckProposal(t *testing.T) {
 	}
 	obs := []Participation{participate(t, p, prev, cand, ts)}
 	recv = append(recv, Received{Participation: obs[0], ReceivedAt: start.Add(3 * time.Second)})
-	check := func(b Block, r []Received) error { return CheckProposal(&b, &n.tip, n.st, r, p) }
+	round0 := RoundStart(ts, 0, p)
+	check := func(b Block, r []Received) error { return CheckProposal(&b, &n.tip, n.st, r, round0, p) }
 
 	if err := check(n.proposal(t, 2, pts, obs), recv); err != nil {
 		t.Fatalf("bloc complet : %v", err)

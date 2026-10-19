@@ -22,6 +22,9 @@ type Params struct {
 	BlockTimeOfDay   time.Duration // heure du bloc après minuit UTC (23:00)
 	SubmissionWindow time.Duration // durée de la fenêtre de participation (30 s)
 	InclusionCutoff  time.Duration // un vote exige les participations reçues avant ce délai (25 s)
+	RoundDuration    time.Duration // durée d'un tour de proposition (2 min)
+	MaxRounds        int           // tours de proposition avant de sauter la journée (5)
+	ClockTolerance   time.Duration // tolérance d'horloge entre nœuds synchronisés par NTP (5 s)
 
 	// Registre des nœuds admis (durées en jours UTC) — gouvernables (critères d'admission)
 	MinFounders          int   // fondateurs exigés au genesis
@@ -51,6 +54,9 @@ func DefaultParams() Params {
 		BlockTimeOfDay:   23 * time.Hour,
 		SubmissionWindow: 30 * time.Second,
 		InclusionCutoff:  25 * time.Second,
+		RoundDuration:    2 * time.Minute,
+		MaxRounds:        5,
+		ClockTolerance:   5 * time.Second,
 
 		MinFounders:          10,
 		MinActiveNodes:       10,

@@ -305,7 +305,7 @@ func (r *reader) header() Header {
 	if r.u8() != BlockVersion {
 		r.err = ErrDecode
 	}
-	h := Header{Height: r.u64(), PrevHash: r.hash(), Timestamp: r.i64(), TxRoot: r.hash(),
+	h := Header{Height: r.u64(), PrevHash: r.hash(), Timestamp: r.i64(), Round: r.u8(), TxRoot: r.hash(),
 		ParticipantsRoot: r.hash(), RegistryRoot: r.hash(), VotesRoot: r.hash(), StateRoot: r.hash()}
 	if r.boolean() {
 		ipc := r.ipcRecord()

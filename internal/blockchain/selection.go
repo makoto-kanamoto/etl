@@ -62,7 +62,8 @@ func Ticket(prevHash crypto.Hash, miner crypto.Address) crypto.Hash {
 //     produisent une preuve de double participation, incluse dans le bloc : le nœud est exclu.
 //     Un doublon réseau identique n'est pas une double participation.
 //
-// Si le bloc du proposant n'est pas accepté, Participants[1] prend le relais, et ainsi de suite.
+// Participants[r] propose au tour r (proposant de secours) : si le bloc du tour 0 n'est pas
+// finalisé, Participants[1] propose au tour 1, et ainsi de suite (voir RoundStart).
 func Eligible(recv []Received, prev *Header, blockTime int64, p Params, role func(crypto.Address) Role) DayParticipations {
 	start := time.Unix(blockTime, 0)
 	end := start.Add(p.SubmissionWindow)
