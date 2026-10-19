@@ -18,10 +18,15 @@ type Hash [HashSize]byte
 // Une empreinte calculée pour un usage ne peut jamais être valide pour un autre.
 // Ces chaînes font partie du protocole : les modifier casse la compatibilité.
 const (
-	ContextTx        = "etalon-etl 2026-10 transaction v1"
-	ContextBlock     = "etalon-etl 2026-10 block v1"
-	ContextAddress   = "etalon-etl 2026-10 address v1"
-	ContextSignature = "etalon-etl 2026-10 signature v1"
+	ContextTx            = "etalon-etl 2026-10 transaction v1"
+	ContextBlock         = "etalon-etl 2026-10 block v1"
+	ContextAddress       = "etalon-etl 2026-10 address v1"
+	ContextSignature     = "etalon-etl 2026-10 signature v1"
+	ContextMerkle        = "etalon-etl 2026-10 merkle v1"
+	ContextTicket        = "etalon-etl 2026-10 block ticket v1"
+	ContextGenesis       = "etalon-etl 2026-10 genesis v1"
+	ContextPoW           = "etalon-etl 2026-10 pow v1"
+	ContextParticipation = "etalon-etl 2026-10 participation v1"
 )
 
 // Sum calcule l'empreinte Blake3-256 de data dans le contexte donné.

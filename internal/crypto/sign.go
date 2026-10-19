@@ -20,9 +20,11 @@ type Signature [SignatureSize]byte
 type Purpose string
 
 const (
-	PurposeTx        Purpose = "tx"
-	PurposeBlockVote Purpose = "block-vote"
-	PurposeIPCVote   Purpose = "ipc-vote"
+	PurposeTx            Purpose = "tx"
+	PurposeParticipation Purpose = "participation"
+	PurposeBlockProposal Purpose = "block-proposal"
+	PurposeBlockVote     Purpose = "block-vote"
+	PurposeIPCVote       Purpose = "ipc-vote"
 )
 
 var (

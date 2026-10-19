@@ -34,7 +34,7 @@ func TestSumOfficialVectors(t *testing.T) {
 func TestSumContextsAreSeparated(t *testing.T) {
 	data := []byte("même donnée")
 	seen := map[Hash]string{}
-	for _, ctx := range []string{ContextTx, ContextBlock, ContextAddress, ContextSignature} {
+	for _, ctx := range []string{ContextTx, ContextBlock, ContextAddress, ContextSignature, ContextMerkle, ContextTicket, ContextGenesis, ContextPoW, ContextParticipation} {
 		h := Sum(ctx, data)
 		if prev, ok := seen[h]; ok {
 			t.Fatalf("contextes %q et %q donnent la même empreinte", prev, ctx)

@@ -12,9 +12,9 @@
 | Modèle de compte | Account (pas UTXO) |
 | Cryptographie | ECDSA secp256k1 |
 | Fréquence des blocs | 1 bloc/jour à 23:00 UTC |
-| Frais de transaction | 0.1% distribués aux nœuds validateurs |
-| Récompense par bloc | 10 ETL (défaut gouvernable) |
-| Halving | Tous les 2 ans (défaut gouvernable) |
+| Frais de transaction | 0.1% au proposant du bloc |
+| Récompense | 10 ETL/jour, partagée entre tous les participants (défaut gouvernable) |
+| Halving | Aucun — émission constante |
 | Consensus | Supermajorité 2/3 des nœuds |
 | Format de config | .toml |
 | Pruning | Activé dès le départ (pas en V2) |
@@ -143,7 +143,7 @@ type Transaction struct {
 ### Séparation des signatures
 Toute signature porte sur `Blake3(chain_id | usage | message)` :
 - `chain_id` (`"ETL-FR"`, fixé au genesis) — une transaction ETL-FR ne peut pas être rejouée sur ETL-DE
-- `usage` (`tx`, `block-vote`, `ipc-vote`) — une transaction ne peut pas passer pour un vote, et inversement
+- `usage` (`tx`, `participation`, `block-proposal`, `block-vote`, `ipc-vote`) — une transaction ne peut pas passer pour un vote, et inversement
 
 ### Flux
 
@@ -152,17 +152,49 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
 2. Elle signe avec sa clé privée (côté client, SRI obligatoire)
 3. La transaction signée est envoyée au réseau
 4. Elle entre dans le mempool des nœuds
-5. À 23:00 UTC : le nœud validateur l'intègre dans le bloc
-6. Les frais (0.1%) sont distribués au nœud validateur
+5. Après 23:00:30 UTC : le proposant du jour l'intègre dans le bloc
+6. Les frais (0.1%) vont au proposant
 ```
 
 ### Production du bloc quotidien
-- À 23:00 UTC, **tous les nœuds minent** le bloc du jour (PoW Blake3)
-- **Fenêtre de soumission : 23:00:00 → 23:00:30 UTC** — toute soumission hors fenêtre est ignorée
-- **1 seule soumission par nœud** — soumission immédiate dès qu'une PoW valide est trouvée
-- Parmi les soumissions reçues dans la fenêtre → **le hash le plus bas gagne**
+
+**Phase 1 — Participation (23:00:00 → 23:00:30 UTC)**
+- À 23:00 UTC, **tous les nœuds minent** leur PoW du jour (Blake3)
+- La PoW porte sur `prev_hash | heure du bloc | adresse du nœud | nonce` : elle ne vaut que pour ce jour et ce nœud
+- **La PoW est un ticket d'entrée** : valide ou non. Un hash plus bas ne donne aucun avantage
+- **1 seule participation par nœud**, soumise immédiatement dès qu'une PoW valide est trouvée.
+  Un nœud qui soumet deux participations différentes est exclu du jour (un doublon réseau identique ne compte pas)
+- **Chaque participation est signée par le nœud** (usage `participation`) : personne ne peut participer au nom d'un autre
+- **Seuls les nœuds admis participent.** Sans cette règle, n'importe qui pourrait générer
+  des milliers d'adresses hors ligne et choisir celle qui a le ticket le plus bas
+- Toute participation reçue hors fenêtre est ignorée
+
+**Phase 2 — Proposition (après 23:00:30 UTC)**
+- **Proposant** = parmi les participants, celui dont `Blake3(hash du bloc précédent | adresse du nœud)` est **le plus bas**
+  - Ce tirage ne dépend que de l'identité du nœud et du bloc précédent : **miner plus longtemps ne sert à rien**
+  - Imprévisible avant la publication du bloc précédent, vérifiable par tous après
+- Le proposant construit le bloc : transactions du mempool + **liste de toutes les participations reçues**,
+  triées par ticket croissant (la sienne en premier), et le signe (usage `block-proposal`)
+- Si son bloc n'est pas accepté, le suivant dans l'ordre des tickets prend le relais
+
+**Phase 3 — Vote**
 - Les nœuds **votent** sur ce bloc — **supermajorité 2/3** requise
+- Un nœud vote contre un bloc qui **omet une participation valide** qu'il a reçue dans la fenêtre
+  (le proposant aurait intérêt à écarter des participants pour grossir sa part)
 - Simple, déterministe, pas d'élection
+
+### Récompense
+- **Émission constante : 10 ETL par jour**, sans halving. La stabilité vient de l'IPC, pas de la rareté
+- **Partagée à parts égales** entre tous les nœuds ayant soumis une participation valide : `10 ETL ÷ N`
+  - Chaque part est arrondie à l'unité inférieure ; le reste (moins de N unités, soit < N × 0,00000001 ETL) n'est pas émis
+- **Les frais de transaction vont au proposant** du bloc
+- Genesis : aucune récompense (zéro pré-mine)
+
+### Difficulté
+- **Cible fixe**, calibrée pour ~2 secondes sur un CPU standard : **21 bits de tête à zéro**
+  (mesuré : ~1,2 M hash/s sur un cœur d'Apple M3 Pro → ~1,7 s en théorie, 2,4 s mesurées sur 20 essais)
+- Modifiable uniquement par **vote 2/3** (règle gouvernable)
+- Pas d'ajustement automatique : avec 1 bloc/jour à heure fixe, aucune mesure fiable du temps de minage n'existe
 
 ### Sécurité
 - Signature ECDSA côté client
@@ -171,7 +203,7 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
 
 ### Montants
 - Tous les montants sont des **uint64** en unités : 1 ETL = 10^8 unités
-- La config (`default.toml`) garde des décimaux lisibles (`reward = 10.0`) ; le nœud Go les convertit en uint64 au chargement
+- La config (`default.toml`) garde des décimaux lisibles (`daily_reward = 10.0`) ; le nœud Go les convertit en uint64 au chargement
 - Les frais sont exprimés en **points de base** (`fee_bps = 10` → 0.1%) pour un calcul 100% entier
 
 ---
@@ -201,7 +233,8 @@ explorer.etalon-etl.fr
 Bloc #142 — 17 octobre 2026 à 23:00 UTC
 ├── Transaction tx_3f7a... : ETL1xK9... → ETL1pAuL... : 5 ETL
 ├── Transaction tx_8b2c... : ETL1aB3... → ETL1cD4... : 12.5 ETL
-└── Reward : ETL1xK9... (nœud validateur) : 10 ETL
+├── Proposant : etl1q... (frais du bloc)
+└── Récompense : 10 ETL partagés entre 42 participants (0.23809523 ETL chacun)
 ```
 
 - Accessible à tous — membres ou non

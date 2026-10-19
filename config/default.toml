@@ -13,8 +13,8 @@ bootstrap = [
 
 [block]
 time_utc  = "23:00"
-reward    = 10.0
-halving_years = 2
+daily_reward = 10.0  # ETL/jour, partagés entre tous les participants — émission constante, pas de halving
+target_bits = 21   # difficulté PoW fixe (~2 s CPU) — gouvernable par vote 2/3
 
 [transaction]
 fee_bps = 10           # points de base : 10 = 0.1%
