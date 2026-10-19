@@ -100,6 +100,10 @@ bootstrap = [
 ]
 ```
 
+### Horloge
+- **Exigence opérateur : horloge synchronisée par NTP.** La fenêtre de participation (30 s), la tolérance
+  d'inclusion (23:00:25) et les tours de proposition (tolérance ±5 s) supposent des horloges à l'heure
+
 ### Bootstrap réseau
 - **IP + DNS** (les deux) pour les nœuds de bootstrap
 - Premier nœud bootstrap : OVH (fondateur)
@@ -196,7 +200,28 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
   - Imprévisible avant la publication du bloc précédent, vérifiable par tous après
 - Le proposant construit le bloc : transactions du mempool + **liste de toutes les participations reçues**,
   triées par ticket croissant (la sienne en premier), et le signe (usage `block-proposal`)
-- Si son bloc n'est pas accepté, le suivant dans l'ordre des tickets prend le relais
+- **Proposant de secours** : si le bloc n'est pas finalisé, le ticket suivant propose au tour suivant
+
+| Tour | Proposant | Début (UTC) |
+|---|---|---|
+| 0 | 1er ticket | 23:00:30 |
+| 1 | 2e ticket | 23:02:30 |
+| 2 | 3e ticket | 23:04:30 |
+| 3 | 4e ticket | 23:06:30 |
+| 4 | 5e ticket | 23:08:30 |
+
+  - Au-delà de 5 tours (ou faute de participants), **la journée est sautée**
+  - L'en-tête porte le tour (`Round`) ; le proposant doit être `Participants[Round]`
+  - Le bloc de secours contient **les mêmes participations** : un proposant défaillant garde sa part ;
+    seuls les frais vont au proposant du tour qui réussit
+  - **Aucune sanction** contre un proposant défaillant : la non-livraison d'un bloc n'est pas prouvable
+    (panne réseau possible)
+  - Un nœud **refuse un bloc reçu avant le début de son tour** (tolérance d'horloge ±5 s) : sinon le proposant
+    d'un tour suivant pourrait devancer le proposant légitime et prendre les frais
+  - **La sécurité ne dépend pas des tours** : un nœud ne vote qu'une fois par hauteur, tous tours confondus.
+    Deux blocs finalisés exigeraient deux groupes de plus de 2/3 des nœuds, qui partageraient plus d'un tiers
+    des nœuds — ayant donc voté deux fois (faute prouvable, exclusion). Si le tour 0 a recueilli des votes sans
+    atteindre le seuil, ces votants ne peuvent plus voter : la journée peut être sautée (sécurité avant continuité)
 
 **Phase 3 — Vote de finalisation**
 - Votent : les nœuds **admis et actifs** selon le registre **avant** le bloc (ni candidats, ni inactifs)
