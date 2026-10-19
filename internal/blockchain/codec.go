@@ -91,6 +91,16 @@ func appendExclusion(b []byte, ex *Exclusion) []byte {
 	return b
 }
 
+// EncodeParticipation renvoie l'encodage d'une participation (pour le réseau).
+func EncodeParticipation(pt *Participation) []byte { return appendParticipation(nil, pt) }
+
+// DecodeParticipation décode une participation.
+func DecodeParticipation(b []byte, hrp string) (Participation, error) {
+	r := &reader{b: b, hrp: hrp}
+	pt := r.participation()
+	return pt, r.done()
+}
+
 // EncodeIPCVote renvoie l'encodage d'un vote IPC (pour le réseau).
 func EncodeIPCVote(v *IPCVote) []byte { return appendIPCVote(nil, v) }
 
