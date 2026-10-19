@@ -15,6 +15,8 @@
 | Frais de transaction | 0.1% au proposant du bloc |
 | Récompense | 10 ETL/jour, partagée entre tous les participants (défaut gouvernable) |
 | Halving | Aucun — émission constante |
+| Admission | Parrainage (1/30 j, 6 mois d'ancienneté) + observation 5/7 jours |
+| Genesis | ≥ 10 fondateurs indépendants ; aucune récompense si < 10 nœuds actifs |
 | Consensus | Supermajorité 2/3 des nœuds |
 | Format de config | .toml |
 | Pruning | Activé dès le départ (pas en V2) |
@@ -101,14 +103,31 @@ bootstrap = [
 - Premier nœud bootstrap : OVH (fondateur)
 - Les nouveaux nœuds se connectent aux bootstraps au démarrage
 
-### Règle 1 membre = 1 nœud
-- Confiance sociale de la communauté
-- Coût PoW dissuasif pour nœuds multiples
-- Période d'observation 7 jours avant admission complète
-- Vote de la communauté en cas de suspicion
+### Admission des nœuds — registre on-chain
 
-### Admission des nouveaux nœuds
-- Automatique après 7 jours d'observation sans incident
+La règle « 1 membre = 1 nœud » repose sur ce registre : **c'est la sécurité économique principale**,
+puisque chaque nœud admis reçoit une part de la récompense et une voix dans les votes 2/3.
+Une PoW ne coûte que ~2 s : sans registre, une machine de 12 cœurs ferait ~180 « nœuds ».
+
+Valeurs par défaut — gouvernables par vote 2/3 (critères d'admission).
+
+| Étape | Règle |
+|---|---|
+| **Candidature** | Enregistrement on-chain signé par le candidat **et** contresigné par un parrain admis |
+| **Parrain** | Nœud admis et actif, **≥ 6 mois d'ancienneté**, **1 parrainage par 30 jours** maximum |
+| **Observation** | 7 jours : le candidat doit participer (PoW valide) **au moins 5 jours**. Pas de récompense, pas de vote, pas de ticket |
+| **Admission** | Automatique à la fin de l'observation si 5/7 atteint ; sinon la candidature échoue |
+| **Inactivité** | **30 jours** sans participation → inactif : plus de part, ne compte plus dans le dénominateur des 2/3. Retour : nouvelle observation (sans parrain) |
+| **Exclusion automatique** | Double participation prouvée (deux participations signées du même jour, incluses dans un bloc) → exclu définitivement |
+| **Exclusion par vote 2/3** | Faux nœuds avérés → exclu ; **le parrain perd son droit de parrainage pendant 1 an** |
+
+Les jours sont des jours UTC (horodatage du bloc ÷ 86 400) : un jour sans bloc compte quand même.
+
+### Genesis
+- Le genesis liste **au moins 10 membres fondateurs indépendants**, annoncés publiquement avant le lancement
+- Les fondateurs sont admis dès le genesis ; leur ancienneté part du genesis
+- Le genesis s'engage sur le `chain_id`, le message **et la liste des fondateurs** : les changer change toute la chaîne
+- **Aucune récompense tant que moins de 10 nœuds sont actifs** — personne ne peut accumuler d'ETL seul au démarrage
 
 ### Dashboard
 - **localhost:3001** pour l'opérateur
@@ -191,6 +210,7 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
 - **Partagée à parts égales** entre tous les nœuds ayant soumis une participation valide : `10 ETL ÷ N`
   - Chaque part est arrondie à l'unité inférieure ; le reste (moins de N unités, soit < N × 0,00000001 ETL) n'est pas émis
 - **Les frais de transaction vont au proposant** du bloc
+- **Aucune récompense tant que moins de 10 nœuds sont admis et actifs** (compté au début du bloc)
 - Genesis : aucune récompense (zéro pré-mine)
 
 ### Difficulté

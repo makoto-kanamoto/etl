@@ -135,7 +135,27 @@ Chaque membre détient ses propres ETL. Ses propres clés. Sa propre liberté.
 - Fréquence de mise à jour IPC *(défaut : trimestrielle)*
 - Récompense quotidienne *(défaut : 10 ETL par jour, partagés entre tous les nœuds participants)*
 - Critères d'admission d'un nouveau nœud
-- Frais de transaction *(défaut : 0.1% distribués aux nœuds validateurs)*
+- Frais de transaction *(défaut : 0.1% au proposant du bloc)*
+
+---
+
+## Admission des nœuds
+
+*Un membre = un nœud. Pour que cette règle tienne, l'entrée dans le réseau passe par la confiance de ceux qui y sont déjà. Valeurs par défaut — modifiables par vote à la supermajorité des 2/3 (critères d'admission).*
+
+- **Parrainage** — tout nouveau nœud est parrainé par un nœud admis. Un nœud ne peut parrainer qu'une fois tous les 30 jours, et seulement après 6 mois d'ancienneté
+- **Observation** — pendant 7 jours, le candidat doit prouver sa présence au moins 5 jours. Il ne reçoit pas de récompense et ne vote pas
+- **Admission** — automatique à la fin de l'observation
+- **Inactivité** — un nœud absent 30 jours devient inactif. Pour revenir, il repasse par l'observation
+- **Exclusion automatique** — un nœud qui participe deux fois le même jour est exclu. La preuve est inscrite dans la chaîne, vérifiable par tous
+- **Exclusion par vote** — en cas de faux nœuds avérés, les opérateurs votent l'exclusion à la supermajorité des 2/3. Le parrain perd son droit de parrainage pendant 1 an
+
+---
+
+## Genesis
+
+- Le réseau démarre avec **au moins 10 membres fondateurs indépendants**, annoncés publiquement avant le lancement
+- **Aucune récompense n'est émise tant que moins de 10 nœuds sont actifs.** Personne — ni le créateur, ni un petit groupe — ne peut accumuler d'ETL seul au démarrage
 
 ---
 

@@ -135,7 +135,27 @@ Every member holds their own ETL. Their own keys. Their own freedom.
 - CPI update frequency *(default: quarterly)*
 - Daily reward *(default: 10 ETL per day, shared among all participating nodes)*
 - Admission criteria for a new node
-- Transaction fees *(default: 0.1%, distributed to validating nodes)*
+- Transaction fees *(default: 0.1%, to the block proposer)*
+
+---
+
+## Node admission
+
+*One member = one node. For this rule to hold, entry into the network goes through the trust of those already in it. Default values — can be changed by a two-thirds supermajority vote (admission criteria).*
+
+- **Sponsorship** — every new node is sponsored by an admitted node. A node can sponsor only once every 30 days, and only after 6 months of seniority
+- **Observation** — for 7 days, the candidate must prove its presence on at least 5 of them. It receives no reward and does not vote
+- **Admission** — automatic at the end of the observation period
+- **Inactivity** — a node absent for 30 days becomes inactive. To come back, it goes through observation again
+- **Automatic exclusion** — a node that participates twice on the same day is excluded. The proof is written into the chain, verifiable by all
+- **Exclusion by vote** — when fake nodes are proven, operators vote the exclusion by a two-thirds supermajority. The sponsor loses its right to sponsor for 1 year
+
+---
+
+## Genesis
+
+- The network starts with **at least 10 independent founding members**, publicly announced before launch
+- **No reward is issued while fewer than 10 nodes are active.** No one — not the creator, not a small group — can accumulate ETL alone at launch
 
 ---
 
