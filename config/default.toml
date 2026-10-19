@@ -11,6 +11,9 @@ address_hrp = "etl"      # préfixe des adresses bech32m (etl1…)
 bootstrap = [
   "etl1.etalon-etl.fr:3000",
 ]
+max_outbound = 8          # connexions sortantes
+max_inbound  = 64         # connexions entrantes (0 si le nœud n'est pas joignable de l'extérieur)
+ban_hours    = 24         # bannissement d'un pair qui envoie des données invalides
 
 [block]
 time_utc  = "23:00"

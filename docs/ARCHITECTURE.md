@@ -101,6 +101,25 @@ bootstrap = [
 ]
 ```
 
+### Réseau — transport et diffusion
+- **Bibliothèque standard Go uniquement** (TCP + TLS 1.3) : aucune dépendance réseau tierce à auditer.
+  Un nœud derrière une box sans redirection de port ne fait que des connexions sortantes — suffisant pour participer
+- **Identité de transport jetable**, sans lien avec l'adresse ETL : les pairs voient une IP, jamais l'adresse ETL
+  qui s'y cache (pseudonymité, règle n°5). TLS chiffre ; l'authenticité vient des signatures ETL de chaque message
+- Poignée de main : même version de protocole, même `chain_id`, **même genesis** — sinon refus ; connexion à
+  soi-même détectée
+- Pairs : bootstrap (IP + DNS), puis échange d'adresses ; 8 connexions sortantes, 64 entrantes au plus
+- **Diffusion par inondation** : chaque message (transaction, participation, vote, vote IPC, vote d'exclusion,
+  bloc proposé, bloc finalisé + certificat) est **vérifié avant d'être relayé**, puis relayé **immédiatement**
+  à tous les pairs ; dédoublonnage (chaque nœud traite chaque message une fois). Mesuré : moins d'une seconde
+  sur 5 sauts — la tolérance de 5 s (23:00:25) couvre la propagation
+- Deux niveaux de vérification : sans contexte par le réseau (décodage canonique, signatures), puis selon
+  l'état par le moteur de consensus (jour, registre, solde…) — qui décide : relayer, ignorer ou rejeter
+- **Défense** : données invalides → déconnexion et bannissement 24 h ; taille de message 32 Mo max (refus
+  avant allocation) ; débit limité par pair (100 msg/s, rafale 500) ; pair trop lent déconnecté ;
+  aucun relais sans validation (le réseau ne sert pas d'amplificateur)
+- À venir : Tor (SOCKS5) en option pour les connexions sortantes
+
 ### Horloge
 - **Exigence opérateur : horloge synchronisée par NTP.** La fenêtre de participation (30 s), la tolérance
   d'inclusion (23:00:25) et les tours de proposition (tolérance ±5 s) supposent des horloges à l'heure
