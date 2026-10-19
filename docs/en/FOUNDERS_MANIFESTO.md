@@ -133,8 +133,7 @@ Every member holds their own ETL. Their own keys. Their own freedom.
 *Can be changed by a two-thirds supermajority vote of node operators.*
 
 - CPI update frequency *(default: quarterly)*
-- ETL reward per validated block *(default: 10 ETL per block)*
-- Halving schedule *(default: every 2 years)*
+- Daily reward *(default: 10 ETL per day, shared among all participating nodes)*
 - Admission criteria for a new node
 - Transaction fees *(default: 0.1%, distributed to validating nodes)*
 

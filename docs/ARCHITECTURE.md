@@ -181,6 +181,9 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
 - Les nœuds **votent** sur ce bloc — **supermajorité 2/3** requise
 - Un nœud vote contre un bloc qui **omet une participation valide** qu'il a reçue dans la fenêtre
   (le proposant aurait intérêt à écarter des participants pour grossir sa part)
+  - **Tolérance réseau** : seules les participations reçues **avant 23:00:25 UTC** sont contrôlées.
+    Une participation arrivée entre 23:00:25 et 23:00:30 a pu ne pas atteindre le proposant à temps :
+    son absence ne justifie pas un vote contre
 - Simple, déterministe, pas d'élection
 
 ### Récompense

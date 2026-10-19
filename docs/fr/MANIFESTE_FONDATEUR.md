@@ -133,8 +133,7 @@ Chaque membre détient ses propres ETL. Ses propres clés. Sa propre liberté.
 *Modifiables par vote des opérateurs de nœuds à la supermajorité des 2/3.*
 
 - Fréquence de mise à jour IPC *(défaut : trimestrielle)*
-- Récompense ETL par bloc validé *(défaut : 10 ETL par bloc)*
-- Calendrier de halving *(défaut : tous les 2 ans)*
+- Récompense quotidienne *(défaut : 10 ETL par jour, partagés entre tous les nœuds participants)*
 - Critères d'admission d'un nouveau nœud
 - Frais de transaction *(défaut : 0.1% distribués aux nœuds validateurs)*
 
