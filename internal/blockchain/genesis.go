@@ -42,7 +42,7 @@ func Genesis(p Params, message string, ipc IPCRecord, timestamp int64, founders 
 	if !isBlockTime(timestamp, p) {
 		return Block{}, ErrBlockTime
 	}
-	return Block{Founders: founders, Header: Header{
+	blk := Block{Founders: founders, Header: Header{
 		Height:           0,
 		PrevHash:         GenesisPrevHash(p.ChainID, message, founders),
 		Timestamp:        timestamp,
@@ -51,5 +51,11 @@ func Genesis(p Params, message string, ipc IPCRecord, timestamp int64, founders 
 		RegistryRoot:     RegistryRoot(nil, nil, nil),
 		IPC:              &ipc,
 		Proposer:         crypto.Address{HRP: p.AddressHRP},
-	}}, nil
+	}}
+	root, err := NewState().PreviewRoot(&blk, p)
+	if err != nil {
+		return Block{}, err
+	}
+	blk.Header.StateRoot = root
+	return blk, nil
 }

@@ -12,7 +12,7 @@ func withRegs(regs ...Registration) func(*Block) {
 }
 
 // observe fait participer les fondateurs et le candidat du jour d1 au jour d2 inclus.
-func observe(t *testing.T, n *testNet, cand wallet, d1, d2 int) {
+func observe(t testing.TB, n *testNet, cand wallet, d1, d2 int) {
 	for d := d1; d <= d2; d++ {
 		n.produce(t, d, append(append([]wallet(nil), n.founders...), cand), nil)
 	}
@@ -267,7 +267,7 @@ func TestFailedReactivationStaysInactive(t *testing.T) {
 }
 
 // doubleParticipation renvoie deux participations valides et différentes du même nœud.
-func doubleParticipation(t *testing.T, n *testNet, w wallet, d int) (Participation, Participation) {
+func doubleParticipation(t testing.TB, n *testNet, w wallet, d int) (Participation, Participation) {
 	a := participate(t, n.p, n.tip.Hash(), w, day(d))
 	b := a
 	for b.Nonce++; !b.PoWHash(n.tip.Hash(), day(d)).MeetsTarget(n.p.Target); b.Nonce++ {

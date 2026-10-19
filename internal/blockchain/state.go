@@ -1,7 +1,9 @@
 package blockchain
 
 import (
+	"bytes"
 	"errors"
+	"sort"
 
 	"github.com/makoto-kanamoto/etl/internal/crypto"
 )
@@ -11,6 +13,7 @@ var (
 	ErrInsufficientFunds = errors.New("blockchain: solde insuffisant")
 	ErrTxFuture          = errors.New("blockchain: transaction postérieure au bloc")
 	ErrGenesisContent    = errors.New("blockchain: le genesis ne contient ni transaction ni participation")
+	ErrStateRoot         = errors.New("blockchain: racine d'état incorrecte")
 )
 
 // Account est l'état d'un compte.
@@ -30,6 +33,12 @@ type State struct {
 // NewState renvoie un état vide.
 func NewState() *State {
 	return &State{accounts: map[addrKey]Account{}, nodes: registry{}}
+}
+
+// NewStateFrom reconstruit un état chargé depuis le stockage.
+// L'appelant doit vérifier Root() contre le StateRoot du dernier bloc.
+func NewStateFrom(accounts map[addrKey]Account, nodes map[addrKey]Node) *State {
+	return &State{accounts: accounts, nodes: registry(nodes)}
 }
 
 // Account renvoie l'état d'un compte (zéro s'il n'existe pas).
@@ -57,43 +66,122 @@ func (s *State) ActiveCount() int {
 	return s.nodes.activeCount()
 }
 
+// Root renvoie la racine de Merkle de l'état : comptes et registre, triés par adresse.
+// Gravée dans chaque en-tête (StateRoot) et validée par le vote 2/3, elle permet à
+// quiconque de vérifier un instantané de l'état sans rejouer toute la chaîne.
+func (s *State) Root() crypto.Hash {
+	return stateRoot(s.accounts, s.nodes)
+}
+
+func stateRoot(accounts map[addrKey]Account, nodes registry) crypto.Hash {
+	accLeaves := make([]crypto.Hash, 0, len(accounts))
+	for _, k := range sortedKeys(accounts) {
+		leaf := append([]byte{'A'}, k[:]...)
+		accLeaves = append(accLeaves, crypto.Sum(crypto.ContextState, AppendAccount(leaf, accounts[k])))
+	}
+	nodeLeaves := make([]crypto.Hash, 0, len(nodes))
+	for _, k := range sortedKeys(nodes) {
+		leaf := append([]byte{'N'}, k[:]...)
+		nodeLeaves = append(nodeLeaves, crypto.Sum(crypto.ContextState, AppendNode(leaf, nodes[k])))
+	}
+	return merkleRoot([]crypto.Hash{merkleRoot(accLeaves), merkleRoot(nodeLeaves)})
+}
+
+func sortedKeys[V any](m map[addrKey]V) []addrKey {
+	keys := make([]addrKey, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return bytes.Compare(keys[i][:], keys[j][:]) < 0 })
+	return keys
+}
+
+// Changes est l'effet d'un bloc sur l'état, calculé sans modifier l'état.
+// Le stockage l'écrit sur disque, puis Commit l'applique en mémoire.
+type Changes struct {
+	Accounts     map[addrKey]Account // comptes modifiés
+	Nodes        map[addrKey]Node    // entrées du registre créées ou modifiées
+	DeletedNodes []addrKey           // entrées du registre supprimées (candidatures échouées)
+	Root         crypto.Hash         // racine de l'état après le bloc
+
+	nodes registry // registre complet après le bloc
+}
+
 // ApplyBlock applique un bloc à l'état. Tout ou rien : en cas d'erreur, l'état est inchangé.
 // Le bloc doit avoir été vérifié avant (ValidateBlock).
 func (s *State) ApplyBlock(b *Block, p Params) error {
+	c, err := s.Prepare(b, p)
+	if err != nil {
+		return err
+	}
+	s.Commit(c)
+	return nil
+}
+
+// Prepare calcule l'effet d'un bloc et vérifie qu'il aboutit au StateRoot annoncé.
+func (s *State) Prepare(b *Block, p Params) (*Changes, error) {
+	c, err := s.prepare(b, p)
+	if err != nil {
+		return nil, err
+	}
+	if c.Root != b.Header.StateRoot {
+		return nil, ErrStateRoot
+	}
+	return c, nil
+}
+
+// PreviewRoot renvoie la racine d'état qu'aurait l'état après le bloc.
+// Sert au proposant pour remplir StateRoot avant de signer.
+func (s *State) PreviewRoot(b *Block, p Params) (crypto.Hash, error) {
+	c, err := s.prepare(b, p)
+	if err != nil {
+		return crypto.Hash{}, err
+	}
+	return c.Root, nil
+}
+
+// Commit applique en mémoire des changements préparés par Prepare.
+func (s *State) Commit(c *Changes) {
+	for k, a := range c.Accounts {
+		s.accounts[k] = a
+	}
+	s.nodes = c.nodes
+}
+
+func (s *State) prepare(b *Block, p Params) (*Changes, error) {
 	h := &b.Header
 	day := dayOf(h.Timestamp)
 	nodes := s.nodes.clone()
+	changes := map[addrKey]Account{}
 
 	if h.Height == 0 {
 		if len(b.Txs) > 0 || len(b.Participants) > 0 || len(b.Registrations) > 0 ||
 			len(b.Observations) > 0 || len(b.Equivocations) > 0 {
-			return ErrGenesisContent
+			return nil, ErrGenesisContent
 		}
 		if err := nodes.applyFounders(b.Founders, day, p); err != nil {
-			return err
+			return nil, err
 		}
-		s.nodes = nodes
-		return nil
+		return s.changes(changes, nodes), nil
 	}
 
 	// Registre : le nombre de nœuds actifs est compté au début du bloc.
 	activeBefore := nodes.activeCount()
 	if err := nodes.applyEquivocations(b.Equivocations, h.PrevHash, h.Timestamp, p); err != nil {
-		return err
+		return nil, err
 	}
 	if err := nodes.applyParticipants(b.Participants, day); err != nil {
-		return err
+		return nil, err
 	}
 	if err := nodes.applyObservations(b.Observations, h.PrevHash, h.Timestamp, p); err != nil {
-		return err
+		return nil, err
 	}
 	if err := nodes.applyRegistrations(b.Registrations, day, p); err != nil {
-		return err
+		return nil, err
 	}
 	nodes.applyTransitions(day, p)
 
 	// Comptes
-	changes := map[addrKey]Account{}
 	get := func(k addrKey) Account {
 		if a, ok := changes[k]; ok {
 			return a
@@ -104,21 +192,21 @@ func (s *State) ApplyBlock(b *Block, p Params) error {
 	for i := range b.Txs {
 		tx := &b.Txs[i]
 		if err := tx.Verify(p); err != nil {
-			return err
+			return nil, err
 		}
 		if tx.Timestamp > h.Timestamp {
-			return ErrTxFuture
+			return nil, ErrTxFuture
 		}
 		from := get(tx.From.Hash)
 		if tx.Nonce != from.Nonce {
-			return ErrNonce
+			return nil, ErrNonce
 		}
 		cost, err := checkedAdd(tx.Amount, tx.Fee)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if from.Balance < cost {
-			return ErrInsufficientFunds
+			return nil, ErrInsufficientFunds
 		}
 		from.Balance -= cost
 		from.Nonce++
@@ -126,12 +214,12 @@ func (s *State) ApplyBlock(b *Block, p Params) error {
 
 		to := get(tx.To.Hash)
 		if to.Balance, err = checkedAdd(to.Balance, tx.Amount); err != nil {
-			return err
+			return nil, err
 		}
 		changes[tx.To.Hash] = to
 
 		if fees, err = checkedAdd(fees, tx.Fee); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -155,16 +243,35 @@ func (s *State) ApplyBlock(b *Block, p Params) error {
 	}
 	for i := range b.Participants {
 		if err := credit(b.Participants[i].Miner.Hash, share); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if err := credit(h.Proposer.Hash, fees); err != nil {
-		return err
+		return nil, err
 	}
+	return s.changes(changes, nodes), nil
+}
 
-	for k, a := range changes {
-		s.accounts[k] = a
+// changes assemble le résultat : différences du registre et racine de l'état futur.
+func (s *State) changes(accounts map[addrKey]Account, nodes registry) *Changes {
+	c := &Changes{Accounts: accounts, Nodes: map[addrKey]Node{}, nodes: nodes}
+	for k, n := range nodes {
+		if old, ok := s.nodes[k]; !ok || old != n {
+			c.Nodes[k] = n
+		}
 	}
-	s.nodes = nodes
-	return nil
+	for k := range s.nodes {
+		if _, ok := nodes[k]; !ok {
+			c.DeletedNodes = append(c.DeletedNodes, k)
+		}
+	}
+	merged := make(map[addrKey]Account, len(s.accounts)+len(accounts))
+	for k, a := range s.accounts {
+		merged[k] = a
+	}
+	for k, a := range accounts {
+		merged[k] = a
+	}
+	c.Root = stateRoot(merged, nodes)
+	return c
 }

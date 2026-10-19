@@ -25,7 +25,7 @@ type wallet struct {
 	addr crypto.Address
 }
 
-func newWallet(t *testing.T, p Params) wallet {
+func newWallet(t testing.TB, p Params) wallet {
 	t.Helper()
 	k, err := crypto.GenerateKey()
 	if err != nil {
@@ -34,7 +34,7 @@ func newWallet(t *testing.T, p Params) wallet {
 	return wallet{key: k, addr: k.PublicKey().Address(p.AddressHRP)}
 }
 
-func newWallets(t *testing.T, p Params, n int) []wallet {
+func newWallets(t testing.TB, p Params, n int) []wallet {
 	ws := make([]wallet, n)
 	for i := range ws {
 		ws[i] = newWallet(t, p)
@@ -50,7 +50,7 @@ func addrs(ws []wallet) []crypto.Address {
 	return out
 }
 
-func makeTx(t *testing.T, p Params, from wallet, to crypto.Address, amount, nonce uint64, ts int64) Transaction {
+func makeTx(t testing.TB, p Params, from wallet, to crypto.Address, amount, nonce uint64, ts int64) Transaction {
 	t.Helper()
 	fee, err := Fee(amount, p.FeeBps)
 	if err != nil {
@@ -63,7 +63,7 @@ func makeTx(t *testing.T, p Params, from wallet, to crypto.Address, amount, nonc
 	return tx
 }
 
-func participate(t *testing.T, p Params, prevHash crypto.Hash, w wallet, blockTime int64) Participation {
+func participate(t testing.TB, p Params, prevHash crypto.Hash, w wallet, blockTime int64) Participation {
 	t.Helper()
 	pt, err := MineParticipation(context.Background(), w.key, prevHash, blockTime, p)
 	if err != nil {
@@ -81,7 +81,7 @@ type testNet struct {
 	keys     map[addrKey]*crypto.PrivateKey
 }
 
-func newNet(t *testing.T, p Params) *testNet {
+func newNet(t testing.TB, p Params) *testNet {
 	t.Helper()
 	n := &testNet{p: p, st: NewState(), founders: newWallets(t, p, p.MinFounders), keys: map[addrKey]*crypto.PrivateKey{}}
 	n.track(n.founders...)
@@ -104,7 +104,7 @@ func (n *testNet) track(ws ...wallet) {
 
 // build construit (sans l'appliquer) le bloc du jour d : chaque nœud de `nodes` participe,
 // réparti entre participants et observations selon son rôle ; edit ajoute le reste.
-func (n *testNet) build(t *testing.T, d int, nodes []wallet, edit func(*Block)) Block {
+func (n *testNet) build(t testing.TB, d int, nodes []wallet, edit func(*Block)) Block {
 	t.Helper()
 	ts := day(d)
 	prevHash := n.tip.Hash()
@@ -131,11 +131,15 @@ func (n *testNet) build(t *testing.T, d int, nodes []wallet, edit func(*Block)) 
 }
 
 // finalize recalcule les racines et fait signer le bloc par le proposant de l'en-tête.
-func (n *testNet) finalize(t *testing.T, b *Block) {
+func (n *testNet) finalize(t testing.TB, b *Block) {
 	t.Helper()
 	b.Header.TxRoot = TxRoot(b.Txs)
 	b.Header.ParticipantsRoot = ParticipantsRoot(b.Participants)
 	b.Header.RegistryRoot = RegistryRoot(b.Registrations, b.Observations, b.Equivocations)
+	b.Header.StateRoot = crypto.Hash{}
+	if root, err := n.st.PreviewRoot(b, n.p); err == nil { // bloc invalide : racine laissée nulle
+		b.Header.StateRoot = root
+	}
 	if key, ok := n.keys[b.Header.Proposer.Hash]; ok {
 		if err := b.Sign(key, n.p.ChainID); err != nil {
 			t.Fatal(err)
@@ -156,7 +160,7 @@ func (n *testNet) apply(b *Block) error {
 }
 
 // produce construit et applique le bloc du jour d ; échoue si le bloc est refusé.
-func (n *testNet) produce(t *testing.T, d int, nodes []wallet, edit func(*Block)) Block {
+func (n *testNet) produce(t testing.TB, d int, nodes []wallet, edit func(*Block)) Block {
 	t.Helper()
 	b := n.build(t, d, nodes, edit)
 	if err := n.apply(&b); err != nil {
@@ -166,7 +170,7 @@ func (n *testNet) produce(t *testing.T, d int, nodes []wallet, edit func(*Block)
 }
 
 // register prépare une candidature signée par le candidat et le parrain.
-func (n *testNet) register(t *testing.T, cand, sponsor wallet, d int) Registration {
+func (n *testNet) register(t testing.TB, cand, sponsor wallet, d int) Registration {
 	t.Helper()
 	n.track(cand)
 	r := Registration{Candidate: cand.addr, Sponsor: sponsor.addr, Day: dayOf(day(d))}
@@ -180,7 +184,7 @@ func (n *testNet) register(t *testing.T, cand, sponsor wallet, d int) Registrati
 }
 
 // reactivate prépare une réactivation signée par le nœud inactif.
-func (n *testNet) reactivate(t *testing.T, w wallet, d int) Registration {
+func (n *testNet) reactivate(t testing.TB, w wallet, d int) Registration {
 	t.Helper()
 	r := Registration{Candidate: w.addr, Sponsor: crypto.Address{HRP: n.p.AddressHRP}, Day: dayOf(day(d))}
 	if err := r.SignCandidate(w.key, n.p.ChainID); err != nil {

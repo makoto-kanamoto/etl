@@ -28,6 +28,7 @@ const (
 	ContextPoW           = "etalon-etl 2026-10 pow v1"
 	ContextParticipation = "etalon-etl 2026-10 participation v1"
 	ContextRegistry      = "etalon-etl 2026-10 registry v1"
+	ContextState         = "etalon-etl 2026-10 state v1"
 )
 
 // Sum calcule l'empreinte Blake3-256 de data dans le contexte donné.

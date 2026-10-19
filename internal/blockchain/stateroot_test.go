@@ -1,0 +1,133 @@
+package blockchain
+
+import (
+	"testing"
+
+	"github.com/makoto-kanamoto/etl/internal/crypto"
+)
+
+func TestStateRootCoversEveryField(t *testing.T) {
+	var k1, k2 addrKey
+	k1[0], k2[0] = 1, 2
+	base := func() *State {
+		return NewStateFrom(
+			map[addrKey]Account{k1: {Balance: 5, Nonce: 1}},
+			map[addrKey]Node{k2: {Status: StatusAdmitted, AdmittedDay: 10, LastParticipationDay: 12}},
+		)
+	}
+	ref := base().Root()
+	mutations := map[string]func(*State){
+		"solde":             func(s *State) { s.accounts[k1] = Account{Balance: 6, Nonce: 1} },
+		"nonce":             func(s *State) { s.accounts[k1] = Account{Balance: 5, Nonce: 2} },
+		"nouveau compte":    func(s *State) { s.accounts[k2] = Account{} },
+		"statut":            func(s *State) { n := s.nodes[k2]; n.Status = StatusInactive; s.nodes[k2] = n },
+		"fondateur":         func(s *State) { n := s.nodes[k2]; n.Founder = true; s.nodes[k2] = n },
+		"parrain":           func(s *State) { n := s.nodes[k2]; n.Sponsor = k1; s.nodes[k2] = n },
+		"dernière présence": func(s *State) { n := s.nodes[k2]; n.LastParticipationDay++; s.nodes[k2] = n },
+		"interdiction":      func(s *State) { n := s.nodes[k2]; n.SponsorBanUntil = 1; s.nodes[k2] = n },
+		"compte ↔ nœud":     func(s *State) { s.nodes[k1] = s.nodes[k2]; delete(s.nodes, k2) },
+		"nœud supprimé":     func(s *State) { delete(s.nodes, k2) },
+	}
+	for name, mutate := range mutations {
+		s := base()
+		mutate(s)
+		if s.Root() == ref {
+			t.Errorf("%s : non couvert par la racine", name)
+		}
+	}
+}
+
+// La racine ne dépend que du contenu, pas de l'ordre d'insertion.
+func TestStateRootDeterministic(t *testing.T) {
+	a, b := NewState(), NewState()
+	for i := byte(0); i < 50; i++ {
+		a.accounts[addrKey{i}] = Account{Balance: uint64(i)}
+		b.accounts[addrKey{49 - i}] = Account{Balance: uint64(49 - i)}
+	}
+	if a.Root() != b.Root() {
+		t.Fatal("racine dépendante de l'ordre d'insertion")
+	}
+}
+
+func TestApplyBlockChecksStateRoot(t *testing.T) {
+	p := testParams()
+	n := newNet(t, p)
+	b := n.build(t, 1, n.founders, nil)
+	if b.Header.StateRoot != n.mustPreview(t, &b) {
+		t.Fatal("prémisse : racine annoncée = racine calculée")
+	}
+	b.Header.StateRoot[0] ^= 1
+	n.finalize2(t, &b) // re-signer sans recalculer la racine
+	before, nodes := n.st.accountsCopy(), n.st.nodes.clone()
+	if err := n.st.ApplyBlock(&b, p); err != ErrStateRoot {
+		t.Fatalf("err = %v", err)
+	}
+	if !equalMaps(before, n.st.accounts) || !equalMaps(nodes, n.st.nodes) {
+		t.Fatal("état modifié malgré une racine fausse")
+	}
+}
+
+func TestGenesisStateRoot(t *testing.T) {
+	p := testParams()
+	n := newNet(t, p)
+	if n.st.Root() != n.tip.StateRoot {
+		t.Fatal("racine du genesis ≠ état après genesis")
+	}
+	n.produce(t, 1, n.founders, nil)
+	if n.st.Root() != n.tip.StateRoot {
+		t.Fatal("racine du bloc 1 ≠ état après le bloc 1")
+	}
+}
+
+func TestChangesDiff(t *testing.T) {
+	p := testParams()
+	n := newNet(t, p)
+	cand := newWallet(t, p)
+	n.produce(t, 1, n.founders, withRegs(n.register(t, cand, n.founders[0], 1)))
+
+	// Jour 8 : fin d'observation sans aucune présence → le candidat est retiré du registre.
+	b := n.build(t, 8, n.founders[:9], nil)
+	c, err := n.st.Prepare(&b, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.DeletedNodes) != 1 || c.DeletedNodes[0] != cand.addr.Hash {
+		t.Fatalf("suppressions : %v", c.DeletedNodes)
+	}
+	for _, w := range n.founders[:9] {
+		if _, ok := c.Nodes[w.addr.Hash]; !ok {
+			t.Error("présence d'un participant non reportée")
+		}
+		if _, ok := c.Accounts[w.addr.Hash]; !ok {
+			t.Error("récompense d'un participant non reportée")
+		}
+	}
+	if _, ok := c.Nodes[n.founders[9].addr.Hash]; ok {
+		t.Error("nœud inchangé reporté comme modifié")
+	}
+	// Prepare ne modifie rien ; Commit applique.
+	if n.st.Status(cand.addr) != StatusCandidate {
+		t.Fatal("Prepare a modifié l'état")
+	}
+	n.st.Commit(c)
+	if n.st.Status(cand.addr) != StatusUnknown || n.st.Root() != c.Root {
+		t.Fatal("Commit incomplet")
+	}
+}
+
+func (n *testNet) mustPreview(t testing.TB, b *Block) crypto.Hash {
+	t.Helper()
+	r, err := n.st.PreviewRoot(b, n.p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+// finalize2 re-signe le bloc sans toucher aux racines.
+func (n *testNet) finalize2(t testing.TB, b *Block) {
+	t.Helper()
+	if err := b.Sign(n.keys[b.Header.Proposer.Hash], n.p.ChainID); err != nil {
+		t.Fatal(err)
+	}
+}

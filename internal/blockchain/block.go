@@ -57,6 +57,7 @@ type Header struct {
 	TxRoot           crypto.Hash // racine de Merkle des identifiants de transactions
 	ParticipantsRoot crypto.Hash // racine de Merkle des identifiants de participations
 	RegistryRoot     crypto.Hash // racine des enregistrements, observations et preuves de double participation
+	StateRoot        crypto.Hash // racine de l'état (comptes + registre) APRÈS application du bloc
 	IPC              *IPCRecord  // nil si pas de mise à jour IPC dans ce bloc
 	Proposer         crypto.Address
 }
@@ -71,6 +72,7 @@ func (h *Header) Encode() []byte {
 	b = append(b, h.TxRoot[:]...)
 	b = append(b, h.ParticipantsRoot[:]...)
 	b = append(b, h.RegistryRoot[:]...)
+	b = append(b, h.StateRoot[:]...)
 	if h.IPC == nil {
 		b = append(b, 0)
 	} else {
