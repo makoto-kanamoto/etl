@@ -155,6 +155,7 @@ Every member holds their own ETL. Their own keys. Their own freedom.
 ## Genesis
 
 - The network starts with **at least 10 independent founding members**, publicly announced before launch
+- Founders can sponsor from the genesis, without waiting 6 months — the limit of one sponsorship every 30 days applies to them too
 - **No reward is issued while fewer than 10 nodes are active.** No one — not the creator, not a small group — can accumulate ETL alone at launch
 
 ---

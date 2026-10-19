@@ -113,19 +113,19 @@ Valeurs par défaut — gouvernables par vote 2/3 (critères d'admission).
 
 | Étape | Règle |
 |---|---|
-| **Candidature** | Enregistrement on-chain signé par le candidat **et** contresigné par un parrain admis |
-| **Parrain** | Nœud admis et actif, **≥ 6 mois d'ancienneté**, **1 parrainage par 30 jours** maximum |
-| **Observation** | 7 jours : le candidat doit participer (PoW valide) **au moins 5 jours**. Pas de récompense, pas de vote, pas de ticket |
-| **Admission** | Automatique à la fin de l'observation si 5/7 atteint ; sinon la candidature échoue |
-| **Inactivité** | **30 jours** sans participation → inactif : plus de part, ne compte plus dans le dénominateur des 2/3. Retour : nouvelle observation (sans parrain) |
+| **Candidature** | Enregistrement on-chain signé par le candidat **et** contresigné par un parrain admis. Valable 7 jours après signature (anti-rejeu) |
+| **Parrain** | Nœud admis et actif, **≥ 6 mois d'ancienneté** (fondateurs dispensés), **1 parrainage par 30 jours** maximum (fondateurs compris) |
+| **Observation** | Les 7 jours suivant la candidature : le candidat doit participer (PoW valide) **au moins 5 jours**. Pas de récompense, pas de vote, pas de ticket |
+| **Admission** | Automatique à la fin de l'observation si 5/7 atteint ; sinon le candidat est retiré (il peut recandidater avec un autre parrain ; le quota du premier parrain reste consommé) |
+| **Inactivité** | **30 jours** sans participation → inactif : plus de part, ne compte plus dans le dénominateur des 2/3. Retour : nouvelle observation (sans parrain) ; l'ancienneté repart de zéro (un fondateur réactivé perd sa dispense) ; en cas d'échec, reste inactif |
 | **Exclusion automatique** | Double participation prouvée (deux participations signées du même jour, incluses dans un bloc) → exclu définitivement |
-| **Exclusion par vote 2/3** | Faux nœuds avérés → exclu ; **le parrain perd son droit de parrainage pendant 1 an** |
+| **Exclusion par vote 2/3** | Faux nœuds avérés → exclu ; **le parrain perd son droit de parrainage pendant 1 an** (il reste admis) |
 
 Les jours sont des jours UTC (horodatage du bloc ÷ 86 400) : un jour sans bloc compte quand même.
 
 ### Genesis
 - Le genesis liste **au moins 10 membres fondateurs indépendants**, annoncés publiquement avant le lancement
-- Les fondateurs sont admis dès le genesis ; leur ancienneté part du genesis
+- Les fondateurs sont admis dès le genesis et **peuvent parrainer immédiatement** (dispense d'ancienneté) ; le quota de 1 parrainage par 30 jours s'applique
 - Le genesis s'engage sur le `chain_id`, le message **et la liste des fondateurs** : les changer change toute la chaîne
 - **Aucune récompense tant que moins de 10 nœuds sont actifs** — personne ne peut accumuler d'ETL seul au démarrage
 

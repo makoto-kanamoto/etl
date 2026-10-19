@@ -155,6 +155,7 @@ Chaque membre détient ses propres ETL. Ses propres clés. Sa propre liberté.
 ## Genesis
 
 - Le réseau démarre avec **au moins 10 membres fondateurs indépendants**, annoncés publiquement avant le lancement
+- Les fondateurs peuvent parrainer dès le genesis, sans attendre 6 mois — la limite d'un parrainage tous les 30 jours s'applique à eux aussi
 - **Aucune récompense n'est émise tant que moins de 10 nœuds sont actifs.** Personne — ni le créateur, ni un petit groupe — ne peut accumuler d'ETL seul au démarrage
 
 ---
