@@ -121,7 +121,7 @@ Valeurs par défaut — gouvernables par vote 2/3 (critères d'admission).
 | **Admission** | Automatique à la fin de l'observation si 5/7 atteint ; sinon le candidat est retiré (il peut recandidater avec un autre parrain ; le quota du premier parrain reste consommé) |
 | **Inactivité** | **30 jours** sans participation → inactif : plus de part, ne compte plus dans le dénominateur des 2/3. Retour : nouvelle observation (sans parrain) ; l'ancienneté repart de zéro (un fondateur réactivé perd sa dispense) ; en cas d'échec, reste inactif |
 | **Exclusion automatique** | Double participation prouvée (deux participations signées du même jour, incluses dans un bloc) → exclu définitivement |
-| **Exclusion par vote 2/3** | Faux nœuds avérés → exclu ; **le parrain perd son droit de parrainage pendant 1 an** (il reste admis) |
+| **Exclusion par vote 2/3** | Faux nœuds avérés → exclu ; **le parrain perd son droit de parrainage pendant 1 an** (il reste admis). Chaque nœud signe `{cible, jour}` (usage `exclusion-vote`), vote valable 30 jours ; plus de 2/3 des nœuds actifs → l'exclusion et ses votes sont inscrits dans un bloc |
 
 Les jours sont des jours UTC (horodatage du bloc ÷ 86 400) : un jour sans bloc compte quand même.
 
@@ -376,9 +376,19 @@ type IPCVote struct {
 ### Mécanisme
 - Chaque nœud lit la source **indépendamment**
 - Chaque nœud soumet le triplet `{ value, period, source_sha256 }` signé
-- **2/3 supermajorité** requise sur un **triplet identique** pour valider la nouvelle valeur
-- Le triplet validé est gravé dans le bloc — n'importe qui peut re-télécharger la source et vérifier le hash
-- Mise à jour automatique à 23:00 UTC le jour de vérification
+- Un nœud honnête ne signe (usage `ipc-vote`) que le triplet qu'il a lu lui-même à la source
+- **Strictement plus de 2/3** des nœuds actifs doivent signer un **triplet identique**
+  (votants admis et seuil comptés au moment de l'inclusion, sur le registre avant le bloc)
+- Dès le seuil atteint, le proposant du jour inscrit le triplet dans l'en-tête et les votes dans le bloc ;
+  tous les nœuds revérifient les votes. N'importe qui peut re-télécharger la source et vérifier le hash
+- **Période strictement postérieure** à la période courante : pas de retour en arrière, pas de rejeu.
+  Un trimestre peut manquer (l'INSEE n'a pas publié) : le suivant est accepté
+- **Pas de garde-fou automatique** sur l'ampleur d'une variation : une limite arbitraire pourrait bloquer
+  une vraie crise inflationniste. La protection est le vote 2/3 et la vérification de la source par chacun
+
+### L'IPC dans l'état
+- L'état garde l'**IPC de référence** (genesis, immuable) et l'**IPC courant** ; les deux sont dans le `StateRoot`
+- Taux affiché : `1 ETL = IPC courant ÷ IPC de référence` euro — vérifiable par tous
 
 ```
 Nœud A → { 103.07, "2026-Q3", 9f86d0... }
@@ -405,6 +415,24 @@ Section "IPC en cours"
 ├── Votes : 4/7 nœuds ont voté ✅ (2/3 requis = 5/7)
 └── [Voter] ← bouton pour l'opérateur de nœud
 ```
+
+---
+
+## Gouvernance par vote 2/3 — engagement et limites
+
+- Votes IPC et exclusions Sybil sont engagés par l'en-tête (`VotesRoot`), comme tout le contenu du bloc
+- Même seuil partout : **strictement plus de 2/3** des nœuds actifs, comptés sur le registre avant le bloc
+- La gouvernance des paramètres (frais, récompense, difficulté, critères d'admission…) est un chantier séparé :
+  elle suppose de faire entrer les paramètres dans l'état on-chain
+
+### Limite assumée du modèle 2/3
+Une coalition de **plus de 2/3 des nœuds** pourrait exclure des nœuds honnêtes, imposer une valeur IPC
+ou finaliser des blocs qui l'arrangent. C'est l'hypothèse de confiance de tout le consensus :
+ETL est sûr tant que **moins d'un tiers** des nœuds trichent.
+
+La protection n'est pas technique mais **la transparence** : chaque vote est signé et inscrit dans la chaîne.
+Chacun voit qui a voté quoi, quand. Une capture serait publique, prouvable, et la communauté honnête
+pourrait forker à partir du dernier état sain — le code est libre (GPL v3) et l'état vérifiable (`StateRoot`).
 
 ---
 
