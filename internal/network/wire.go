@@ -40,10 +40,27 @@ const (
 	MsgExclusionVote
 	MsgProposal  // bloc proposé, en attente de votes
 	MsgFinalized // bloc finalisé + certificat
+
+	// Synchronisation (requête → réponse, point à point)
+	MsgGetTip
+	MsgTip
+	MsgGetBlocks
+	MsgBlocks
+	MsgNotAvailable
+
+	lastMsgType = MsgNotAvailable
+)
+
+// Services annoncés dans la poignée de main.
+const (
+	ServiceArchive uint8 = 1 << iota // garde tous les blocs : peut servir une synchronisation depuis le genesis
 )
 
 // IsGossip indique si un type de message est diffusé à tout le réseau.
 func (t MsgType) IsGossip() bool { return t >= MsgTx && t <= MsgFinalized }
+
+// isResponse indique une réponse à une requête de synchronisation.
+func (t MsgType) isResponse() bool { return t == MsgTip || t == MsgBlocks || t == MsgNotAvailable }
 
 var (
 	ErrFrameTooLarge = errors.New("network: message trop volumineux")
@@ -84,7 +101,7 @@ func readFrame(r io.Reader, max int) (Message, error) {
 		return Message{}, err
 	}
 	t := MsgType(hdr[0])
-	if t < MsgHello || t > MsgFinalized {
+	if t < MsgHello || t > lastMsgType {
 		return Message{}, ErrFrameType
 	}
 	n := binary.BigEndian.Uint32(hdr[1:])
@@ -105,6 +122,7 @@ type hello struct {
 	Genesis    crypto.Hash
 	ListenPort uint16 // 0 : n'accepte pas de connexions entrantes
 	Nonce      uint64 // détecte une connexion à soi-même
+	Services   uint8  // ServiceArchive…
 }
 
 func (h hello) encode() []byte {
@@ -113,7 +131,8 @@ func (h hello) encode() []byte {
 	b = append(b, h.ChainID...)
 	b = append(b, h.Genesis[:]...)
 	b = binary.BigEndian.AppendUint16(b, h.ListenPort)
-	return binary.BigEndian.AppendUint64(b, h.Nonce)
+	b = binary.BigEndian.AppendUint64(b, h.Nonce)
+	return append(b, h.Services)
 }
 
 func decodeHello(b []byte) (hello, error) {
@@ -124,7 +143,7 @@ func decodeHello(b []byte) (hello, error) {
 	h.Version = binary.BigEndian.Uint16(b)
 	n := int(b[2])
 	b = b[3:]
-	if len(b) != n+crypto.HashSize+2+8 {
+	if len(b) != n+crypto.HashSize+2+8+1 {
 		return h, ErrHello
 	}
 	h.ChainID = string(b[:n])
@@ -132,6 +151,7 @@ func decodeHello(b []byte) (hello, error) {
 	b = b[n+crypto.HashSize:]
 	h.ListenPort = binary.BigEndian.Uint16(b)
 	h.Nonce = binary.BigEndian.Uint64(b[2:])
+	h.Services = b[10]
 	return h, nil
 }
 
@@ -167,4 +187,77 @@ func decodeAddrs(b []byte) ([]*net.TCPAddr, error) {
 		b = b[18:]
 	}
 	return out, nil
+}
+
+// --- Messages de synchronisation ---
+// Chaque requête porte un identifiant, repris par la réponse.
+
+func encodeGetBlocks(req, from uint64, max uint16) []byte {
+	b := binary.BigEndian.AppendUint64(nil, req)
+	b = binary.BigEndian.AppendUint64(b, from)
+	return binary.BigEndian.AppendUint16(b, max)
+}
+
+func decodeGetBlocks(b []byte) (req, from uint64, max uint16, err error) {
+	if len(b) != 18 {
+		return 0, 0, 0, ErrHello
+	}
+	return binary.BigEndian.Uint64(b), binary.BigEndian.Uint64(b[8:]), binary.BigEndian.Uint16(b[16:]), nil
+}
+
+func encodeTip(req, height uint64, hash crypto.Hash) []byte {
+	b := binary.BigEndian.AppendUint64(nil, req)
+	b = binary.BigEndian.AppendUint64(b, height)
+	return append(b, hash[:]...)
+}
+
+func decodeTip(b []byte) (height uint64, hash crypto.Hash, err error) {
+	if len(b) != 16+crypto.HashSize {
+		return 0, hash, ErrHello
+	}
+	copy(hash[:], b[16:])
+	return binary.BigEndian.Uint64(b[8:]), hash, nil
+}
+
+// encodeBlocks : identifiant, nombre, puis (longueur, bloc finalisé) pour chaque bloc.
+func encodeBlocks(req uint64, items [][]byte) []byte {
+	b := binary.BigEndian.AppendUint64(nil, req)
+	b = binary.BigEndian.AppendUint16(b, uint16(len(items)))
+	for _, it := range items {
+		b = binary.BigEndian.AppendUint32(b, uint32(len(it)))
+		b = append(b, it...)
+	}
+	return b
+}
+
+func decodeBlocks(b []byte) ([][]byte, error) {
+	if len(b) < 10 {
+		return nil, ErrHello
+	}
+	n := int(binary.BigEndian.Uint16(b[8:]))
+	b = b[10:]
+	items := make([][]byte, 0, min(n, 128))
+	for i := 0; i < n; i++ {
+		if len(b) < 4 {
+			return nil, ErrHello
+		}
+		l := binary.BigEndian.Uint32(b)
+		if uint64(l) > uint64(len(b)-4) {
+			return nil, ErrHello
+		}
+		items = append(items, b[4:4+l])
+		b = b[4+l:]
+	}
+	if len(b) != 0 {
+		return nil, ErrHello
+	}
+	return items, nil
+}
+
+// requestID lit l'identifiant de requête en tête d'un message de synchronisation.
+func requestID(b []byte) (uint64, bool) {
+	if len(b) < 8 {
+		return 0, false
+	}
+	return binary.BigEndian.Uint64(b), true
 }

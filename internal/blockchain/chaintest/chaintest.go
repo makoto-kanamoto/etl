@@ -54,10 +54,20 @@ type Net struct {
 // New crée un genesis au jour 0 avec MinFounders fondateurs.
 func New(tb testing.TB, p blockchain.Params) *Net {
 	tb.Helper()
+	var ws []Wallet
+	for i := 0; i < p.MinFounders; i++ {
+		ws = append(ws, NewWallet(tb, p))
+	}
+	return NewWithFounders(tb, p, ws)
+}
+
+// NewWithFounders crée un genesis avec des fondateurs donnés : deux Net créés avec les mêmes
+// fondateurs partagent le même genesis et peuvent ensuite diverger (tests de conflit).
+func NewWithFounders(tb testing.TB, p blockchain.Params, ws []Wallet) *Net {
+	tb.Helper()
 	n := &Net{P: p, State: blockchain.NewState(), keys: map[crypto.Address]*crypto.PrivateKey{}}
 	var founders []crypto.Address
-	for i := 0; i < p.MinFounders; i++ {
-		w := NewWallet(tb, p)
+	for _, w := range ws {
 		n.Founders = append(n.Founders, w)
 		n.keys[w.Addr] = w.Key
 		founders = append(founders, w.Addr)

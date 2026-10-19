@@ -17,17 +17,30 @@ type peer struct {
 	inbound  bool
 	dialAddr string
 
-	out     chan Message
-	done    chan struct{}
-	once    sync.Once
-	limiter *tokenBucket
+	out      chan Message
+	done     chan struct{}
+	once     sync.Once
+	limiter  *tokenBucket
+	services uint8
+
+	mu      sync.Mutex
+	pending map[uint64]chan Message // requêtes de synchronisation en attente de réponse
 }
 
 func newPeer(h *Host, conn net.Conn, inbound bool) *peer {
 	return &peer{
 		host: h, conn: conn, inbound: inbound,
-		out: make(chan Message, sendQueue), done: make(chan struct{}),
+		out: make(chan Message, sendQueue), done: make(chan struct{}), pending: map[uint64]chan Message{},
 		limiter: newTokenBucket(h.cfg.RatePerSecond, h.cfg.RateBurst),
+	}
+}
+
+func (p *peer) isClosed() bool {
+	select {
+	case <-p.done:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -104,6 +117,10 @@ func (p *peer) readLoop() {
 			p.host.learnAddrs(addrs)
 		case m.Type.IsGossip():
 			p.host.onGossip(p, m)
+		case m.Type == MsgGetTip || m.Type == MsgGetBlocks:
+			go p.host.serve(p, m)
+		case m.Type.isResponse():
+			p.deliver(m)
 		default: // un second Hello, par exemple
 			p.host.ban(p)
 			return

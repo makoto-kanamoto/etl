@@ -7,9 +7,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
+	"errors"
 	"math/big"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/makoto-kanamoto/etl/internal/blockchain"
@@ -51,6 +53,17 @@ type Config struct {
 	IdleTimeout      time.Duration // 2 min sans rien recevoir → déconnexion
 	PingInterval     time.Duration // 30 s
 	DialInterval     time.Duration // 2 s entre deux tentatives de connexion sortante
+
+	// Synchronisation
+	Chain          Chain         // chaîne locale ; nil : ni service, ni rattrapage
+	Archive        bool          // nœud archive : annoncé aux pairs (ServiceArchive)
+	Checkpoints    []Checkpoint  // blocs connus embarqués dans cette version du logiciel
+	OnAlert        func(Alert)   // appelé si le nœud s'arrête (conflit de finalité)
+	SyncInterval   time.Duration // vérification périodique du retard (30 s)
+	RequestTimeout time.Duration // délai de réponse avant de passer à un autre pair (30 s)
+	SyncBatch      int           // blocs par lot (100)
+	SyncBatchBytes int           // octets par lot (16 Mo)
+	MaxServing     int           // demandes de synchronisation servies en parallèle (4)
 }
 
 // DefaultConfig renvoie la configuration par défaut.
@@ -62,6 +75,8 @@ func DefaultConfig(p blockchain.Params, genesis crypto.Hash) Config {
 		RatePerSecond: 100, RateBurst: 500,
 		HandshakeTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute,
 		PingInterval: 30 * time.Second, DialInterval: 2 * time.Second,
+		SyncInterval: 30 * time.Second, RequestTimeout: 30 * time.Second,
+		SyncBatch: 100, SyncBatchBytes: 16 << 20, MaxServing: 4,
 	}
 }
 
@@ -85,6 +100,13 @@ type Host struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
+	reqSeq      atomic.Uint64
+	serving     chan struct{} // sémaphore des demandes servies
+	syncTrigger chan struct{}
+	syncMu      sync.Mutex
+	halted      atomic.Bool
+	alerts      []Alert
+
 	banKey func(net.Addr) string // l'IP en production ; l'adresse complète dans les tests locaux
 }
 
@@ -104,6 +126,7 @@ func New(cfg Config, handler Handler) (*Host, error) {
 		peers: map[*peer]struct{}{}, dialed: map[string]*peer{}, banned: map[string]time.Time{},
 		book: map[string]*net.TCPAddr{}, self: map[string]bool{}, seen: newSeenCache(cfg.SeenTTL),
 		ctx: ctx, cancel: cancel, banKey: ipOf,
+		serving: make(chan struct{}, max(cfg.MaxServing, 1)), syncTrigger: make(chan struct{}, 1),
 	}, nil
 }
 
@@ -141,9 +164,11 @@ func (h *Host) Start() error {
 		h.wg.Add(1)
 		go h.acceptLoop()
 	}
-	h.wg.Add(2)
+	h.checkLocalCheckpoints()
+	h.wg.Add(3)
 	go h.dialLoop()
 	go h.sweepLoop()
+	go h.syncLoop()
 	return nil
 }
 
@@ -306,6 +331,9 @@ func (h *Host) setup(conn net.Conn, inbound bool, dialAddr string) error {
 		listenPort = uint16(h.listener.Addr().(*net.TCPAddr).Port)
 	}
 	mine := hello{Version: ProtocolVersion, ChainID: h.cfg.Params.ChainID, Genesis: h.cfg.GenesisHash, ListenPort: listenPort, Nonce: h.nonce}
+	if h.cfg.Archive {
+		mine.Services |= ServiceArchive
+	}
 	if err := writeFrame(conn, Message{Type: MsgHello, Payload: mine.encode()}); err != nil {
 		conn.Close()
 		return err
@@ -330,6 +358,7 @@ func (h *Host) setup(conn net.Conn, inbound bool, dialAddr string) error {
 	conn.SetDeadline(time.Time{})
 
 	p := newPeer(h, conn, inbound)
+	p.services = theirs.Services
 	h.mu.Lock()
 	if h.ctx.Err() != nil {
 		h.mu.Unlock()
@@ -390,6 +419,17 @@ func (h *Host) onGossip(from *peer, m Message) {
 	if checkStateless(m, h.cfg.Params) != nil {
 		h.ban(from)
 		return
+	}
+	// Bloc finalisé : appliqué (ou conflit détecté) par le réseau lui-même, avant le Handler.
+	if m.Type == MsgFinalized && h.cfg.Chain != nil {
+		b, c, _ := DecodeFinalized(m.Payload, h.cfg.Params.AddressHRP)
+		switch err := h.acceptFinalized(&b, &c); {
+		case errors.Is(err, ErrHalted):
+			return // rupture de sécurité : on ne relaie plus rien de ce bloc
+		case err != nil:
+			h.ban(from)
+			return
+		}
 	}
 	switch h.handler.Handle(m) {
 	case Accept:
