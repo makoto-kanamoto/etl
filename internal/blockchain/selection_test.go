@@ -7,36 +7,36 @@ import (
 	"github.com/makoto-kanamoto/etl/internal/crypto"
 )
 
-type selectionFixture struct {
-	p        Params
-	prev     Header
-	ts       int64
-	start    time.Time
-	nodes    []wallet
-	admitted map[addrKey]bool
+// selFixture : un jour de participation au-dessus d'un genesis, avec des rôles choisis par le test.
+type selFixture struct {
+	p     Params
+	prev  Header
+	ts    int64
+	start time.Time
+	roles map[addrKey]Role
 }
 
-func newSelectionFixture(t *testing.T, n int) *selectionFixture {
+func newSelFixture(t *testing.T) *selFixture {
 	p := testParams()
-	f := &selectionFixture{p: p, prev: testGenesis(t, p).Header, ts: day(1), admitted: map[addrKey]bool{}}
+	n := newNet(t, p)
+	f := &selFixture{p: p, prev: n.tip, ts: day(1), roles: map[addrKey]Role{}}
 	f.start = time.Unix(f.ts, 0)
-	for i := 0; i < n; i++ {
-		w := newWallet(t, p)
-		f.nodes = append(f.nodes, w)
-		f.admitted[w.addr.Hash] = true
-	}
 	return f
 }
 
-func (f *selectionFixture) isAdmitted(a crypto.Address) bool { return f.admitted[a.Hash] }
-
-func (f *selectionFixture) recv(t *testing.T, w wallet, after time.Duration) Received {
-	t.Helper()
-	return Received{Participation: participate(t, f.p, &f.prev, w, f.ts), ReceivedAt: f.start.Add(after)}
+func (f *selFixture) node(t *testing.T, r Role) wallet {
+	w := newWallet(t, f.p)
+	f.roles[w.addr.Hash] = r
+	return w
 }
 
-func (f *selectionFixture) eligible(r []Received) []Participation {
-	return Eligible(r, &f.prev, f.ts, f.p, f.isAdmitted)
+func (f *selFixture) recv(t *testing.T, w wallet, after time.Duration) Received {
+	t.Helper()
+	return Received{Participation: participate(t, f.p, f.prev.Hash(), w, f.ts), ReceivedAt: f.start.Add(after)}
+}
+
+func (f *selFixture) eligible(r []Received) DayParticipations {
+	return Eligible(r, &f.prev, f.ts, f.p, func(a crypto.Address) Role { return f.roles[a.Hash] })
 }
 
 func minersOf(pts []Participation) map[addrKey]bool {
@@ -48,12 +48,12 @@ func minersOf(pts []Participation) map[addrKey]bool {
 }
 
 func TestEligibleSortedByTicket(t *testing.T) {
-	f := newSelectionFixture(t, 5)
+	f := newSelFixture(t)
 	var r []Received
-	for i, w := range f.nodes {
-		r = append(r, f.recv(t, w, time.Duration(i)*time.Second))
+	for i := 0; i < 5; i++ {
+		r = append(r, f.recv(t, f.node(t, RoleParticipant), time.Duration(i)*time.Second))
 	}
-	got := f.eligible(r)
+	got := f.eligible(r).Participants
 	if len(got) != 5 {
 		t.Fatalf("%d éligibles, attendu 5", len(got))
 	}
@@ -63,20 +63,20 @@ func TestEligibleSortedByTicket(t *testing.T) {
 			t.Fatal("classement non croissant")
 		}
 	}
-	// L'ordre d'arrivée ne change rien.
 	reversed := make([]Received, len(r))
 	for i := range r {
 		reversed[i] = r[len(r)-1-i]
 	}
-	if f.eligible(reversed)[0].Miner != got[0].Miner {
+	if f.eligible(reversed).Participants[0].Miner != got[0].Miner {
 		t.Fatal("le proposant dépend de l'ordre d'arrivée")
 	}
 }
 
 // Le ticket ne dépend que du bloc précédent et de l'adresse : miner plus longtemps ne sert à rien.
 func TestTicketIgnoresWork(t *testing.T) {
-	f := newSelectionFixture(t, 1)
-	pt := participate(t, f.p, &f.prev, f.nodes[0], f.ts)
+	f := newSelFixture(t)
+	w := f.node(t, RoleParticipant)
+	pt := participate(t, f.p, f.prev.Hash(), w, f.ts)
 	other := pt
 	other.Nonce++
 	for !other.PoWHash(f.prev.Hash(), f.ts).MeetsTarget(f.p.Target) {
@@ -93,52 +93,54 @@ func TestTicketIgnoresWork(t *testing.T) {
 }
 
 func TestEligibleWindow(t *testing.T) {
-	f := newSelectionFixture(t, 4)
+	f := newSelFixture(t)
+	ws := []wallet{f.node(t, RoleParticipant), f.node(t, RoleParticipant), f.node(t, RoleParticipant), f.node(t, RoleParticipant)}
 	r := []Received{
-		f.recv(t, f.nodes[0], -time.Millisecond),               // avant 23:00:00
-		f.recv(t, f.nodes[1], 0),                               // 23:00:00 pile
-		f.recv(t, f.nodes[2], 30*time.Second-time.Millisecond), // dernière milliseconde
-		f.recv(t, f.nodes[3], 30*time.Second),                  // 23:00:30 : trop tard
+		f.recv(t, ws[0], -time.Millisecond),               // avant 23:00:00
+		f.recv(t, ws[1], 0),                               // 23:00:00 pile
+		f.recv(t, ws[2], 30*time.Second-time.Millisecond), // dernière milliseconde
+		f.recv(t, ws[3], 30*time.Second),                  // 23:00:30 : trop tard
 	}
-	got := minersOf(f.eligible(r))
-	if len(got) != 2 || !got[f.nodes[1].addr.Hash] || !got[f.nodes[2].addr.Hash] {
+	got := minersOf(f.eligible(r).Participants)
+	if len(got) != 2 || !got[ws[1].addr.Hash] || !got[ws[2].addr.Hash] {
 		t.Fatalf("éligibles : %d, attendu nœuds 1 et 2", len(got))
 	}
 }
 
-func TestEligibleExclusions(t *testing.T) {
-	f := newSelectionFixture(t, 1)
-	honest := f.nodes[0]
-	outsider := newWallet(t, f.p) // non admis
-	victim := newWallet(t, f.p)
-	f.admitted[victim.addr.Hash] = true
+func TestEligibleRoles(t *testing.T) {
+	f := newSelFixture(t)
+	admitted, candidate, outsider := f.node(t, RoleParticipant), f.node(t, RoleObserver), f.node(t, RoleNone)
+	victim := f.node(t, RoleParticipant)
 
-	// Participation au nom de la victime, signée par un autre.
-	forged := f.recv(t, victim, time.Second)
-	forged.Participation.Signature, _ = honest.key.Sign(f.p.ChainID, crypto.PurposeParticipation,
+	forged := f.recv(t, victim, time.Second) // au nom de la victime, signée par un autre
+	forged.Participation.Signature, _ = admitted.key.Sign(f.p.ChainID, crypto.PurposeParticipation,
 		powMessage(f.prev.Hash(), f.ts, victim.addr, forged.Participation.Nonce))
+	wrongDay := Received{Participation: participate(t, f.p, f.prev.Hash(), victim, day(2)), ReceivedAt: f.start.Add(time.Second)}
 
-	// Participation minée pour un autre jour.
-	wrongDay := Received{Participation: participate(t, f.p, &f.prev, victim, day(2)), ReceivedAt: f.start.Add(time.Second)}
-
-	got := minersOf(f.eligible([]Received{
-		f.recv(t, honest, time.Second),
+	dp := f.eligible([]Received{
+		f.recv(t, admitted, time.Second),
+		f.recv(t, candidate, time.Second),
 		f.recv(t, outsider, time.Second),
 		forged,
 		wrongDay,
-	}))
-	if len(got) != 1 || !got[honest.addr.Hash] {
-		t.Fatalf("seul le nœud honnête devait rester, %d éligibles", len(got))
+	})
+	if p := minersOf(dp.Participants); len(p) != 1 || !p[admitted.addr.Hash] {
+		t.Errorf("participants : %d, attendu le seul nœud admis", len(p))
+	}
+	if o := minersOf(dp.Observations); len(o) != 1 || !o[candidate.addr.Hash] {
+		t.Errorf("observations : %d, attendu le seul candidat", len(o))
+	}
+	if len(dp.Equivocations) != 0 {
+		t.Error("preuve de double participation inattendue")
 	}
 }
 
-func TestEligibleDoubleParticipationExcluded(t *testing.T) {
-	f := newSelectionFixture(t, 2)
-	cheater, honest := f.nodes[0], f.nodes[1]
+func TestEligibleDoubleParticipation(t *testing.T) {
+	f := newSelFixture(t)
+	cheater, honest := f.node(t, RoleParticipant), f.node(t, RoleParticipant)
 
 	a := f.recv(t, cheater, time.Second)
-	// Seconde participation valide du même nœud (autre nonce).
-	b := a
+	b := a // seconde participation valide du même nœud (autre nonce)
 	b.Participation.Nonce++
 	for !b.Participation.PoWHash(f.prev.Hash(), f.ts).MeetsTarget(f.p.Target) {
 		b.Participation.Nonce++
@@ -147,32 +149,21 @@ func TestEligibleDoubleParticipationExcluded(t *testing.T) {
 		powMessage(f.prev.Hash(), f.ts, cheater.addr, b.Participation.Nonce))
 	b.ReceivedAt = a.ReceivedAt.Add(time.Second)
 
-	got := minersOf(f.eligible([]Received{a, b, f.recv(t, honest, time.Second)}))
-	if got[cheater.addr.Hash] || !got[honest.addr.Hash] {
-		t.Fatal("le nœud ayant participé deux fois doit être exclu")
+	dp := f.eligible([]Received{a, b, f.recv(t, honest, time.Second)})
+	if got := minersOf(dp.Participants); got[cheater.addr.Hash] || !got[honest.addr.Hash] {
+		t.Fatal("le tricheur doit être retiré des participants")
+	}
+	if len(dp.Equivocations) != 1 || dp.Equivocations[0].A.Miner != cheater.addr {
+		t.Fatal("une preuve de double participation doit être produite")
+	}
+	if err := dp.Equivocations[0].verify(f.prev.Hash(), f.ts, f.p); err != nil {
+		t.Fatalf("preuve invalide : %v", err)
 	}
 
 	// La même participation reçue deux fois (relais réseau) n'est pas une double participation.
 	dup := a
 	dup.ReceivedAt = a.ReceivedAt.Add(time.Second)
-	if got := minersOf(f.eligible([]Received{a, dup})); !got[cheater.addr.Hash] {
+	if dp := f.eligible([]Received{a, dup}); len(dp.Equivocations) != 0 || !minersOf(dp.Participants)[cheater.addr.Hash] {
 		t.Fatal("un doublon réseau ne doit pas exclure le nœud")
-	}
-}
-
-// La liste éligible, telle quelle, forme un bloc valide.
-func TestEligibleBuildsValidBlock(t *testing.T) {
-	f := newSelectionFixture(t, 4)
-	var r []Received
-	keys := map[addrKey]*crypto.PrivateKey{}
-	for _, w := range f.nodes {
-		r = append(r, f.recv(t, w, time.Second))
-		keys[w.addr.Hash] = w.key
-	}
-	pts := f.eligible(r)
-	b := Block{Header: Header{Height: 1, PrevHash: f.prev.Hash(), Timestamp: f.ts, Proposer: pts[0].Miner}, Participants: pts}
-	finalize(t, f.p, &b, keys)
-	if err := ValidateBlock(&b, &f.prev, f.p, f.isAdmitted); err != nil {
-		t.Fatal(err)
 	}
 }

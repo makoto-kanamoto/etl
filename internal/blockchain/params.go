@@ -21,6 +21,17 @@ type Params struct {
 
 	BlockTimeOfDay   time.Duration // heure du bloc après minuit UTC (23:00)
 	SubmissionWindow time.Duration // durée de la fenêtre de participation (30 s)
+
+	// Registre des nœuds admis (durées en jours UTC) — gouvernables (critères d'admission)
+	MinFounders          int   // fondateurs exigés au genesis
+	MinActiveNodes       int   // en dessous, aucune récompense n'est émise
+	ObservationDays      int64 // durée de l'observation d'un candidat
+	ObservationMinDays   int   // participations exigées pendant l'observation
+	InactivityDays       int64 // absence au-delà de laquelle un nœud devient inactif
+	SponsorSeniorityDays int64 // ancienneté exigée pour parrainer
+	SponsorCooldownDays  int64 // délai minimal entre deux parrainages
+	SponsorBanDays       int64 // privation de parrainage si un filleul est exclu pour Sybil
+	RegistrationDays     int64 // durée de validité d'une candidature signée (anti-rejeu)
 }
 
 // DefaultTargetBits est le nombre de bits de tête à zéro exigés par défaut.
@@ -38,6 +49,16 @@ func DefaultParams() Params {
 		Target:           TargetFromBits(DefaultTargetBits),
 		BlockTimeOfDay:   23 * time.Hour,
 		SubmissionWindow: 30 * time.Second,
+
+		MinFounders:          10,
+		MinActiveNodes:       10,
+		ObservationDays:      7,
+		ObservationMinDays:   5,
+		InactivityDays:       30,
+		SponsorSeniorityDays: 180,
+		SponsorCooldownDays:  30,
+		SponsorBanDays:       365,
+		RegistrationDays:     7,
 	}
 }
 

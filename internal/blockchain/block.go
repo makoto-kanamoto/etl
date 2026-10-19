@@ -23,6 +23,8 @@ var (
 	ErrBlockPartOrder     = errors.New("blockchain: participations non triées par ticket croissant")
 	ErrBlockNotAdmitted   = errors.New("blockchain: participant non admis")
 	ErrBlockProposer      = errors.New("blockchain: le proposant n'a pas le ticket le plus bas")
+	ErrBlockRegistryRoot  = errors.New("blockchain: racine du registre incorrecte")
+	ErrBlockFounders      = errors.New("blockchain: fondateurs hors du genesis")
 	ErrIPCPeriod          = errors.New("blockchain: période IPC invalide (format AAAA-Qn)")
 	ErrIPCValue           = errors.New("blockchain: valeur IPC nulle")
 )
@@ -54,6 +56,7 @@ type Header struct {
 	Timestamp        int64       // 23:00:00 UTC du jour du bloc, heure Unix
 	TxRoot           crypto.Hash // racine de Merkle des identifiants de transactions
 	ParticipantsRoot crypto.Hash // racine de Merkle des identifiants de participations
+	RegistryRoot     crypto.Hash // racine des enregistrements, observations et preuves de double participation
 	IPC              *IPCRecord  // nil si pas de mise à jour IPC dans ce bloc
 	Proposer         crypto.Address
 }
@@ -67,6 +70,7 @@ func (h *Header) Encode() []byte {
 	b = binary.BigEndian.AppendUint64(b, uint64(h.Timestamp))
 	b = append(b, h.TxRoot[:]...)
 	b = append(b, h.ParticipantsRoot[:]...)
+	b = append(b, h.RegistryRoot[:]...)
 	if h.IPC == nil {
 		b = append(b, 0)
 	} else {
@@ -90,6 +94,12 @@ type Block struct {
 	Participants []Participation // triées par ticket croissant ; la première est celle du proposant
 	Txs          []Transaction
 	Signature    crypto.Signature // signature du proposant sur le hash de l'en-tête (usage block-proposal)
+
+	// Registre des nœuds
+	Registrations []Registration   // candidatures et réactivations, triées par candidat
+	Observations  []Participation  // participations des candidats en observation, triées par adresse
+	Equivocations []Equivocation   // preuves de double participation, triées par nœud
+	Founders      []crypto.Address // genesis uniquement : fondateurs admis d'office
 }
 
 // Sign signe le bloc avec la clé du proposant.
@@ -159,6 +169,10 @@ func ValidateBlock(b *Block, prev *Header, p Params, isAdmitted func(crypto.Addr
 		return ErrBlockTxRoot
 	case h.ParticipantsRoot != ParticipantsRoot(b.Participants):
 		return ErrBlockPartRoot
+	case h.RegistryRoot != RegistryRoot(b.Registrations, b.Observations, b.Equivocations):
+		return ErrBlockRegistryRoot
+	case len(b.Founders) > 0:
+		return ErrBlockFounders
 	case len(b.Participants) == 0:
 		return ErrBlockNoParticipant
 	}

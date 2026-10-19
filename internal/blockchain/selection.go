@@ -1,6 +1,7 @@
 package blockchain
 
 import (
+	"bytes"
 	"sort"
 	"time"
 
@@ -13,6 +14,35 @@ type Received struct {
 	ReceivedAt    time.Time
 }
 
+// Role indique ce qu'une participation représente pour un nœud donné, un jour donné.
+type Role uint8
+
+const (
+	RoleNone        Role = iota // ignorée : nœud inconnu, inactif, exclu, ou candidat hors observation
+	RoleParticipant             // nœud admis : part de récompense et ticket
+	RoleObserver                // candidat en observation : compte pour son admission
+)
+
+// Role renvoie le rôle d'un nœud pour le jour du bloc à l'heure blockTime.
+func (s *State) Role(a crypto.Address, blockTime int64, p Params) Role {
+	node := s.nodes[a.Hash]
+	day := dayOf(blockTime)
+	switch {
+	case node.Status == StatusAdmitted:
+		return RoleParticipant
+	case node.Status == StatusCandidate && day > node.CandidateDay && day <= node.CandidateDay+p.ObservationDays:
+		return RoleObserver
+	}
+	return RoleNone
+}
+
+// DayParticipations est le résultat de la fenêtre du jour, prêt à être inclus dans le bloc.
+type DayParticipations struct {
+	Participants  []Participation // nœuds admis, triés par ticket croissant ; le premier propose
+	Observations  []Participation // candidats en observation, triés par adresse
+	Equivocations []Equivocation  // preuves de double participation, triées par nœud
+}
+
 // Ticket renvoie le ticket de tirage d'un nœud : Blake3(hash du bloc précédent | adresse).
 // Il ne dépend ni du nonce ni du contenu du bloc : miner plus longtemps ne sert à rien.
 func Ticket(prevHash crypto.Hash, miner crypto.Address) crypto.Hash {
@@ -22,51 +52,68 @@ func Ticket(prevHash crypto.Hash, miner crypto.Address) crypto.Hash {
 	return crypto.Sum(crypto.ContextTicket, buf)
 }
 
-// Eligible renvoie les participations éligibles du jour, triées par ticket croissant.
-// La première désigne le proposant ; si son bloc n'est pas accepté, la suivante prend le relais.
-// Cette liste est aussi celle que le proposant inclut dans son bloc : chacun reçoit une part.
+// Eligible trie les participations reçues dans la fenêtre du jour.
 //
-// Une participation est éligible si :
+// Une participation est retenue si :
 //   - elle est reçue dans la fenêtre [blockTime, blockTime + SubmissionWindow[ ;
 //   - sa PoW et sa signature sont valides pour ce jour ;
-//   - son nœud est admis (isAdmitted) ;
+//   - son nœud a un rôle ce jour-là (admis ou candidat en observation) ;
 //   - son nœud n'a soumis qu'une seule participation. Deux participations différentes
-//     du même nœud l'excluent du jour (un doublon réseau identique n'est pas une double soumission).
-func Eligible(recv []Received, prev *Header, blockTime int64, p Params, isAdmitted func(crypto.Address) bool) []Participation {
+//     produisent une preuve de double participation, incluse dans le bloc : le nœud est exclu.
+//     Un doublon réseau identique n'est pas une double participation.
+//
+// Si le bloc du proposant n'est pas accepté, Participants[1] prend le relais, et ainsi de suite.
+func Eligible(recv []Received, prev *Header, blockTime int64, p Params, role func(crypto.Address) Role) DayParticipations {
 	start := time.Unix(blockTime, 0)
 	end := start.Add(p.SubmissionWindow)
 	prevHash := prev.Hash()
 
-	byMiner := map[addrKey]Participation{}
-	excluded := map[addrKey]bool{}
+	first := map[addrKey]Participation{}
+	proofs := map[addrKey]Equivocation{}
 	for _, r := range recv {
 		pt := r.Participation
 		if r.ReceivedAt.Before(start) || !r.ReceivedAt.Before(end) {
 			continue
 		}
-		if pt.Verify(prevHash, blockTime, p) != nil || !isAdmitted(pt.Miner) {
+		if pt.Verify(prevHash, blockTime, p) != nil || role(pt.Miner) == RoleNone {
 			continue
 		}
 		k := pt.Miner.Hash
-		if first, seen := byMiner[k]; seen {
-			if first.ID() != pt.ID() {
-				excluded[k] = true
-			}
-			continue
+		if f, seen := first[k]; !seen {
+			first[k] = pt
+		} else if _, proven := proofs[k]; !proven && f.ID() != pt.ID() {
+			proofs[k] = NewEquivocation(f, pt)
 		}
-		byMiner[k] = pt
 	}
 
-	out := make([]Participation, 0, len(byMiner))
-	tickets := map[addrKey]crypto.Hash{}
-	for k, pt := range byMiner {
-		if !excluded[k] {
-			out = append(out, pt)
-			tickets[k] = Ticket(prevHash, pt.Miner)
+	var out DayParticipations
+	for k, pt := range first {
+		if _, cheated := proofs[k]; cheated {
+			continue
+		}
+		if role(pt.Miner) == RoleParticipant {
+			out.Participants = append(out.Participants, pt)
+		} else {
+			out.Observations = append(out.Observations, pt)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		return tickets[out[i].Miner.Hash].Cmp(tickets[out[j].Miner.Hash]) < 0
+	for _, e := range proofs {
+		out.Equivocations = append(out.Equivocations, e)
+	}
+
+	sortByTicket(out.Participants, prevHash)
+	sort.Slice(out.Observations, func(i, j int) bool {
+		return bytes.Compare(out.Observations[i].Miner.Hash[:], out.Observations[j].Miner.Hash[:]) < 0
+	})
+	sort.Slice(out.Equivocations, func(i, j int) bool {
+		return bytes.Compare(out.Equivocations[i].A.Miner.Hash[:], out.Equivocations[j].A.Miner.Hash[:]) < 0
 	})
 	return out
+}
+
+// sortByTicket trie des participations par ticket croissant, comme l'exige le protocole.
+func sortByTicket(pts []Participation, prevHash crypto.Hash) {
+	sort.Slice(pts, func(i, j int) bool {
+		return Ticket(prevHash, pts[i].Miner).Cmp(Ticket(prevHash, pts[j].Miner)) < 0
+	})
 }
