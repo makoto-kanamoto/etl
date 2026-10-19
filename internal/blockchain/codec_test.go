@@ -21,7 +21,8 @@ func richBlock(t testing.TB) (Block, Block) {
 		bl.Txs = []Transaction{tx}
 		bl.Equivocations = []Equivocation{NewEquivocation(a, b)}
 		bl.Registrations = []Registration{n.register(t, newWallet(t, p), n.founders[4], 3)}
-		bl.Header.IPC = &IPCRecord{Value: 103070, Period: "2026-Q3", SourceSHA256: [32]byte{9, 9}}
+		withIPC(q4, ipcVotes(t, p, n.founders[:7], q4))(bl)
+		bl.Exclusions = []Exclusion{exclusion(t, p, n.founders[:8], n.founders[9].addr, 3)}
 	})
 	g, _ := Genesis(p, GenesisMessage, testIPC(), day(0), addrs(n.founders))
 	return blk, g
@@ -30,7 +31,8 @@ func richBlock(t testing.TB) (Block, Block) {
 func TestBlockRoundTrip(t *testing.T) {
 	blk, genesis := richBlock(t)
 	if len(blk.Participants) == 0 || len(blk.Observations) == 0 || len(blk.Txs) == 0 ||
-		len(blk.Registrations) == 0 || len(blk.Equivocations) == 0 || len(genesis.Founders) == 0 {
+		len(blk.Registrations) == 0 || len(blk.Equivocations) == 0 || len(genesis.Founders) == 0 ||
+		len(blk.IPCVotes) == 0 || len(blk.Exclusions) == 0 || blk.Header.IPC == nil {
 		t.Fatal("prémisse : toutes les listes doivent être remplies")
 	}
 	for name, b := range map[string]Block{"bloc": blk, "genesis": genesis} {
@@ -106,9 +108,9 @@ func TestDecodeRejectsNonCanonical(t *testing.T) {
 // Une liste annonçant 4 milliards d'éléments ne doit provoquer aucune allocation.
 func TestDecodeRejectsHugeCount(t *testing.T) {
 	blk, _ := richBlock(t)
-	blk.Participants, blk.Txs, blk.Registrations, blk.Observations, blk.Equivocations = nil, nil, nil, nil, nil
+	blk = Block{Header: blk.Header, Signature: blk.Signature} // toutes les listes vides
 	enc := EncodeBlock(&blk)
-	countAt := len(enc) - 6*4 // premier compteur : participants
+	countAt := len(blk.Header.Encode()) + len(blk.Signature) // premier compteur : participants
 	binary.BigEndian.PutUint32(enc[countAt:], 0xffffffff)
 	allocs := testing.AllocsPerRun(10, func() { _, _ = DecodeBlock(enc, "etl") })
 	if _, err := DecodeBlock(enc, "etl"); err == nil {

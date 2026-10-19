@@ -13,6 +13,7 @@ func TestStateRootCoversEveryField(t *testing.T) {
 		return NewStateFrom(
 			map[addrKey]Account{k1: {Balance: 5, Nonce: 1}},
 			map[addrKey]Node{k2: {Status: StatusAdmitted, AdmittedDay: 10, LastParticipationDay: 12}},
+			IPCRecord{Value: 100000, Period: "2026-Q3"}, IPCRecord{Value: 103070, Period: "2026-Q4"},
 		)
 	}
 	ref := base().Root()
@@ -27,6 +28,10 @@ func TestStateRootCoversEveryField(t *testing.T) {
 		"interdiction":      func(s *State) { n := s.nodes[k2]; n.SponsorBanUntil = 1; s.nodes[k2] = n },
 		"compte ↔ nœud":     func(s *State) { s.nodes[k1] = s.nodes[k2]; delete(s.nodes, k2) },
 		"nœud supprimé":     func(s *State) { delete(s.nodes, k2) },
+		"IPC courant":       func(s *State) { s.ipc.Value++ },
+		"période IPC":       func(s *State) { s.ipc.Period = "2027-Q1" },
+		"source IPC":        func(s *State) { s.ipc.SourceSHA256[0] = 1 },
+		"IPC de référence":  func(s *State) { s.baseIPC.Value++ },
 	}
 	for name, mutate := range mutations {
 		s := base()

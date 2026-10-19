@@ -24,6 +24,7 @@ var (
 	ErrBlockNotAdmitted   = errors.New("blockchain: participant non admis")
 	ErrBlockProposer      = errors.New("blockchain: le proposant n'a pas le ticket le plus bas")
 	ErrBlockRegistryRoot  = errors.New("blockchain: racine du registre incorrecte")
+	ErrBlockVotesRoot     = errors.New("blockchain: racine des votes incorrecte")
 	ErrBlockFounders      = errors.New("blockchain: fondateurs hors du genesis")
 	ErrIPCPeriod          = errors.New("blockchain: période IPC invalide (format AAAA-Qn)")
 	ErrIPCValue           = errors.New("blockchain: valeur IPC nulle")
@@ -57,7 +58,8 @@ type Header struct {
 	TxRoot           crypto.Hash // racine de Merkle des identifiants de transactions
 	ParticipantsRoot crypto.Hash // racine de Merkle des identifiants de participations
 	RegistryRoot     crypto.Hash // racine des enregistrements, observations et preuves de double participation
-	StateRoot        crypto.Hash // racine de l'état (comptes + registre) APRÈS application du bloc
+	VotesRoot        crypto.Hash // racine des votes IPC et des exclusions Sybil
+	StateRoot        crypto.Hash // racine de l'état (comptes + registre + IPC) APRÈS application du bloc
 	IPC              *IPCRecord  // nil si pas de mise à jour IPC dans ce bloc
 	Proposer         crypto.Address
 }
@@ -72,15 +74,13 @@ func (h *Header) Encode() []byte {
 	b = append(b, h.TxRoot[:]...)
 	b = append(b, h.ParticipantsRoot[:]...)
 	b = append(b, h.RegistryRoot[:]...)
+	b = append(b, h.VotesRoot[:]...)
 	b = append(b, h.StateRoot[:]...)
 	if h.IPC == nil {
 		b = append(b, 0)
 	} else {
 		b = append(b, 1)
-		b = binary.BigEndian.AppendUint64(b, h.IPC.Value)
-		b = append(b, byte(len(h.IPC.Period)))
-		b = append(b, h.IPC.Period...)
-		b = append(b, h.IPC.SourceSHA256[:]...)
+		b = appendIPCRecord(b, h.IPC)
 	}
 	return append(b, h.Proposer.Hash[:]...)
 }
@@ -102,7 +102,11 @@ type Block struct {
 	Observations      []Participation    // participations des candidats en observation, triées par adresse
 	Equivocations     []Equivocation     // preuves de double participation, triées par nœud
 	VoteEquivocations []VoteEquivocation // preuves de double vote, triées par votant
-	Founders          []crypto.Address   // genesis uniquement : fondateurs admis d'office
+
+	// Gouvernance
+	IPCVotes   []IPCVote        // votes pour Header.IPC, triés par votant (vide si pas de mise à jour)
+	Exclusions []Exclusion      // exclusions Sybil votées, triées par cible
+	Founders   []crypto.Address // genesis uniquement : fondateurs admis d'office
 }
 
 // Sign signe le bloc avec la clé du proposant.
@@ -174,6 +178,8 @@ func ValidateBlock(b *Block, prev *Header, p Params, isAdmitted func(crypto.Addr
 		return ErrBlockPartRoot
 	case h.RegistryRoot != RegistryRoot(b.Registrations, b.Observations, b.Equivocations, b.VoteEquivocations):
 		return ErrBlockRegistryRoot
+	case h.VotesRoot != VotesRoot(b.IPCVotes, b.Exclusions):
+		return ErrBlockVotesRoot
 	case len(b.Founders) > 0:
 		return ErrBlockFounders
 	case len(b.Participants) == 0:

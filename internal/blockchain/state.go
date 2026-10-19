@@ -24,10 +24,12 @@ type Account struct {
 
 type addrKey = [crypto.AddressHashSize]byte
 
-// State est l'état on-chain : comptes (modèle Account) et registre des nœuds.
+// State est l'état on-chain : comptes (modèle Account), registre des nœuds et IPC.
 type State struct {
 	accounts map[addrKey]Account
 	nodes    registry
+	baseIPC  IPCRecord // IPC du genesis : 1 ETL = 1 unité de cet IPC (règle immuable n°1)
+	ipc      IPCRecord // dernier IPC validé par vote 2/3
 }
 
 // NewState renvoie un état vide.
@@ -37,9 +39,14 @@ func NewState() *State {
 
 // NewStateFrom reconstruit un état chargé depuis le stockage.
 // L'appelant doit vérifier Root() contre le StateRoot du dernier bloc.
-func NewStateFrom(accounts map[addrKey]Account, nodes map[addrKey]Node) *State {
-	return &State{accounts: accounts, nodes: registry(nodes)}
+func NewStateFrom(accounts map[addrKey]Account, nodes map[addrKey]Node, baseIPC, ipc IPCRecord) *State {
+	return &State{accounts: accounts, nodes: registry(nodes), baseIPC: baseIPC, ipc: ipc}
 }
+
+// IPC renvoie le dernier IPC validé ; BaseIPC celui du genesis.
+// Taux affiché : 1 ETL = IPC().Value ÷ BaseIPC().Value euro.
+func (s *State) IPC() IPCRecord     { return s.ipc }
+func (s *State) BaseIPC() IPCRecord { return s.baseIPC }
 
 // Account renvoie l'état d'un compte (zéro s'il n'existe pas).
 func (s *State) Account(a crypto.Address) Account {
@@ -70,10 +77,10 @@ func (s *State) ActiveCount() int {
 // Gravée dans chaque en-tête (StateRoot) et validée par le vote 2/3, elle permet à
 // quiconque de vérifier un instantané de l'état sans rejouer toute la chaîne.
 func (s *State) Root() crypto.Hash {
-	return stateRoot(s.accounts, s.nodes)
+	return stateRoot(s.accounts, s.nodes, s.baseIPC, s.ipc)
 }
 
-func stateRoot(accounts map[addrKey]Account, nodes registry) crypto.Hash {
+func stateRoot(accounts map[addrKey]Account, nodes registry, baseIPC, ipc IPCRecord) crypto.Hash {
 	accLeaves := make([]crypto.Hash, 0, len(accounts))
 	for _, k := range sortedKeys(accounts) {
 		leaf := append([]byte{'A'}, k[:]...)
@@ -84,7 +91,8 @@ func stateRoot(accounts map[addrKey]Account, nodes registry) crypto.Hash {
 		leaf := append([]byte{'N'}, k[:]...)
 		nodeLeaves = append(nodeLeaves, crypto.Sum(crypto.ContextState, AppendNode(leaf, nodes[k])))
 	}
-	return merkleRoot([]crypto.Hash{merkleRoot(accLeaves), merkleRoot(nodeLeaves)})
+	ipcLeaf := crypto.Sum(crypto.ContextState, appendIPCRecord(appendIPCRecord([]byte{'I'}, &baseIPC), &ipc))
+	return merkleRoot([]crypto.Hash{merkleRoot(accLeaves), merkleRoot(nodeLeaves), ipcLeaf})
 }
 
 func sortedKeys[V any](m map[addrKey]V) []addrKey {
@@ -102,6 +110,8 @@ type Changes struct {
 	Accounts     map[addrKey]Account // comptes modifiés
 	Nodes        map[addrKey]Node    // entrées du registre créées ou modifiées
 	DeletedNodes []addrKey           // entrées du registre supprimées (candidatures échouées)
+	BaseIPC      IPCRecord           // IPC du genesis
+	IPC          IPCRecord           // IPC courant après le bloc
 	Root         crypto.Hash         // racine de l'état après le bloc
 
 	nodes registry // registre complet après le bloc
@@ -146,6 +156,7 @@ func (s *State) Commit(c *Changes) {
 		s.accounts[k] = a
 	}
 	s.nodes = c.nodes
+	s.baseIPC, s.ipc = c.BaseIPC, c.IPC
 }
 
 func (s *State) prepare(b *Block, p Params) (*Changes, error) {
@@ -162,7 +173,10 @@ func (s *State) prepare(b *Block, p Params) (*Changes, error) {
 		if err := nodes.applyFounders(b.Founders, day, p); err != nil {
 			return nil, err
 		}
-		return s.changes(changes, nodes), nil
+		if h.IPC == nil || h.IPC.Validate() != nil || len(b.IPCVotes) > 0 || len(b.Exclusions) > 0 {
+			return nil, ErrGenesisIPC
+		}
+		return s.changes(changes, nodes, *h.IPC, *h.IPC), nil
 	}
 
 	// Registre : le nombre de nœuds actifs est compté au début du bloc.
@@ -171,6 +185,14 @@ func (s *State) prepare(b *Block, p Params) (*Changes, error) {
 		return nil, err
 	}
 	if err := nodes.applyVoteEquivocations(b.VoteEquivocations, h.Height, p); err != nil {
+		return nil, err
+	}
+	// Gouvernance : votants admis et seuil comptés sur le registre AVANT le bloc.
+	if err := nodes.applyExclusions(b.Exclusions, s.nodes, day, p); err != nil {
+		return nil, err
+	}
+	ipc, err := applyIPC(h, b.IPCVotes, s.ipc, s.nodes, p)
+	if err != nil {
 		return nil, err
 	}
 	if err := nodes.applyParticipants(b.Participants, day); err != nil {
@@ -252,12 +274,12 @@ func (s *State) prepare(b *Block, p Params) (*Changes, error) {
 	if err := credit(h.Proposer.Hash, fees); err != nil {
 		return nil, err
 	}
-	return s.changes(changes, nodes), nil
+	return s.changes(changes, nodes, s.baseIPC, ipc), nil
 }
 
 // changes assemble le résultat : différences du registre et racine de l'état futur.
-func (s *State) changes(accounts map[addrKey]Account, nodes registry) *Changes {
-	c := &Changes{Accounts: accounts, Nodes: map[addrKey]Node{}, nodes: nodes}
+func (s *State) changes(accounts map[addrKey]Account, nodes registry, baseIPC, ipc IPCRecord) *Changes {
+	c := &Changes{Accounts: accounts, Nodes: map[addrKey]Node{}, BaseIPC: baseIPC, IPC: ipc, nodes: nodes}
 	for k, n := range nodes {
 		if old, ok := s.nodes[k]; !ok || old != n {
 			c.Nodes[k] = n
@@ -275,6 +297,6 @@ func (s *State) changes(accounts map[addrKey]Account, nodes registry) *Changes {
 	for k, a := range accounts {
 		merged[k] = a
 	}
-	c.Root = stateRoot(merged, nodes)
+	c.Root = stateRoot(merged, nodes, baseIPC, ipc)
 	return c
 }

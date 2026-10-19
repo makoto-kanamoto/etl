@@ -3,7 +3,9 @@
 package chaintest
 
 import (
+	"bytes"
 	"context"
+	"sort"
 	"testing"
 	"time"
 
@@ -98,6 +100,7 @@ func (n *Net) Build(tb testing.TB, d int, edit func(*blockchain.Block)) blockcha
 	b.Header.TxRoot = blockchain.TxRoot(b.Txs)
 	b.Header.ParticipantsRoot = blockchain.ParticipantsRoot(b.Participants)
 	b.Header.RegistryRoot = blockchain.RegistryRoot(b.Registrations, b.Observations, b.Equivocations, b.VoteEquivocations)
+	b.Header.VotesRoot = blockchain.VotesRoot(b.IPCVotes, b.Exclusions)
 	if root, err := n.State.PreviewRoot(&b, n.P); err == nil {
 		b.Header.StateRoot = root
 	}
@@ -171,4 +174,25 @@ func (n *Net) Register(tb testing.TB, cand, sponsor Wallet, d int) blockchain.Re
 		tb.Fatal(err)
 	}
 	return r
+}
+
+// IPCVotes fait voter jusqu'à max nœuds admis pour un triplet IPC (tri canonique par votant).
+func (n *Net) IPCVotes(tb testing.TB, rec blockchain.IPCRecord, max int) []blockchain.IPCVote {
+	tb.Helper()
+	var votes []blockchain.IPCVote
+	for addr, key := range n.keys {
+		if len(votes) == max {
+			break
+		}
+		if !n.State.IsAdmitted(addr) {
+			continue
+		}
+		v, err := blockchain.SignIPCVote(key, rec, n.P)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		votes = append(votes, v)
+	}
+	sort.Slice(votes, func(i, j int) bool { return bytes.Compare(votes[i].Voter.Hash[:], votes[j].Voter.Hash[:]) < 0 })
+	return votes
 }

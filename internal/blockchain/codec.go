@@ -22,6 +22,9 @@ const (
 	participationSize = crypto.AddressHashSize + 8 + crypto.SignatureSize
 	registrationSize  = 2*crypto.AddressHashSize + 8 + 2*crypto.SignatureSize
 	voteSize          = crypto.AddressHashSize + 8 + crypto.HashSize + crypto.SignatureSize
+	ipcVoteMinSize    = crypto.AddressHashSize + 8 + 1 + 32 + crypto.SignatureSize
+	exclusionMinSize  = crypto.AddressHashSize + 4
+	exVoteSize        = crypto.AddressHashSize + 8 + crypto.SignatureSize
 	certVoteSize      = crypto.AddressHashSize + crypto.SignatureSize
 	txSize            = txBodySize + crypto.SignatureSize
 	accountSize       = 16
@@ -62,6 +65,37 @@ func appendVote(b []byte, v *Vote) []byte {
 	b = append(b, v.BlockHash[:]...)
 	return append(b, v.Signature[:]...)
 }
+
+func appendIPCVote(b []byte, v *IPCVote) []byte {
+	b = appendAddr(b, v.Voter)
+	b = appendIPCRecord(b, &v.Record)
+	return append(b, v.Signature[:]...)
+}
+
+func appendExclusionVote(b []byte, v *ExclusionVote) []byte {
+	b = appendAddr(b, v.Voter)
+	b = appendAddr(b, v.Target)
+	b = binary.BigEndian.AppendUint64(b, uint64(v.Day))
+	return append(b, v.Signature[:]...)
+}
+
+// appendExclusion : cible, puis (votant, jour, signature) pour chaque vote — la cible n'est pas répétée.
+func appendExclusion(b []byte, ex *Exclusion) []byte {
+	b = appendAddr(b, ex.Target)
+	b = binary.BigEndian.AppendUint32(b, uint32(len(ex.Votes)))
+	for i := range ex.Votes {
+		b = appendAddr(b, ex.Votes[i].Voter)
+		b = binary.BigEndian.AppendUint64(b, uint64(ex.Votes[i].Day))
+		b = append(b, ex.Votes[i].Signature[:]...)
+	}
+	return b
+}
+
+// EncodeIPCVote renvoie l'encodage d'un vote IPC (pour le réseau).
+func EncodeIPCVote(v *IPCVote) []byte { return appendIPCVote(nil, v) }
+
+// EncodeExclusionVote renvoie l'encodage d'un vote d'exclusion (pour le réseau).
+func EncodeExclusionVote(v *ExclusionVote) []byte { return appendExclusionVote(nil, v) }
 
 // EncodeVote renvoie l'encodage d'un vote (pour le réseau).
 func EncodeVote(v *Vote) []byte { return appendVote(nil, v) }
@@ -132,6 +166,14 @@ func EncodeBlock(blk *Block) []byte {
 	for i := range blk.VoteEquivocations {
 		b = appendVote(b, &blk.VoteEquivocations[i].A)
 		b = appendVote(b, &blk.VoteEquivocations[i].B)
+	}
+	b = binary.BigEndian.AppendUint32(b, uint32(len(blk.IPCVotes)))
+	for i := range blk.IPCVotes {
+		b = appendIPCVote(b, &blk.IPCVotes[i])
+	}
+	b = binary.BigEndian.AppendUint32(b, uint32(len(blk.Exclusions)))
+	for i := range blk.Exclusions {
+		b = appendExclusion(b, &blk.Exclusions[i])
 	}
 	b = binary.BigEndian.AppendUint32(b, uint32(len(blk.Founders)))
 	for _, f := range blk.Founders {
@@ -227,6 +269,32 @@ func (r *reader) vote() Vote {
 	return Vote{Voter: r.addr(), Height: r.u64(), BlockHash: r.hash(), Signature: r.sig()}
 }
 
+func (r *reader) ipcRecord() IPCRecord {
+	rec := IPCRecord{Value: r.u64()}
+	rec.Period = string(r.take(int(r.u8())))
+	copy(rec.SourceSHA256[:], r.take(32))
+	return rec
+}
+
+func (r *reader) ipcVote() IPCVote {
+	return IPCVote{Voter: r.addr(), Record: r.ipcRecord(), Signature: r.sig()}
+}
+
+func (r *reader) exclusionVote() ExclusionVote {
+	return ExclusionVote{Voter: r.addr(), Target: r.addr(), Day: r.i64(), Signature: r.sig()}
+}
+
+func (r *reader) exclusion() Exclusion {
+	ex := Exclusion{Target: r.addr()}
+	if n := r.count(exVoteSize); n > 0 {
+		ex.Votes = make([]ExclusionVote, n)
+		for i := range ex.Votes {
+			ex.Votes[i] = ExclusionVote{Voter: r.addr(), Target: ex.Target, Day: r.i64(), Signature: r.sig()}
+		}
+	}
+	return ex
+}
+
 func (r *reader) registration() Registration {
 	reg := Registration{Candidate: r.addr(), Sponsor: r.addr(), Day: r.i64()}
 	reg.CandidateSig, reg.SponsorSig = r.sig(), r.sig()
@@ -238,11 +306,9 @@ func (r *reader) header() Header {
 		r.err = ErrDecode
 	}
 	h := Header{Height: r.u64(), PrevHash: r.hash(), Timestamp: r.i64(), TxRoot: r.hash(),
-		ParticipantsRoot: r.hash(), RegistryRoot: r.hash(), StateRoot: r.hash()}
+		ParticipantsRoot: r.hash(), RegistryRoot: r.hash(), VotesRoot: r.hash(), StateRoot: r.hash()}
 	if r.boolean() {
-		ipc := IPCRecord{Value: r.u64()}
-		ipc.Period = string(r.take(int(r.u8())))
-		copy(ipc.SourceSHA256[:], r.take(32))
+		ipc := r.ipcRecord()
 		h.IPC = &ipc
 	}
 	h.Proposer = r.addr()
@@ -281,6 +347,30 @@ func DecodeCertificate(b []byte, hrp string) (Certificate, error) {
 		}
 	}
 	return c, r.done()
+}
+
+// DecodeIPCVote décode un vote IPC.
+func DecodeIPCVote(b []byte, hrp string) (IPCVote, error) {
+	r := &reader{b: b, hrp: hrp}
+	v := r.ipcVote()
+	return v, r.done()
+}
+
+// DecodeExclusionVote décode un vote d'exclusion.
+func DecodeExclusionVote(b []byte, hrp string) (ExclusionVote, error) {
+	r := &reader{b: b, hrp: hrp}
+	v := r.exclusionVote()
+	return v, r.done()
+}
+
+// AppendIPCRecord ajoute l'encodage d'un enregistrement IPC.
+func AppendIPCRecord(b []byte, rec IPCRecord) []byte { return appendIPCRecord(b, &rec) }
+
+// DecodeIPCRecord décode un enregistrement IPC.
+func DecodeIPCRecord(b []byte) (IPCRecord, error) {
+	r := &reader{b: b}
+	rec := r.ipcRecord()
+	return rec, r.done()
 }
 
 // DecodeAccount décode un compte.
@@ -349,6 +439,18 @@ func DecodeBlock(b []byte, hrp string) (Block, error) {
 		blk.VoteEquivocations = make([]VoteEquivocation, n)
 		for i := range blk.VoteEquivocations {
 			blk.VoteEquivocations[i] = VoteEquivocation{A: r.vote(), B: r.vote()}
+		}
+	}
+	if n := r.count(ipcVoteMinSize); n > 0 {
+		blk.IPCVotes = make([]IPCVote, n)
+		for i := range blk.IPCVotes {
+			blk.IPCVotes[i] = r.ipcVote()
+		}
+	}
+	if n := r.count(exclusionMinSize); n > 0 {
+		blk.Exclusions = make([]Exclusion, n)
+		for i := range blk.Exclusions {
+			blk.Exclusions[i] = r.exclusion()
 		}
 	}
 	if n := r.count(crypto.AddressHashSize); n > 0 {

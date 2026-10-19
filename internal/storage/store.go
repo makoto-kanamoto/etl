@@ -59,6 +59,8 @@ var (
 	keyGenesis = []byte("genesis")
 	keyTip     = []byte("tip")
 	keyVoted   = []byte("voted") // dernier vote émis par ce nœud : hauteur | hash
+	keyBaseIPC = []byte("ipc_base")
+	keyIPC     = []byte("ipc")
 )
 
 // Store est la chaîne locale. Ses méthodes sont sûres en accès concurrent.
@@ -148,7 +150,12 @@ func (s *Store) load() error {
 		if err != nil {
 			return err
 		}
-		state := blockchain.NewStateFrom(accounts, nodes)
+		baseIPC, err1 := blockchain.DecodeIPCRecord(meta.Get(keyBaseIPC))
+		ipc, err2 := blockchain.DecodeIPCRecord(meta.Get(keyIPC))
+		if err1 != nil || err2 != nil {
+			return ErrCorrupt
+		}
+		state := blockchain.NewStateFrom(accounts, nodes, baseIPC, ipc)
 		if state.Root() != tip.StateRoot {
 			return ErrCorrupt
 		}
@@ -243,6 +250,8 @@ func (s *Store) write(tx *bolt.Tx, b *blockchain.Block, c *blockchain.Changes) e
 		{bucketBlocks, height, blockchain.EncodeBlock(b)},
 		{bucketHashes, hash[:], height},
 		{bucketMeta, keyTip, height},
+		{bucketMeta, keyBaseIPC, blockchain.AppendIPCRecord(nil, c.BaseIPC)},
+		{bucketMeta, keyIPC, blockchain.AppendIPCRecord(nil, c.IPC)},
 	}
 	for _, p := range puts {
 		if err := tx.Bucket(p.bucket).Put(p.key, p.value); err != nil {

@@ -27,6 +27,7 @@ const (
 	PurposeSponsorship   Purpose = "sponsorship"
 	PurposeBlockVote     Purpose = "block-vote"
 	PurposeIPCVote       Purpose = "ipc-vote"
+	PurposeExclusionVote Purpose = "exclusion-vote"
 )
 
 var (

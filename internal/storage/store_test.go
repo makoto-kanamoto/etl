@@ -476,3 +476,32 @@ func TestRecordVote(t *testing.T) {
 		t.Fatalf("vote pour une hauteur passée : err = %v", err)
 	}
 }
+
+func TestIPCPersisted(t *testing.T) {
+	s, net, path := newChain(t, DefaultOptions())
+	q4 := blockchain.IPCRecord{Value: 103500, Period: "2026-Q4", SourceSHA256: [32]byte{1}}
+	b, c := net.Next(t, 1, func(b *blockchain.Block) {
+		r := q4
+		b.Header.IPC, b.IPCVotes = &r, net.IPCVotes(t, q4, 7)
+	})
+	if err := s.Append(&b, &c); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s = open(t, path, net.P, DefaultOptions())
+	var ipc, base blockchain.IPCRecord
+	s.ReadState(func(st *blockchain.State) { ipc, base = st.IPC(), st.BaseIPC() })
+	if ipc != q4 || base != *net.Genesis.Header.IPC {
+		t.Fatalf("IPC rechargé : courant %+v, base %+v", ipc, base)
+	}
+	s.Close()
+	// IPC modifié à la main dans la base : refusé au démarrage.
+	tamper(t, path, bucketMeta, keyIPC, func(v []byte) []byte {
+		r, _ := blockchain.DecodeIPCRecord(v)
+		r.Value *= 2
+		return blockchain.AppendIPCRecord(nil, r)
+	})
+	if _, err := Open(path, net.P, DefaultOptions()); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("IPC falsifié : err = %v", err)
+	}
+}
