@@ -120,6 +120,27 @@ bootstrap = [
   aucun relais sans validation (le réseau ne sert pas d'amplificateur)
 - À venir : Tor (SOCKS5) en option pour les connexions sortantes
 
+### Réseau — synchronisation
+- Un nœud qui démarre ou revient **rejoue la chaîne depuis le genesis** : blocs finalisés + certificats, chacun
+  revérifié (bloc, certificat, `StateRoot`) — un pair ne peut pas inventer de blocs
+- Requêtes point à point : `GetTip` → `Tip` (hauteur), `GetBlocks` → `Blocks` (lots de 100 blocs ou 16 Mo)
+  ou `NotAvailable` (blocs élagués) ; délai de 30 s avant de passer à un autre pair ; 4 demandes servies à la fois
+- Les nœuds **archive** l'annoncent dans la poignée de main et sont interrogés en priorité ;
+  **le bootstrap OVH est un nœud archive**
+- Un pair qui fournit un bloc invalide est banni ; la synchronisation continue avec un autre
+- Un bloc finalisé diffusé avec plusieurs hauteurs d'avance déclenche la synchronisation ;
+  le bloc suivant est appliqué directement
+
+### Attaque « longue portée » — défenses
+Au genesis, il n'y a que 10 fondateurs : si 7 de leurs clés fuitaient un jour, leurs détenteurs pourraient
+fabriquer une histoire alternative complète depuis le genesis, avec des certificats valides.
+- **Points de contrôle** : chaque version du logiciel embarque des couples (hauteur, hash) de blocs récents.
+  Toute chaîne qui les contredit est refusée ; une chaîne locale qui les contredit arrête le nœud au démarrage.
+  **La liste doit être mise à jour à chaque version**
+- **Détection des conflits** : deux blocs finalisés à la même hauteur → les votants communs aux deux certificats
+  ont voté deux fois. Le nœud **s'arrête et alerte son opérateur** plutôt que de choisir ; les doubles votes
+  sont extraits comme preuves d'exclusion ; le bloc conflictuel n'est pas relayé
+
 ### Horloge
 - **Exigence opérateur : horloge synchronisée par NTP.** La fenêtre de participation (30 s), la tolérance
   d'inclusion (23:00:25) et les tours de proposition (tolérance ±5 s) supposent des horloges à l'heure
