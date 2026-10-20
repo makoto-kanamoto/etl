@@ -241,7 +241,7 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
   - Imprévisible avant la publication du bloc précédent, vérifiable par tous après
 - Le proposant construit le bloc : transactions du mempool + **liste de toutes les participations reçues**,
   triées par ticket croissant (la sienne en premier), et le signe (usage `block-proposal`)
-- **Proposant de secours** : si le bloc n'est pas finalisé, le ticket suivant propose au tour suivant
+- **Tours de proposition** : si le bloc n'est pas finalisé, le ticket suivant propose au tour suivant
 
 | Tour | Proposant | Début (UTC) |
 |---|---|---|
@@ -251,50 +251,60 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
 | 3 | 4e ticket | 23:06:30 |
 | 4 | 5e ticket | 23:08:30 |
 
-  - Au-delà de 5 tours (ou faute de participants), **la journée est sautée**
-  - L'en-tête porte le tour (`Round`) ; le proposant doit être `Participants[Round]`
-  - Le bloc de secours contient **les mêmes participations** : un proposant défaillant garde sa part ;
-    seuls les frais vont au proposant du tour qui réussit
-  - **Aucune sanction** contre un proposant défaillant : la non-livraison d'un bloc n'est pas prouvable
-    (panne réseau possible)
-  - Un nœud **refuse un bloc reçu avant le début de son tour** (tolérance d'horloge ±5 s) : sinon le proposant
-    d'un tour suivant pourrait devancer le proposant légitime et prendre les frais
-  - **La sécurité ne dépend pas des tours** : un nœud ne vote qu'une fois par hauteur, tous tours confondus.
-    Deux blocs finalisés exigeraient deux groupes de plus de 2/3 des nœuds, qui partageraient plus d'un tiers
-    des nœuds — ayant donc voté deux fois (faute prouvable, exclusion). Si le tour 0 a recueilli des votes sans
-    atteindre le seuil, ces votants ne peuvent plus voter : la journée peut être sautée (sécurité avant continuité)
+  - Un tour est identifié par **(jour, tour)**. Tant que la hauteur n'est pas finalisée, **les tours continuent
+    le lendemain** : (J1, 0) … (J1, 4), puis (J2, 0)… Un jour sans bloc ne bloque jamais la chaîne
+  - **Un seul proposant légitime par tour** : au tour (jour, r), le r-ième ticket parmi les participations de
+    **ce jour-là**. La proposition joint cette liste (la « nomination »), contrôlée par chaque votant
+    comme les participants d'un bloc (complétude avant 23:00:25)
+  - Le proposant propose : **le bloc qu'il sait verrouillé/valide** (avec la preuve de plus de 2/3 de pré-votes
+    à un tour antérieur), sinon **un nouveau bloc**, daté du jour, dont les participants sont la nomination
+  - Un bloc finalisé en retard **garde sa date et ses participants** (récompensés) ; les participations du jour
+    du rattrapage ne sont pas récompensées — cas rare, réservé aux incidents réseau
+  - Les participations d'un bloc restent les mêmes d'un tour à l'autre : un proposant défaillant garde sa part ;
+    seuls les frais vont au proposant du bloc
+  - **Aucune sanction** contre un proposant défaillant : la non-livraison n'est pas prouvable (panne réseau possible)
+  - Un nœud **refuse une proposition reçue avant le début de son tour** (tolérance d'horloge ±5 s) : sinon le
+    proposant d'un tour suivant pourrait devancer le proposant légitime
 
-**Phase 3 — Vote de finalisation**
-- Votent : les nœuds **admis et actifs** selon le registre **avant** le bloc (ni candidats, ni inactifs)
-- Un vote = signature de `{hauteur, hash du bloc}` (usage `block-vote`). On ne vote que **pour** ; l'absence vaut refus
-- **Seuil : strictement plus de 2/3** des nœuds actifs — 7 sur 10, 7 sur 9, 667 sur 1 000.
-  Tant que moins d'un tiers des nœuds trichent, deux blocs concurrents ne peuvent jamais être finalisés tous les deux
-- Un nœud honnête vote pour un bloc seulement si :
-  - le bloc est valide et s'applique à l'état (`StateRoot` compris) ;
-  - il contient **toutes les participations valides** que ce nœud a reçues **avant 23:00:25 UTC**
-    (le proposant aurait intérêt à écarter des participants pour grossir sa part).
-    **Tolérance réseau** : une participation arrivée entre 23:00:25 et 23:00:30 a pu ne pas atteindre
-    le proposant à temps, son absence ne justifie pas un refus ;
-  - il n'inclut pas un nœud que ce nœud a vu participer deux fois **avant 23:00:25**
-    (même tolérance : sinon un seul tricheur, en envoyant sa seconde participation à 23:00:29 à une partie
-    des nœuds, pourrait faire sauter la journée)
-- **Certificat de finalité** : les votes qui atteignent le seuil, stockés avec le bloc.
-  Quiconque se synchronise vérifie lui-même la finalité, sans faire confiance à personne.
-  Le stockage refuse tout bloc sans certificat valide
-- **Un seul vote par hauteur.** Voter pour deux blocs différents à la même hauteur est une faute prouvable
-  (deux signatures du même nœud) → **exclusion automatique** (preuve incluse dans un bloc ultérieur).
-  Chaque nœud enregistre son vote sur disque **avant** de le diffuser : un redémarrage ne peut pas
-  lui faire voter deux fois
-- **Sécurité avant continuité** : si aucun bloc n'atteint le seuil, la journée est sautée.
-  Jamais deux blocs finalisés ; au pire, un jour sans bloc
-- Certificats élagués avec le contenu des blocs (90 jours), **sauf le dernier, toujours conservé**
-- Simple, déterministe, pas d'élection
+**Phase 3 — Vote en deux temps avec verrouillage** (Tendermint, adapté au rythme quotidien)
+
+| Étape | Quand | Effet |
+|---|---|---|
+| **Pré-vote** | à réception d'une proposition valide, dans son tour | « ce bloc me convient » |
+| **Pré-engagement** | quand le nœud voit **plus de 2/3 de pré-votes** pour un bloc **dans le tour en cours** | le nœud se **verrouille** sur ce bloc (sur disque), puis signe |
+| **Finalité** | **plus de 2/3 de pré-engagements** pour le même bloc **au même tour** | certificat, stockage, diffusion |
+
+- Votent : les nœuds **admis et actifs** selon le registre **avant** le bloc. Pas de vote « nul » : les tours
+  avancent à l'horloge, l'absence de vote suffit
+- **Seuil : strictement plus de 2/3** des nœuds actifs — 7 sur 10, 7 sur 9, 667 sur 1 000
+- **Règles de pré-vote** :
+  - nouveau bloc : si le nœud n'est pas verrouillé, ou verrouillé sur ce bloc ;
+  - re-proposition avec preuve au tour vr : si son verrou est antérieur ou égal à vr, ou porte sur ce bloc
+- Un nœud honnête ne pré-vote en outre que si la proposition est valide (bloc, `StateRoot`, nomination), et si
+  elle contient **toutes les participations valides qu'il a reçues avant 23:00:25 UTC** et n'inclut aucun nœud
+  qu'il a vu participer deux fois avant cette heure (tolérance réseau : le proposant a pu ne pas les recevoir)
+- **Pourquoi c'est sûr** : un bloc finalisé a été pré-engagé par plus de 2/3 des nœuds, tous verrouillés sur lui ;
+  ils ne pré-voteront aucun autre bloc sans preuve plus récente, qui ne peut pas exister. Tant que moins d'un
+  tiers trichent, **jamais deux blocs finalisés à la même hauteur**
+- **Pourquoi la chaîne repart toujours** : un nœud ne se verrouille qu'avec une preuve (plus de 2/3 de pré-votes).
+  Après une coupure sans preuve, personne n'est verrouillé ; après une coupure avec preuve, le bloc verrouillé
+  est re-proposé jusqu'à sa finalisation
+- **Sur disque, avant toute diffusion** : chaque vote signé, par (hauteur, jour, tour, type) — jamais deux votes
+  différents pour la même combinaison ; et le **verrou avec sa preuve** — un nœud redémarré ne l'oublie pas
+- **Double vote** = deux pré-votes (ou deux pré-engagements) **du même tour** pour deux blocs différents :
+  faute prouvable → **exclusion automatique**. Voter différemment à des tours différents est normal
+- **Certificat de finalité** = les pré-engagements d'un même tour, stockés avec le bloc ; quiconque se synchronise
+  vérifie lui-même la finalité. Certificats élagués à 90 jours, **sauf le dernier**
+- **Vérifié par simulation** : attaque ciblée (« amnésie ») qui produit deux blocs finalisés si le verrou est
+  désactivé, et simulation aléatoire avec 3 nœuds malveillants sur 10, pertes, désordre et coupures
 
 ### Récompense
 - **Émission constante : 10 ETL par jour**, sans halving. La stabilité vient de l'IPC, pas de la rareté
 - **Partagée à parts égales** entre tous les nœuds ayant soumis une participation valide : `10 ETL ÷ N`
   - Chaque part est arrondie à l'unité inférieure ; le reste (moins de N unités, soit < N × 0,00000001 ETL) n'est pas émis
 - **Les frais de transaction vont au proposant** du bloc
+- Un nœud **exclu par le bloc** (exclusion votée, double participation, double vote) peut figurer parmi ses
+  participants — le rang du proposant en dépend — mais **ne touche pas sa part** ce jour-là
 - **Aucune récompense tant que moins de 10 nœuds sont admis et actifs** (compté au début du bloc)
 - Genesis : aucune récompense (zéro pré-mine)
 
