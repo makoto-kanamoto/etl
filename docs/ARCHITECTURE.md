@@ -565,15 +565,40 @@ ETL ne touche pas au système bancaire. ETL sécurise uniquement **la partie ETL
 
 ### Escrow automatique
 
+La chaîne voit les ETL, pas les euros : elle ne peut pas savoir seule qui ment en cas de désaccord.
+L'escrow bloque donc les ETL du vendeur dans l'état, et le règlement exige l'accord des bonnes personnes.
+
 ```
-1. Marie publie : "Vends 50 ETL — 1 ETL = 1 €"
-2. Paul accepte l'offre
-3. Les 50 ETL de Marie sont verrouillés on-chain (escrow)
-4. Paul envoie 50 € à Marie (virement, cash, Lydia... son choix)
-5. Marie confirme la réception des euros
-6. Les 50 ETL sont libérés vers le wallet de Paul
-7. En cas de litige → vote des nœuds
+1. Marie publie : "Vends 50 ETL — 1 ETL = 1 €" ; Paul accepte
+2. Marie OUVRE l'échange : ses 50 ETL sont bloqués on-chain pour Paul
+   (délai choisi par Marie entre 1 et 30 jours ; arbitre facultatif)
+3. Paul envoie 50 € à Marie (virement, cash, Lydia... son choix) et signe « PAYÉ »
+4. Marie LIBÈRE les 50 ETL vers le wallet de Paul
 ```
+
+**Qui peut régler l'échange (règle « 2 sur 3 »)**
+
+| Issue | Peut la décider |
+|---|---|
+| Libération (ETL → acheteur) | le vendeur seul, **ou** l'acheteur + l'arbitre |
+| Remboursement (ETL → vendeur) | l'acheteur seul, **ou** le vendeur + l'arbitre, **ou** le vendeur seul si l'échéance est passée sans « payé » |
+
+- **Arbitre** : choisi par les deux parties au cas par cas, il doit être un **nœud admis** du registre (identifiable, et exclu s'il triche) et **cosigner l'ouverture**. Seul, il ne peut rien. Un arbitre exclu du registre perd son pouvoir d'arbitrage. Sa rémunération, fixée à l'ouverture, ne lui est versée que s'il cosigne le règlement ; sinon elle revient au vendeur.
+- **Mode simple (sans arbitre)** : sans « payé », l'échéance permet au vendeur de récupérer ses ETL. **Après « payé », seuls la libération par le vendeur ou le remboursement accordé par l'acheteur restent possibles : sans accord, les fonds restent bloqués indéfiniment.** À choisir uniquement entre personnes qui se font confiance, ou avec une bonne réputation de part et d'autre.
+- **« Payé »** : signé par l'acheteur, une seule fois, **avant l'échéance** (il ne peut pas bloquer tardivement le remboursement dû au vendeur).
+- **Litige** : ouvert par le vendeur ou l'acheteur, une fois par échange — alerte publique, visible de tous.
+
+**Frais**
+- À l'ouverture, le vendeur paie les frais d'un transfert du montant (0,1 %, minimum 0,0001 ETL), versés au proposant du bloc.
+- Toutes les opérations suivantes (« payé », litige, règlement) sont **gratuites** : l'acheteur, souvent un nouveau venu, n'a pas encore d'ETL. Au plus trois opérations par échange, donc un spam borné par le coût de l'ouverture.
+
+**Sécurité du protocole**
+- Chaque opération est signée (usage `escrow`) et porte la **séquence de l'échange** (nombre d'opérations déjà appliquées) : elle ne peut être ni rejouée ni appliquée dans le désordre, sans dépendre du nonce d'un compte.
+- Une ouverture signée n'est valable que **7 jours** (anti-rejeu, comme les candidatures).
+- Les opérations forment une section du bloc (`EscrowOps`, racine `EscrowRoot` dans l'en-tête) et comptent dans la taille maximale du bloc ; échanges et réputation sont couverts par le **StateRoot**.
+- Un échange réglé est élagué **90 jours** après son règlement ; la réputation, elle, reste.
+
+> L'ouverture du tableau d'annonces fera l'objet d'une vérification réglementaire préalable (règlement européen MiCA sur les services sur crypto-actifs).
 
 ### Moyens de paiement euros
 - Virement bancaire, cash, PayPal, Lydia, Revolut...
@@ -582,16 +607,17 @@ ETL ne touche pas au système bancaire. ETL sécurise uniquement **la partie ETL
 ### Système de réputation
 
 ```
-Wallet ETL1xK9... — Réputation
-├── 12 échanges réussis ✅
-├── Note communauté : 4.9/5
-└── ⚠️ 1 litige signalé (résolu contre lui)
+Wallet etl1qxk9... — Réputation on-chain
+├── 12 échanges menés à terme
+├── 1 remboursement
+├── 1 litige ouvert
+└── ⚠️ 1 litige perdu (réglé contre lui avec l'arbitre)
 ```
 
+- Compteurs tenus par la chaîne pour chaque adresse, vendeur comme acheteur : échanges menés à terme, remboursements, litiges ouverts, litiges perdus (règlement cosigné par l'arbitre en sa défaveur)
 - Lié au wallet pseudonyme (pas à l'identité réelle)
 - Gravé on-chain — personne ne peut l'effacer
-- **Alerte automatique** à la communauté dès qu'un litige est ouvert
-- Visible sur le tableau d'annonces
+- **Alerte** dès qu'un litige est ouvert, visible sur le tableau d'annonces
 
 ---
 
