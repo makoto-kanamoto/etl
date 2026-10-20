@@ -374,9 +374,8 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
 ## Step 5 — Confirmation de transaction
 
 ### Finalité
-- Petits montants (< 10 ETL) : **1 confirmation** = final
-- Grands montants (> 10 ETL) : **2 confirmations** = final
-- Seuils gouvernables par vote
+- **Un bloc finalisé est définitif** dès sa finalisation (certificat de plus de 2/3 de pré-engagements) :
+  pas de confirmations supplémentaires à attendre, quel que soit le montant (règle immuable n°4)
 
 ### Notifications
 - **WebSocket** — notification temps réel dans le dashboard
@@ -512,8 +511,36 @@ Section "IPC en cours"
 
 - Votes IPC et exclusions Sybil sont engagés par l'en-tête (`VotesRoot`), comme tout le contenu du bloc
 - Même seuil partout : **strictement plus de 2/3** des nœuds actifs, comptés sur le registre avant le bloc
-- La gouvernance des paramètres (frais, récompense, difficulté, critères d'admission…) est un chantier séparé :
-  elle suppose de faire entrer les paramètres dans l'état on-chain
+- Changements de paramètres engagés de la même façon (voir ci-dessous)
+
+### Gouvernance des paramètres
+- Les paramètres gouvernables sont **dans l'état on-chain** (couverts par le `StateRoot`)
+- Chaque nœud signe `{paramètre, nouvelle valeur, jour}` (usage `param-vote`), vote valable 30 jours ;
+  plus de 2/3 des nœuds actifs pour **la même valeur** → le changement est inscrit dans un bloc
+- **Délai d'activation : 30 jours** — le changement reste en attente, puis s'applique à tous au même moment.
+  Le mempool écarte alors les transactions devenues invalides (frais périmés)
+- **Un seul changement en attente par paramètre**
+- Garde-fous **immuables** : bornes absolues, et variation par vote limitée à ×2 / ÷2 (frais, frais minimum,
+  taille de bloc, récompense) ou ±2 bits (difficulté)
+
+| Paramètre | Défaut | Bornes |
+|---|---|---|
+| Frais (`fee_bps`) | 0,1 % | 0 à 1 % |
+| Frais minimum | 0,0001 ETL | 0 à 0,01 ETL |
+| Taille de bloc | 100 000 tx | 10 000 à 1 000 000 |
+| Récompense quotidienne | 10 ETL | 1 à 100 ETL |
+| Difficulté | 21 bits | 16 à 28 bits |
+| Durée d'observation | 7 jours | 3 à 30 jours |
+| Présences exigées pendant l'observation | 5 | 1 à 30 (≤ durée d'observation) |
+| Inactivité | 30 jours | 7 à 365 jours |
+| Ancienneté du parrain | 180 jours | 30 à 730 jours |
+| Délai entre parrainages | 30 jours | 7 à 365 jours |
+| Interdiction de parrainage (Sybil) | 365 jours | 30 à 1 825 jours |
+| Seuil de récompense (nœuds actifs) | 10 | 3 à 100 |
+
+- **Restent fixes** (nouvelle version du logiciel nécessaire) : le calendrier du consensus (23:00, fenêtre de 30 s,
+  tolérances, tours), l'identité du réseau (`chain_id`, préfixe, genesis, fondateurs) et les règles immuables
+- La fréquence de l'IPC relève de l'oracle (le protocole accepte toute période postérieure)
 
 ### Limite assumée du modèle 2/3
 Une coalition de **plus de 2/3 des nœuds** pourrait exclure des nœuds honnêtes, imposer une valeur IPC

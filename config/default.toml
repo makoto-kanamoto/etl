@@ -24,10 +24,8 @@ target_bits = 21   # difficulté PoW fixe (~2 s CPU) — gouvernable par vote 2/
 fee_bps = 10           # points de base : 10 = 0.1%
 fee_min = 0.0001       # frais minimum par transaction (ETL) — anti-spam
 max_block_txs = 100000 # transactions par bloc (= débit quotidien) — gouvernable
-
-confirm_small = 1
-confirm_large = 2
-confirm_threshold = 10.0
+# Pas de seuils de confirmation : un bloc finalisé (certificat > 2/3) est définitif.
+# Les valeurs gouvernables ci-dessus sont celles du genesis ; ensuite, elles changent par vote on-chain.
 
 [mempool]               # limites locales au nœud (pas des règles de consensus)
 max_per_account = 16
