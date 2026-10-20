@@ -81,6 +81,12 @@ func checkStateless(m Message, p blockchain.Params) error {
 			return errInvalid
 		}
 		return v.Verify(p)
+	case MsgEscrowOp:
+		op, err := blockchain.DecodeEscrowOp(m.Payload, hrp)
+		if err != nil {
+			return errInvalid
+		}
+		return op.VerifySignatures(p)
 	case MsgRegistration:
 		reg, err := blockchain.DecodeRegistration(m.Payload, hrp)
 		if err != nil {

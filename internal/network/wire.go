@@ -40,6 +40,7 @@ const (
 	MsgExclusionVote
 	MsgRegistration // candidature (ou réactivation) d'un nœud
 	MsgParamVote    // vote de changement d'un paramètre gouvernable
+	MsgEscrowOp     // opération sur un échange sous escrow
 	MsgProposal     // bloc proposé, en attente de votes
 	MsgFinalized    // bloc finalisé + certificat
 

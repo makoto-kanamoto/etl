@@ -27,6 +27,7 @@ var (
 	ErrBlockTooManyTxs    = errors.New("blockchain: trop de transactions dans le bloc")
 	ErrBlockRegistryRoot  = errors.New("blockchain: racine du registre incorrecte")
 	ErrBlockVotesRoot     = errors.New("blockchain: racine des votes incorrecte")
+	ErrBlockEscrowRoot    = errors.New("blockchain: racine des opérations d'escrow incorrecte")
 	ErrBlockFounders      = errors.New("blockchain: fondateurs hors du genesis")
 	ErrIPCPeriod          = errors.New("blockchain: période IPC invalide (format AAAA-Qn)")
 	ErrIPCValue           = errors.New("blockchain: valeur IPC nulle")
@@ -62,6 +63,7 @@ type Header struct {
 	ParticipantsRoot crypto.Hash // racine de Merkle des identifiants de participations
 	RegistryRoot     crypto.Hash // racine des enregistrements, observations et preuves de double participation
 	VotesRoot        crypto.Hash // racine des votes IPC et des exclusions Sybil
+	EscrowRoot       crypto.Hash // racine des opérations d'escrow
 	StateRoot        crypto.Hash // racine de l'état (comptes + registre + IPC) APRÈS application du bloc
 	IPC              *IPCRecord  // nil si pas de mise à jour IPC dans ce bloc
 	Proposer         crypto.Address
@@ -79,6 +81,7 @@ func (h *Header) Encode() []byte {
 	b = append(b, h.ParticipantsRoot[:]...)
 	b = append(b, h.RegistryRoot[:]...)
 	b = append(b, h.VotesRoot[:]...)
+	b = append(b, h.EscrowRoot[:]...)
 	b = append(b, h.StateRoot[:]...)
 	if h.IPC == nil {
 		b = append(b, 0)
@@ -112,6 +115,9 @@ type Block struct {
 	Exclusions   []Exclusion      // exclusions Sybil votées, triées par cible
 	ParamChanges []ParamChange    // changements de paramètres votés, triés par paramètre
 	Founders     []crypto.Address // genesis uniquement : fondateurs admis d'office
+
+	// Échanges pair à pair, appliqués dans l'ordre après les transactions
+	EscrowOps []EscrowOp
 }
 
 // Sign signe le bloc avec la clé du proposant.
@@ -177,7 +183,7 @@ func ValidateBlock(b *Block, prev *Header, p Params, isAdmitted func(crypto.Addr
 		return ErrBlockPrev
 	case h.Timestamp <= prev.Timestamp || !isBlockTime(h.Timestamp, p):
 		return ErrBlockTime
-	case len(b.Txs) > p.MaxBlockTxs:
+	case len(b.Txs)+len(b.EscrowOps) > p.MaxBlockTxs: // une opération d'escrow compte comme une transaction
 		return ErrBlockTooManyTxs
 	case h.TxRoot != TxRoot(b.Txs):
 		return ErrBlockTxRoot
@@ -187,6 +193,8 @@ func ValidateBlock(b *Block, prev *Header, p Params, isAdmitted func(crypto.Addr
 		return ErrBlockRegistryRoot
 	case h.VotesRoot != VotesRoot(b.IPCVotes, b.Exclusions, b.ParamChanges):
 		return ErrBlockVotesRoot
+	case h.EscrowRoot != EscrowRoot(b.EscrowOps):
+		return ErrBlockEscrowRoot
 	case len(b.Founders) > 0:
 		return ErrBlockFounders
 	case len(b.Participants) == 0:

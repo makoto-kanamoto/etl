@@ -9,12 +9,18 @@ import (
 func TestStateRootCoversEveryField(t *testing.T) {
 	var k1, k2 addrKey
 	k1[0], k2[0] = 1, 2
+	eid := crypto.Hash{9}
+	terms := EscrowTerms{Seller: crypto.Address{Hash: k1}, Buyer: crypto.Address{Hash: k2}, Amount: 7, Fee: 1, Days: 3, Timestamp: 5}
 	base := func() *State {
 		return NewStateFrom(
 			map[addrKey]Account{k1: {Balance: 5, Nonce: 1}},
 			map[addrKey]Node{k2: {Status: StatusAdmitted, AdmittedDay: 10, LastParticipationDay: 12}},
 			IPCRecord{Value: 100000, Period: "2026-Q3"}, IPCRecord{Value: 103070, Period: "2026-Q4"},
 			map[ParamID]uint64{ParamFeeBps: 10}, map[ParamID]PendingParam{ParamDailyReward: {Value: 5, ActivationDay: 100}},
+			EscrowData{
+				Escrows:     map[crypto.Hash]Escrow{eid: {Terms: terms, Deadline: 20}},
+				Reputations: map[addrKey]Reputation{k1: {Completed: 1}},
+			},
 		)
 	}
 	ref := base().Root()
@@ -40,6 +46,23 @@ func TestStateRootCoversEveryField(t *testing.T) {
 		"date d'activation": func(s *State) {
 			s.gov.pending[ParamDailyReward] = PendingParam{Value: 5, ActivationDay: 101}
 		},
+		"escrow : montant":             func(s *State) { e := s.escrows[eid]; e.Terms.Amount++; s.escrows[eid] = e },
+		"escrow : arbitre":             func(s *State) { e := s.escrows[eid]; e.Terms.Arbiter.Hash[0] = 3; s.escrows[eid] = e },
+		"escrow : rémunération":        func(s *State) { e := s.escrows[eid]; e.Terms.ArbiterFee = 1; s.escrows[eid] = e },
+		"escrow : délai":               func(s *State) { e := s.escrows[eid]; e.Terms.Days++; s.escrows[eid] = e },
+		"escrow : échéance":            func(s *State) { e := s.escrows[eid]; e.Deadline++; s.escrows[eid] = e },
+		"escrow : séquence":            func(s *State) { e := s.escrows[eid]; e.Seq++; s.escrows[eid] = e },
+		"escrow : payé":                func(s *State) { e := s.escrows[eid]; e.Paid = true; s.escrows[eid] = e },
+		"escrow : litige":              func(s *State) { e := s.escrows[eid]; e.Disputed = true; s.escrows[eid] = e },
+		"escrow : issue":               func(s *State) { e := s.escrows[eid]; e.Outcome = EscrowRefunded; s.escrows[eid] = e },
+		"escrow : jour de clôture":     func(s *State) { e := s.escrows[eid]; e.ClosedDay = 1; s.escrows[eid] = e },
+		"escrow : identifiant":         func(s *State) { s.escrows[crypto.Hash{8}] = s.escrows[eid]; delete(s.escrows, eid) },
+		"escrow supprimé":              func(s *State) { delete(s.escrows, eid) },
+		"réputation : menés":           func(s *State) { s.reps[k1] = Reputation{Completed: 2} },
+		"réputation : remboursés":      func(s *State) { s.reps[k1] = Reputation{Completed: 1, Refunded: 1} },
+		"réputation : litiges ouverts": func(s *State) { s.reps[k1] = Reputation{Completed: 1, DisputesOpened: 1} },
+		"réputation : litiges perdus":  func(s *State) { s.reps[k1] = Reputation{Completed: 1, DisputesLost: 1} },
+		"réputation : autre adresse":   func(s *State) { s.reps[k2] = s.reps[k1]; delete(s.reps, k1) },
 	}
 	for name, mutate := range mutations {
 		s := base()

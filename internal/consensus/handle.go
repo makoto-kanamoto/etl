@@ -66,6 +66,15 @@ func (e *Engine) Handle(m network.Message) network.Verdict {
 			return network.Reject
 		}
 		return e.onParamVote(v)
+	case network.MsgEscrowOp:
+		op, err := blockchain.DecodeEscrowOp(m.Payload, hrp)
+		if err != nil {
+			return network.Reject
+		}
+		if e.addEscrowOp(op) != nil {
+			return network.Ignore // périmée, déjà appliquée ou en avance sur la chaîne : pas forcément malveillante
+		}
+		return network.Accept
 	case network.MsgRegistration:
 		r, err := blockchain.DecodeRegistration(m.Payload, hrp)
 		if err != nil {
@@ -329,6 +338,7 @@ func (e *Engine) afterFinalize() {
 func (e *Engine) afterFinalizeLocked() {
 	now := e.cfg.Now()
 	tipTime := e.chain.Tip().Timestamp // hors de ReadState : pas de verrou de lecture imbriqué
+	next := e.nextBlockTime(now)       // idem
 	e.refreshPoolParams(now)
 	e.pool.Update(e.chain, now)
 	e.chain.ReadState(func(st *blockchain.State) {
@@ -361,6 +371,17 @@ func (e *Engine) afterFinalizeLocked() {
 				delete(e.pv, k)
 			}
 		}
+		// Opérations d'escrow incluses ou devenues inapplicables (séquence avancée, échange réglé, ouverture périmée).
+		kept := e.escrowOps[:0]
+		for i := range e.escrowOps {
+			op := &e.escrowOps[i]
+			if st.CheckEscrowOp(op, next, e.cfg.Params) == nil {
+				kept = append(kept, *op)
+			} else {
+				delete(e.escrowIDs, op.ID())
+			}
+		}
+		e.escrowOps = kept
 	})
 	e.ensureHeight()
 }
@@ -499,6 +520,45 @@ func (e *Engine) SubmitParamVote(id blockchain.ParamID, value uint64) error {
 	}
 	e.onParamVote(v)
 	e.net.Broadcast(network.Message{Type: network.MsgParamVote, Payload: blockchain.EncodeParamVote(&v)})
+	return nil
+}
+
+// ErrEscrowPoolFull : trop d'opérations d'escrow en attente sur ce nœud.
+var ErrEscrowPoolFull = errors.New("consensus: trop d'opérations d'escrow en attente")
+
+// addEscrowOp ajoute une opération signée, applicable à la chaîne actuelle, au pool d'attente.
+// Une opération qui dépend d'une autre encore en attente (« payé » avant l'inclusion de l'ouverture)
+// est refusée : le client la soumet après l'inclusion de la précédente.
+func (e *Engine) addEscrowOp(op blockchain.EscrowOp) error {
+	if err := op.VerifySignatures(e.cfg.Params); err != nil {
+		return err
+	}
+	next := e.nextBlockTime(e.cfg.Now())
+	var err error
+	e.chain.ReadState(func(st *blockchain.State) { err = st.CheckEscrowOp(&op, next, e.cfg.Params) })
+	if err != nil {
+		return err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	id := op.ID()
+	if e.escrowIDs[id] {
+		return blockchain.ErrEscrowUnknown // déjà en attente
+	}
+	if len(e.escrowOps) >= maxEscrowPool {
+		return ErrEscrowPoolFull
+	}
+	e.escrowIDs[id] = true
+	e.escrowOps = append(e.escrowOps, op)
+	return nil
+}
+
+// SubmitEscrowOp ajoute une opération d'escrow signée (wallet, dashboard) et la diffuse.
+func (e *Engine) SubmitEscrowOp(op blockchain.EscrowOp) error {
+	if err := e.addEscrowOp(op); err != nil {
+		return err
+	}
+	e.net.Broadcast(network.Message{Type: network.MsgEscrowOp, Payload: blockchain.EncodeEscrowOp(&op)})
 	return nil
 }
 

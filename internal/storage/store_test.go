@@ -579,7 +579,7 @@ func TestGovPersisted(t *testing.T) {
 		pp := pend[blockchain.ParamFeeBps]
 		pp.ActivationDay = 0 // activation immédiate frauduleuse
 		pend[blockchain.ParamFeeBps] = pp
-		st := blockchain.NewStateFrom(nil, nil, blockchain.IPCRecord{}, blockchain.IPCRecord{}, values, pend)
+		st := blockchain.NewStateFrom(nil, nil, blockchain.IPCRecord{}, blockchain.IPCRecord{}, values, pend, blockchain.EscrowData{})
 		return st.EncodeGov()
 	})
 	if _, err := Open(path, net.P, DefaultOptions()); !errors.Is(err, ErrCorrupt) {
@@ -626,4 +626,72 @@ func TestAppendUsesParamsInForce(t *testing.T) {
 	if err := s.Append(&b, &c); err != nil {
 		t.Fatalf("bloc valide aux paramètres en vigueur refusé : %v", err)
 	}
+}
+
+// Les échanges sous escrow et la réputation sont persistés, couverts par la racine d'état au
+// redémarrage, et l'échange réglé est supprimé du disque à l'élagage.
+func TestEscrowPersisted(t *testing.T) {
+	s, net, path := newChain(t, DefaultOptions())
+	grow(t, s, net, 1, 1) // chaque fondateur : 1 ETL
+	seller, buyer := net.Founders[0], chaintest.NewWallet(t, net.P)
+	fee, _ := blockchain.RequiredFee(blockchain.UnitsPerETL/2, net.P)
+	terms := blockchain.EscrowTerms{Seller: seller.Addr, Buyer: buyer.Addr, Amount: blockchain.UnitsPerETL / 2, Fee: fee,
+		Days: 3, Timestamp: chaintest.Day(1)}
+	open := blockchain.EscrowOp{Kind: blockchain.EscrowOpen, Terms: terms}
+	if err := open.Sign(seller.Key, blockchain.SignerSeller, net.P); err != nil {
+		t.Fatal(err)
+	}
+	b, c := net.Next(t, 2, func(b *blockchain.Block) { b.EscrowOps = []blockchain.EscrowOp{open} })
+	if err := s.Append(&b, &c); err != nil {
+		t.Fatal(err)
+	}
+	release := blockchain.EscrowOp{Kind: blockchain.EscrowRelease, Escrow: terms.ID()}
+	if err := release.Sign(seller.Key, blockchain.SignerSeller, net.P); err != nil {
+		t.Fatal(err)
+	}
+	b, c = net.Next(t, 3, func(b *blockchain.Block) { b.EscrowOps = []blockchain.EscrowOp{release} })
+	if err := s.Append(&b, &c); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s = open2(t, path, net.P)
+	var e blockchain.Escrow
+	var ok bool
+	var rep blockchain.Reputation
+	s.ReadState(func(st *blockchain.State) { e, ok = st.Escrow(terms.ID()); rep = st.Reputation(buyer.Addr) })
+	if !ok || e.Outcome != blockchain.EscrowReleased || rep.Completed != 1 || s.Account(buyer.Addr).Balance != terms.Amount {
+		t.Fatalf("après redémarrage : %+v (%v), réputation %+v", e, ok, rep)
+	}
+	s.Close()
+	id := terms.ID()
+	tamper(t, path, bucketEscrows, id[:], func(v []byte) []byte { v[len(v)-9] = byte(blockchain.EscrowRefunded); return v })
+	if _, err := Open(path, net.P, DefaultOptions()); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("échange falsifié : err = %v", err)
+	}
+	tamper(t, path, bucketEscrows, id[:], func(v []byte) []byte { v[len(v)-9] = byte(blockchain.EscrowReleased); return v })
+	tamper(t, path, bucketReps, buyer.Addr.Hash[:], func(v []byte) []byte { v[7] = 9; return v })
+	if _, err := Open(path, net.P, DefaultOptions()); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("réputation falsifiée : err = %v", err)
+	}
+	tamper(t, path, bucketReps, buyer.Addr.Hash[:], func(v []byte) []byte { v[7] = 1; return v })
+	s = open2(t, path, net.P)
+	// Élagage 90 jours après le règlement : l'échange quitte le disque, la réputation reste.
+	d := 3 + blockchain.EscrowRetentionDays
+	b, c = net.Next(t, d, nil)
+	if err := s.Append(&b, &c); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s = open2(t, path, net.P)
+	s.ReadState(func(st *blockchain.State) { _, ok = st.Escrow(id); rep = st.Reputation(buyer.Addr) })
+	if ok || rep.Completed != 1 {
+		t.Fatalf("après élagage : échange présent = %v, réputation %+v", ok, rep)
+	}
+}
+
+func open2(t *testing.T, path string, p blockchain.Params) *Store {
+	t.Helper()
+	s := open(t, path, p, DefaultOptions())
+	t.Cleanup(func() { s.Close() })
+	return s
 }

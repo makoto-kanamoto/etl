@@ -29,7 +29,113 @@ const (
 	txSize            = txBodySize + crypto.SignatureSize
 	accountSize       = 16
 	nodeSize          = 1 + crypto.AddressHashSize + 1 + 8 + 4 + 1 + 8 + 8 + 1 + 8 + 8
+	escrowTermsSize   = 3*crypto.AddressHashSize + 3*8 + 1 + 8
+	escrowOpMinSize   = 1 + crypto.HashSize + 4 + 1 + crypto.SignatureSize
+	reputationSize    = 4 * 8
 )
+
+func appendEscrowTerms(b []byte, t *EscrowTerms) []byte {
+	b = appendAddr(b, t.Seller)
+	b = appendAddr(b, t.Buyer)
+	b = appendAddr(b, t.Arbiter)
+	b = binary.BigEndian.AppendUint64(b, t.Amount)
+	b = binary.BigEndian.AppendUint64(b, t.ArbiterFee)
+	b = binary.BigEndian.AppendUint64(b, t.Fee)
+	b = append(b, t.Days)
+	return binary.BigEndian.AppendUint64(b, uint64(t.Timestamp))
+}
+
+// appendEscrowOp : type | (conditions si ouverture, sinon échange + séquence) | masque | signatures.
+func appendEscrowOp(b []byte, op *EscrowOp) []byte {
+	b = append(b, byte(op.Kind))
+	if op.Kind == EscrowOpen {
+		b = appendEscrowTerms(b, &op.Terms)
+	} else {
+		b = append(b, op.Escrow[:]...)
+		b = binary.BigEndian.AppendUint32(b, op.Seq)
+	}
+	b = append(b, op.Signers)
+	for i := range op.Signatures {
+		b = append(b, op.Signatures[i][:]...)
+	}
+	return b
+}
+
+// EncodeEscrowOp renvoie l'encodage d'une opération d'escrow (réseau).
+func EncodeEscrowOp(op *EscrowOp) []byte { return appendEscrowOp(nil, op) }
+
+// DecodeEscrowOp décode une opération d'escrow.
+func DecodeEscrowOp(b []byte, hrp string) (EscrowOp, error) {
+	r := &reader{b: b, hrp: hrp}
+	op := r.escrowOp()
+	return op, r.done()
+}
+
+func (r *reader) escrowTerms() EscrowTerms {
+	return EscrowTerms{Seller: r.addr(), Buyer: r.addr(), Arbiter: r.addr(), Amount: r.u64(), ArbiterFee: r.u64(),
+		Fee: r.u64(), Days: r.u8(), Timestamp: r.i64()}
+}
+
+func (r *reader) escrowOp() EscrowOp {
+	op := EscrowOp{Kind: EscrowKind(r.u8())}
+	switch op.Kind {
+	case EscrowOpen:
+		op.Terms = r.escrowTerms()
+	case EscrowPaid, EscrowDispute, EscrowRelease, EscrowRefund:
+		op.Escrow = r.hash()
+		op.Seq = r.u32()
+	default:
+		r.err = ErrDecode
+		return op
+	}
+	op.Signers = r.u8()
+	if op.Signers == 0 || op.Signers > SignerSeller|SignerBuyer|SignerArbiter {
+		r.err = ErrDecode
+		return op
+	}
+	op.Signatures = make([]crypto.Signature, onesCount(op.Signers))
+	for i := range op.Signatures {
+		op.Signatures[i] = r.sig()
+	}
+	return op
+}
+
+// AppendEscrow encode l'état d'un échange (stockage, racine d'état).
+func AppendEscrow(b []byte, e Escrow) []byte {
+	b = appendEscrowTerms(b, &e.Terms)
+	b = binary.BigEndian.AppendUint64(b, uint64(e.Deadline))
+	b = binary.BigEndian.AppendUint32(b, e.Seq)
+	b = appendBool(b, e.Paid)
+	b = appendBool(b, e.Disputed)
+	b = append(b, byte(e.Outcome))
+	return binary.BigEndian.AppendUint64(b, uint64(e.ClosedDay))
+}
+
+// DecodeEscrow décode l'état d'un échange.
+func DecodeEscrow(b []byte, hrp string) (Escrow, error) {
+	r := &reader{b: b, hrp: hrp}
+	e := Escrow{Terms: r.escrowTerms(), Deadline: r.i64(), Seq: r.u32(), Paid: r.boolean(), Disputed: r.boolean(),
+		Outcome: EscrowOutcome(r.u8()), ClosedDay: r.i64()}
+	if e.Outcome > EscrowRefunded {
+		r.err = ErrDecode
+	}
+	return e, r.done()
+}
+
+// AppendReputation encode une réputation.
+func AppendReputation(b []byte, rep Reputation) []byte {
+	for _, v := range []uint64{rep.Completed, rep.Refunded, rep.DisputesOpened, rep.DisputesLost} {
+		b = binary.BigEndian.AppendUint64(b, v)
+	}
+	return b
+}
+
+// DecodeReputation décode une réputation.
+func DecodeReputation(b []byte) (Reputation, error) {
+	r := &reader{b: b}
+	rep := Reputation{Completed: r.u64(), Refunded: r.u64(), DisputesOpened: r.u64(), DisputesLost: r.u64()}
+	return rep, r.done()
+}
 
 // --- écriture ---
 
@@ -254,6 +360,10 @@ func EncodeBlock(blk *Block) []byte {
 	for _, f := range blk.Founders {
 		b = appendAddr(b, f)
 	}
+	b = binary.BigEndian.AppendUint32(b, uint32(len(blk.EscrowOps)))
+	for i := range blk.EscrowOps {
+		b = appendEscrowOp(b, &blk.EscrowOps[i])
+	}
 	return b
 }
 
@@ -396,7 +506,7 @@ func (r *reader) header() Header {
 		r.err = ErrDecode
 	}
 	h := Header{Height: r.u64(), PrevHash: r.hash(), Timestamp: r.i64(), Round: r.u8(), TxRoot: r.hash(),
-		ParticipantsRoot: r.hash(), RegistryRoot: r.hash(), VotesRoot: r.hash(), StateRoot: r.hash()}
+		ParticipantsRoot: r.hash(), RegistryRoot: r.hash(), VotesRoot: r.hash(), EscrowRoot: r.hash(), StateRoot: r.hash()}
 	if r.boolean() {
 		ipc := r.ipcRecord()
 		h.IPC = &ipc
@@ -608,6 +718,12 @@ func DecodeBlock(b []byte, hrp string) (Block, error) {
 		blk.Founders = make([]crypto.Address, n)
 		for i := range blk.Founders {
 			blk.Founders[i] = r.addr()
+		}
+	}
+	if n := r.count(escrowOpMinSize); n > 0 {
+		blk.EscrowOps = make([]EscrowOp, n)
+		for i := range blk.EscrowOps {
+			blk.EscrowOps[i] = r.escrowOp()
 		}
 	}
 	return blk, r.done()

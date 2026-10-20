@@ -73,7 +73,13 @@ type Engine struct {
 	regs map[addrKey]blockchain.Registration
 	veqs map[addrKey]blockchain.VoteEquivocation       // preuves de double vote en attente d'inclusion
 	pv   map[paramKey]map[addrKey]blockchain.ParamVote // votes de paramètres, par (paramètre, valeur)
+
+	escrowOps []blockchain.EscrowOp // opérations d'escrow en attente, dans l'ordre d'arrivée
+	escrowIDs map[crypto.Hash]bool
 }
+
+// maxEscrowPool borne localement les opérations d'escrow en attente (mémoire). Variable pour les tests.
+var maxEscrowPool = 100_000
 
 // heightState est l'état de la hauteur en cours de finalisation (tous jours et tours confondus).
 type heightState struct {
@@ -154,7 +160,7 @@ func New(cfg Config, chain Chain, pool *mempool.Pool, net Broadcaster) *Engine {
 	e := &Engine{cfg: cfg, chain: chain, pool: pool, net: net,
 		ipc: map[blockchain.IPCRecord]map[addrKey]blockchain.IPCVote{}, ex: map[addrKey]map[addrKey]blockchain.ExclusionVote{},
 		regs: map[addrKey]blockchain.Registration{}, veqs: map[addrKey]blockchain.VoteEquivocation{},
-		pv: map[paramKey]map[addrKey]blockchain.ParamVote{}}
+		pv: map[paramKey]map[addrKey]blockchain.ParamVote{}, escrowIDs: map[crypto.Hash]bool{}}
 	if cfg.Key != nil {
 		e.me = cfg.Key.PublicKey().Address(cfg.Params.AddressHRP)
 	}
@@ -350,6 +356,11 @@ func (e *Engine) buildBlock(st *blockchain.State, hs *heightState, r blockchain.
 			return nil
 		}
 	}
+	// Opérations d'escrow applicables après les transactions, dans l'ordre d'arrivée.
+	b.EscrowOps = st.FilterEscrowOps(b.Txs, e.escrowOps, r.Day, pDay.MaxBlockTxs-len(b.Txs), p)
+	if !ok() { // ne devrait pas arriver : la sélection est simulée
+		b.EscrowOps = nil
+	}
 	// Éléments facultatifs : chacun n'est gardé que si le bloc reste valide.
 	try := func(add, undo func()) {
 		add()
@@ -397,6 +408,7 @@ func withRoots(b *blockchain.Block) *blockchain.Block {
 	b.Header.ParticipantsRoot = blockchain.ParticipantsRoot(b.Participants)
 	b.Header.RegistryRoot = blockchain.RegistryRoot(b.Registrations, b.Observations, b.Equivocations, b.VoteEquivocations)
 	b.Header.VotesRoot = blockchain.VotesRoot(b.IPCVotes, b.Exclusions, b.ParamChanges)
+	b.Header.EscrowRoot = blockchain.EscrowRoot(b.EscrowOps)
 	return b
 }
 

@@ -24,32 +24,47 @@ type Account struct {
 
 type addrKey = [crypto.AddressHashSize]byte
 
-// State est l'état on-chain : comptes (modèle Account), registre des nœuds et IPC.
+// State est l'état on-chain : comptes (modèle Account), registre des nœuds, IPC, paramètres,
+// échanges sous escrow et réputation.
 type State struct {
 	accounts map[addrKey]Account
 	nodes    registry
 	baseIPC  IPCRecord // IPC du genesis : 1 ETL = 1 unité de cet IPC (règle immuable n°1)
 	gov      govState  // paramètres gouvernables en vigueur et changements en attente
 	ipc      IPCRecord // dernier IPC validé par vote 2/3
+	escrows  map[crypto.Hash]Escrow
+	reps     map[addrKey]Reputation
 }
 
 // NewState renvoie un état vide.
 func NewState() *State {
-	return &State{accounts: map[addrKey]Account{}, nodes: registry{}}
+	return &State{accounts: map[addrKey]Account{}, nodes: registry{}, escrows: map[crypto.Hash]Escrow{}, reps: map[addrKey]Reputation{}}
+}
+
+// EscrowData regroupe les échanges et la réputation chargés depuis le stockage.
+type EscrowData struct {
+	Escrows     map[crypto.Hash]Escrow
+	Reputations map[addrKey]Reputation
 }
 
 // NewStateFrom reconstruit un état chargé depuis le stockage.
 // L'appelant doit vérifier Root() contre le StateRoot du dernier bloc.
 func NewStateFrom(accounts map[addrKey]Account, nodes map[addrKey]Node, baseIPC, ipc IPCRecord,
-	params map[ParamID]uint64, pending map[ParamID]PendingParam) *State {
+	params map[ParamID]uint64, pending map[ParamID]PendingParam, esc EscrowData) *State {
 	if params == nil {
 		params = map[ParamID]uint64{}
 	}
 	if pending == nil {
 		pending = map[ParamID]PendingParam{}
 	}
+	if esc.Escrows == nil {
+		esc.Escrows = map[crypto.Hash]Escrow{}
+	}
+	if esc.Reputations == nil {
+		esc.Reputations = map[addrKey]Reputation{}
+	}
 	return &State{accounts: accounts, nodes: registry(nodes), baseIPC: baseIPC, ipc: ipc,
-		gov: govState{values: params, pending: pending}}
+		gov: govState{values: params, pending: pending}, escrows: esc.Escrows, reps: esc.Reputations}
 }
 
 // IPC renvoie le dernier IPC validé ; BaseIPC celui du genesis.
@@ -82,14 +97,15 @@ func (s *State) ActiveCount() int {
 	return s.nodes.activeCount()
 }
 
-// Root renvoie la racine de Merkle de l'état : comptes et registre, triés par adresse.
-// Gravée dans chaque en-tête (StateRoot) et validée par le vote 2/3, elle permet à
-// quiconque de vérifier un instantané de l'état sans rejouer toute la chaîne.
+// Root renvoie la racine de Merkle de l'état : comptes, registre, IPC, paramètres, échanges et
+// réputation, triés par clé. Gravée dans chaque en-tête (StateRoot) et validée par le vote 2/3,
+// elle permet à quiconque de vérifier un instantané de l'état sans rejouer toute la chaîne.
 func (s *State) Root() crypto.Hash {
-	return stateRoot(s.accounts, s.nodes, s.baseIPC, s.ipc, s.gov)
+	return stateRoot(s.accounts, s.nodes, s.baseIPC, s.ipc, s.gov, s.escrows, s.reps)
 }
 
-func stateRoot(accounts map[addrKey]Account, nodes registry, baseIPC, ipc IPCRecord, gov govState) crypto.Hash {
+func stateRoot(accounts map[addrKey]Account, nodes registry, baseIPC, ipc IPCRecord, gov govState,
+	escrows map[crypto.Hash]Escrow, reps map[addrKey]Reputation) crypto.Hash {
 	accLeaves := make([]crypto.Hash, 0, len(accounts))
 	for _, k := range sortedKeys(accounts) {
 		leaf := append([]byte{'A'}, k[:]...)
@@ -102,7 +118,27 @@ func stateRoot(accounts map[addrKey]Account, nodes registry, baseIPC, ipc IPCRec
 	}
 	ipcLeaf := crypto.Sum(crypto.ContextState, appendIPCRecord(appendIPCRecord([]byte{'I'}, &baseIPC), &ipc))
 	govLeaf := crypto.Sum(crypto.ContextState, append([]byte{'G'}, gov.encode()...))
-	return merkleRoot([]crypto.Hash{merkleRoot(accLeaves), merkleRoot(nodeLeaves), ipcLeaf, govLeaf})
+	escLeaves := make([]crypto.Hash, 0, len(escrows))
+	for _, id := range sortedHashes(escrows) {
+		leaf := append([]byte{'E'}, id[:]...)
+		escLeaves = append(escLeaves, crypto.Sum(crypto.ContextState, AppendEscrow(leaf, escrows[id])))
+	}
+	repLeaves := make([]crypto.Hash, 0, len(reps))
+	for _, k := range sortedKeys(reps) {
+		leaf := append([]byte{'R'}, k[:]...)
+		repLeaves = append(repLeaves, crypto.Sum(crypto.ContextState, AppendReputation(leaf, reps[k])))
+	}
+	return merkleRoot([]crypto.Hash{merkleRoot(accLeaves), merkleRoot(nodeLeaves), ipcLeaf, govLeaf,
+		merkleRoot(escLeaves), merkleRoot(repLeaves)})
+}
+
+func sortedHashes[V any](m map[crypto.Hash]V) []crypto.Hash {
+	keys := make([]crypto.Hash, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return bytes.Compare(keys[i][:], keys[j][:]) < 0 })
+	return keys
 }
 
 func sortedKeys[V any](m map[addrKey]V) []addrKey {
@@ -117,13 +153,16 @@ func sortedKeys[V any](m map[addrKey]V) []addrKey {
 // Changes est l'effet d'un bloc sur l'état, calculé sans modifier l'état.
 // Le stockage l'écrit sur disque, puis Commit l'applique en mémoire.
 type Changes struct {
-	Accounts     map[addrKey]Account // comptes modifiés
-	Nodes        map[addrKey]Node    // entrées du registre créées ou modifiées
-	DeletedNodes []addrKey           // entrées du registre supprimées (candidatures échouées)
-	BaseIPC      IPCRecord           // IPC du genesis
-	IPC          IPCRecord           // IPC courant après le bloc
-	Gov          []byte              // paramètres gouvernables après le bloc (encodés, pour le stockage)
-	Root         crypto.Hash         // racine de l'état après le bloc
+	Accounts       map[addrKey]Account    // comptes modifiés
+	Nodes          map[addrKey]Node       // entrées du registre créées ou modifiées
+	DeletedNodes   []addrKey              // entrées du registre supprimées (candidatures échouées)
+	BaseIPC        IPCRecord              // IPC du genesis
+	IPC            IPCRecord              // IPC courant après le bloc
+	Gov            []byte                 // paramètres gouvernables après le bloc (encodés, pour le stockage)
+	Escrows        map[crypto.Hash]Escrow // échanges créés ou modifiés
+	DeletedEscrows []crypto.Hash          // échanges élagués
+	Reputations    map[addrKey]Reputation // réputations modifiées
+	Root           crypto.Hash            // racine de l'état après le bloc
 
 	nodes registry // registre complet après le bloc
 	gov   govState // paramètres après le bloc
@@ -170,6 +209,15 @@ func (s *State) Commit(c *Changes) {
 	s.nodes = c.nodes
 	s.baseIPC, s.ipc = c.BaseIPC, c.IPC
 	s.gov = c.gov
+	for id, e := range c.Escrows {
+		s.escrows[id] = e
+	}
+	for _, id := range c.DeletedEscrows {
+		delete(s.escrows, id)
+	}
+	for k, r := range c.Reputations {
+		s.reps[k] = r
+	}
 }
 
 func (s *State) prepare(b *Block, p Params) (*Changes, error) {
@@ -187,7 +235,7 @@ func (s *State) prepare(b *Block, p Params) (*Changes, error) {
 	changes := map[addrKey]Account{}
 
 	if h.Height == 0 {
-		if len(b.Txs) > 0 || len(b.Participants) > 0 || len(b.Registrations) > 0 ||
+		if len(b.Txs) > 0 || len(b.Participants) > 0 || len(b.Registrations) > 0 || len(b.EscrowOps) > 0 ||
 			len(b.Observations) > 0 || len(b.Equivocations) > 0 || len(b.VoteEquivocations) > 0 {
 			return nil, ErrGenesisContent
 		}
@@ -200,7 +248,7 @@ func (s *State) prepare(b *Block, p Params) (*Changes, error) {
 		if len(b.ParamChanges) > 0 {
 			return nil, ErrGenesisContent
 		}
-		return s.changes(changes, nodes, *h.IPC, *h.IPC, gov), nil
+		return s.changes(changes, nodes, *h.IPC, *h.IPC, gov, nil), nil
 	}
 
 	// Registre : le nombre de nœuds actifs est compté au début du bloc.
@@ -237,47 +285,28 @@ func (s *State) prepare(b *Block, p Params) (*Changes, error) {
 	}
 	nodes.applyTransitions(day, p)
 
-	// Comptes
+	// Comptes : transactions, puis opérations d'escrow.
 	get := func(k addrKey) Account {
 		if a, ok := changes[k]; ok {
 			return a
 		}
 		return s.accounts[k]
 	}
-	var fees uint64
-	for i := range b.Txs {
-		tx := &b.Txs[i]
-		if err := tx.Verify(p); err != nil {
-			return nil, err
-		}
-		if tx.Timestamp > h.Timestamp {
-			return nil, ErrTxFuture
-		}
-		from := get(tx.From.Hash)
-		if tx.Nonce != from.Nonce {
-			return nil, ErrNonce
-		}
-		cost, err := checkedAdd(tx.Amount, tx.Fee)
-		if err != nil {
-			return nil, err
-		}
-		if from.Balance < cost {
-			return nil, ErrInsufficientFunds
-		}
-		from.Balance -= cost
-		from.Nonce++
-		changes[tx.From.Hash] = from
-
-		to := get(tx.To.Hash)
-		if to.Balance, err = checkedAdd(to.Balance, tx.Amount); err != nil {
-			return nil, err
-		}
-		changes[tx.To.Hash] = to
-
-		if fees, err = checkedAdd(fees, tx.Fee); err != nil {
+	set := func(k addrKey, a Account) { changes[k] = a }
+	fees, err := applyTxs(b.Txs, h.Timestamp, p, get, set)
+	if err != nil {
+		return nil, err
+	}
+	esc := s.newEscrowView(h.Timestamp, p, get, set)
+	for i := range b.EscrowOps {
+		if err := esc.apply(&b.EscrowOps[i]); err != nil {
 			return nil, err
 		}
 	}
+	if fees, err = checkedAdd(fees, esc.fees); err != nil {
+		return nil, err
+	}
+	deleted := esc.prune()
 
 	// Récompense du jour partagée entre tous les participants, sauf si moins de
 	// MinActiveNodes nœuds sont actifs ; frais au proposant.
@@ -314,12 +343,62 @@ func (s *State) prepare(b *Block, p Params) (*Changes, error) {
 	if err := credit(h.Proposer.Hash, fees); err != nil {
 		return nil, err
 	}
-	return s.changes(changes, nodes, s.baseIPC, ipc, gov), nil
+	c := s.changes(changes, nodes, s.baseIPC, ipc, gov, &escrowChanges{esc.escrows, deleted, esc.reps})
+	return c, nil
+}
+
+// applyTxs applique les transactions d'un bloc daté blockTime et renvoie la somme des frais.
+func applyTxs(txs []Transaction, blockTime int64, p Params, get func(addrKey) Account, set func(addrKey, Account)) (uint64, error) {
+	var fees uint64
+	for i := range txs {
+		tx := &txs[i]
+		if err := tx.Verify(p); err != nil {
+			return 0, err
+		}
+		if tx.Timestamp > blockTime {
+			return 0, ErrTxFuture
+		}
+		from := get(tx.From.Hash)
+		if tx.Nonce != from.Nonce {
+			return 0, ErrNonce
+		}
+		cost, err := checkedAdd(tx.Amount, tx.Fee)
+		if err != nil {
+			return 0, err
+		}
+		if from.Balance < cost {
+			return 0, ErrInsufficientFunds
+		}
+		from.Balance -= cost
+		from.Nonce++
+		set(tx.From.Hash, from)
+
+		to := get(tx.To.Hash)
+		if to.Balance, err = checkedAdd(to.Balance, tx.Amount); err != nil {
+			return 0, err
+		}
+		set(tx.To.Hash, to)
+
+		if fees, err = checkedAdd(fees, tx.Fee); err != nil {
+			return 0, err
+		}
+	}
+	return fees, nil
+}
+
+type escrowChanges struct {
+	escrows map[crypto.Hash]Escrow
+	deleted []crypto.Hash
+	reps    map[addrKey]Reputation
 }
 
 // changes assemble le résultat : différences du registre et racine de l'état futur.
-func (s *State) changes(accounts map[addrKey]Account, nodes registry, baseIPC, ipc IPCRecord, gov govState) *Changes {
-	c := &Changes{Accounts: accounts, Nodes: map[addrKey]Node{}, BaseIPC: baseIPC, IPC: ipc, nodes: nodes, gov: gov}
+func (s *State) changes(accounts map[addrKey]Account, nodes registry, baseIPC, ipc IPCRecord, gov govState, esc *escrowChanges) *Changes {
+	if esc == nil {
+		esc = &escrowChanges{}
+	}
+	c := &Changes{Accounts: accounts, Nodes: map[addrKey]Node{}, BaseIPC: baseIPC, IPC: ipc, nodes: nodes, gov: gov,
+		Escrows: esc.escrows, DeletedEscrows: esc.deleted, Reputations: esc.reps}
 	for k, n := range nodes {
 		if old, ok := s.nodes[k]; !ok || old != n {
 			c.Nodes[k] = n
@@ -337,7 +416,18 @@ func (s *State) changes(accounts map[addrKey]Account, nodes registry, baseIPC, i
 	for k, a := range accounts {
 		merged[k] = a
 	}
-	c.Root = stateRoot(merged, nodes, baseIPC, ipc, gov)
+	escrows := cloneMap(s.escrows)
+	for id, e := range esc.escrows {
+		escrows[id] = e
+	}
+	for _, id := range esc.deleted {
+		delete(escrows, id)
+	}
+	reps := cloneMap(s.reps)
+	for k, r := range esc.reps {
+		reps[k] = r
+	}
+	c.Root = stateRoot(merged, nodes, baseIPC, ipc, gov, escrows, reps)
 	c.Gov = gov.encode()
 	return c
 }

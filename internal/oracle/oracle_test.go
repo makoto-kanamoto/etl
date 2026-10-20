@@ -31,7 +31,7 @@ func (c fakeChain) ReadState(fn func(*blockchain.State)) { fn(c.st) }
 
 func chainAt(period string) fakeChain {
 	rec := blockchain.IPCRecord{Value: 100000, Period: period, SourceSHA256: [32]byte{1}}
-	return fakeChain{blockchain.NewStateFrom(nil, nil, rec, rec, nil, nil)}
+	return fakeChain{blockchain.NewStateFrom(nil, nil, rec, rec, nil, nil, blockchain.EscrowData{})}
 }
 
 type fakeVoter struct {

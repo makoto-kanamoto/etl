@@ -48,13 +48,15 @@ func DefaultOptions() Options {
 
 var (
 	bucketMeta     = []byte("meta")
-	bucketHeaders  = []byte("headers")  // hauteur → en-tête
-	bucketBlocks   = []byte("blocks")   // hauteur → bloc complet (élagué au-delà de KeepBlocks)
-	bucketCerts    = []byte("certs")    // hauteur → certificat de finalité (élagué comme les blocs)
-	bucketVotes    = []byte("votes")    // hauteur | jour | tour | type → hash du bloc voté par CE nœud
-	bucketHashes   = []byte("hashes")   // hash → hauteur
-	bucketAccounts = []byte("accounts") // adresse → compte
-	bucketNodes    = []byte("nodes")    // adresse → entrée du registre
+	bucketHeaders  = []byte("headers")     // hauteur → en-tête
+	bucketBlocks   = []byte("blocks")      // hauteur → bloc complet (élagué au-delà de KeepBlocks)
+	bucketCerts    = []byte("certs")       // hauteur → certificat de finalité (élagué comme les blocs)
+	bucketVotes    = []byte("votes")       // hauteur | jour | tour | type → hash du bloc voté par CE nœud
+	bucketHashes   = []byte("hashes")      // hash → hauteur
+	bucketAccounts = []byte("accounts")    // adresse → compte
+	bucketNodes    = []byte("nodes")       // adresse → entrée du registre
+	bucketEscrows  = []byte("escrows")     // identifiant → échange sous escrow (élagué 90 j après règlement)
+	bucketReps     = []byte("reputations") // adresse → réputation
 
 	keyChainID = []byte("chain_id")
 	keyGenesis = []byte("genesis")
@@ -107,7 +109,7 @@ func (s *Store) Close() error {
 
 func (s *Store) load() error {
 	return s.db.Update(func(tx *bolt.Tx) error {
-		for _, name := range [][]byte{bucketMeta, bucketHeaders, bucketBlocks, bucketCerts, bucketVotes, bucketHashes, bucketAccounts, bucketNodes} {
+		for _, name := range [][]byte{bucketMeta, bucketHeaders, bucketBlocks, bucketCerts, bucketVotes, bucketHashes, bucketAccounts, bucketNodes, bucketEscrows, bucketReps} {
 			if _, err := tx.CreateBucketIfNotExists(name); err != nil {
 				return err
 			}
@@ -161,7 +163,30 @@ func (s *Store) load() error {
 		if err != nil {
 			return ErrCorrupt
 		}
-		state := blockchain.NewStateFrom(accounts, nodes, baseIPC, ipc, params, pending)
+		esc := blockchain.EscrowData{Escrows: map[crypto.Hash]blockchain.Escrow{}, Reputations: map[[crypto.AddressHashSize]byte]blockchain.Reputation{}}
+		err = tx.Bucket(bucketEscrows).ForEach(func(k, v []byte) error {
+			e, err := blockchain.DecodeEscrow(v, s.p.AddressHRP)
+			if err != nil || len(k) != crypto.HashSize {
+				return ErrCorrupt
+			}
+			esc.Escrows[crypto.Hash(k)] = e
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		err = tx.Bucket(bucketReps).ForEach(func(k, v []byte) error {
+			r, err := blockchain.DecodeReputation(v)
+			if err != nil || len(k) != crypto.AddressHashSize {
+				return ErrCorrupt
+			}
+			esc.Reputations[[crypto.AddressHashSize]byte(k)] = r
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		state := blockchain.NewStateFrom(accounts, nodes, baseIPC, ipc, params, pending, esc)
 		if state.Root() != tip.StateRoot {
 			return ErrCorrupt
 		}
@@ -279,6 +304,22 @@ func (s *Store) write(tx *bolt.Tx, b *blockchain.Block, c *blockchain.Changes) e
 	}
 	for _, k := range c.DeletedNodes {
 		if err := nodes.Delete(k[:]); err != nil {
+			return err
+		}
+	}
+	escrows, reps := tx.Bucket(bucketEscrows), tx.Bucket(bucketReps)
+	for id, e := range c.Escrows {
+		if err := escrows.Put(id[:], blockchain.AppendEscrow(nil, e)); err != nil {
+			return err
+		}
+	}
+	for _, id := range c.DeletedEscrows {
+		if err := escrows.Delete(id[:]); err != nil {
+			return err
+		}
+	}
+	for k, r := range c.Reputations {
+		if err := reps.Put(k[:], blockchain.AppendReputation(nil, r)); err != nil {
 			return err
 		}
 	}

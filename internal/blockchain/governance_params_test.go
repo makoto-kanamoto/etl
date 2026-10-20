@@ -217,7 +217,7 @@ func TestParamCodec(t *testing.T) {
 			t.Fatalf("paramètres tronqués à %d octets acceptés", i)
 		}
 	}
-	if s := NewStateFrom(n.st.accounts, n.st.nodes, n.st.baseIPC, n.st.ipc, values, pending); s.Root() != n.st.Root() {
+	if s := NewStateFrom(n.st.accounts, n.st.nodes, n.st.baseIPC, n.st.ipc, values, pending, EscrowData{}); s.Root() != n.st.Root() {
 		t.Fatal("état rechargé : racine différente")
 	}
 }

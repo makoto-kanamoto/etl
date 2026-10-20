@@ -111,6 +111,7 @@ func (n *Net) Build(tb testing.TB, d int, edit func(*blockchain.Block)) blockcha
 	b.Header.ParticipantsRoot = blockchain.ParticipantsRoot(b.Participants)
 	b.Header.RegistryRoot = blockchain.RegistryRoot(b.Registrations, b.Observations, b.Equivocations, b.VoteEquivocations)
 	b.Header.VotesRoot = blockchain.VotesRoot(b.IPCVotes, b.Exclusions, b.ParamChanges)
+	b.Header.EscrowRoot = blockchain.EscrowRoot(b.EscrowOps)
 	if root, err := n.State.PreviewRoot(&b, n.P); err == nil {
 		b.Header.StateRoot = root
 	}
