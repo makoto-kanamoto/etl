@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/makoto-kanamoto/etl/internal/blockchain"
 	"github.com/makoto-kanamoto/etl/internal/blockchain/chaintest"
 	"github.com/makoto-kanamoto/etl/internal/crypto"
@@ -177,5 +179,39 @@ func TestTransferAcceptedByConsensus(t *testing.T) {
 	tx2, err := w.Transfer(net.Founders[1].Addr, blockchain.UnitsPerETL/2, 1, chaintest.Day(2), voted)
 	if err != nil || tx2.Fee != blockchain.UnitsPerETL/2*20/10000 {
 		t.Fatalf("frais en vigueur : %d, %v", tx2.Fee, err)
+	}
+}
+
+// La phrase de passe est normalisée en NFC : la forme composée (« é », un caractère) et la forme
+// décomposée (e + accent combinant) ouvrent le même coffre, et la longueur se compte après NFC.
+func TestPassphraseNormalizedNFC(t *testing.T) {
+	nfc := norm.NFC.String("phrase de passe élève été")
+	nfd := norm.NFD.String(nfc)
+	if nfc == nfd {
+		t.Fatal("prémisse : formes NFC et NFD différentes")
+	}
+	p := path(t)
+	w, _, err := Create(p, nfc, French, "etl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o, err := Open(p, nfd, "etl"); err != nil || o.Address != w.Address {
+		t.Fatalf("coffre NFC ouvert avec la forme NFD : %v", err)
+	}
+	if err := ChangePassphrase(p, nfd, norm.NFD.String("nouvelle phrase élève"), "etl"); err != nil {
+		t.Fatalf("changement depuis la forme NFD : %v", err)
+	}
+	if _, err := Open(p, norm.NFC.String("nouvelle phrase élève"), "etl"); err != nil {
+		t.Fatalf("nouvelle phrase, forme NFC : %v", err)
+	}
+	// 11 caractères en NFC, 15 points de code en NFD : trop court dans les deux cas.
+	short := norm.NFC.String("élèveélève!")
+	if len([]rune(short)) != 11 || len([]rune(norm.NFD.String(short))) != 15 {
+		t.Fatal("prémisse : 11 caractères NFC, 15 en NFD")
+	}
+	for _, pass := range []string{short, norm.NFD.String(short)} {
+		if _, _, err := Create(path(t), pass, English, "etl"); err != ErrPassphraseShort {
+			t.Fatalf("phrase de passe courte (%d points de code) : err = %v", len([]rune(pass)), err)
+		}
 	}
 }

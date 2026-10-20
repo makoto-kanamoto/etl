@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/makoto-kanamoto/etl/internal/blockchain"
 	"github.com/makoto-kanamoto/etl/internal/crypto"
@@ -28,10 +29,14 @@ import (
 // Argon2id. L'en-tête (version, adresse, paramètres, sel) est AUTHENTIFIÉ : modifier l'adresse
 // affichée ou affaiblir les paramètres rend le fichier illisible. Les paramètres sont inscrits dans
 // le fichier pour pouvoir être renforcés plus tard sans casser les anciens coffres.
+//
+// La phrase de passe est normalisée en NFC avant usage : « é » tapé en un caractère (macOS, Windows)
+// ou en deux (e + accent combinant, certains claviers ou copier-coller) déverrouille le même coffre.
+// Le coffre du navigateur (web/wallet/vault.js) applique la même règle.
 
 const (
 	fileVersion   = 1
-	MinPassphrase = 12 // caractères : la longueur compte plus que les symboles
+	MinPassphrase = 12 // caractères (après NFC) : la longueur compte plus que les symboles
 
 	defaultTime    = 3
 	defaultMemory  = 64 * 1024 // Kio : 64 Mio
@@ -95,7 +100,7 @@ func (f *keyFile) aead(passphrase string) (cipher.AEAD, error) {
 		k.Threads < 1 || k.Threads > maxThreads || len(k.Salt) != 16 || len(f.Cipher.Nonce) != 12 {
 		return nil, ErrFormat
 	}
-	key := argon2.IDKey([]byte(passphrase), k.Salt, k.Time, k.MemoryKiB, k.Threads, 32)
+	key := argon2.IDKey([]byte(norm.NFC.String(passphrase)), k.Salt, k.Time, k.MemoryKiB, k.Threads, 32)
 	defer clear(key)
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -225,7 +230,7 @@ func ChangePassphrase(path, old, new, hrp string) error {
 }
 
 func checkPassphrase(p string) error {
-	if utf8.RuneCountInString(p) < MinPassphrase {
+	if utf8.RuneCountInString(norm.NFC.String(p)) < MinPassphrase {
 		return ErrPassphraseShort
 	}
 	return nil

@@ -1,0 +1,194 @@
+{
+  "chain_id": "ETL-FR",
+  "hrp": "etl",
+  "keys": [
+    {
+      "private": "0000000000000000000000000000000000000000000000000000000000000001",
+      "public": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "address": "etl1qnwxsgqx9c4phyx8vjt6650fl5zgxzcaav8qcw0",
+      "phrase_fr": "abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser abaisser cyanure",
+      "phrase_en": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon diesel"
+    },
+    {
+      "private": "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140",
+      "public": "0379be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "address": "etl1q4l4pd352ee0a4aa0jmekn7kzqzuxexq223l89u",
+      "phrase_fr": "zoologie zoologie zoologie zoologie zoologie zoologie zoologie zoologie zoologie zoologie zoologie voguer ogive fureur métal témoin multiple situer usuel poisson reporter belette adhésif affiche",
+      "phrase_en": "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo word priority hover one trouble parent target virus rug snack brass agree alpha"
+    },
+    {
+      "private": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "public": "0284bf7562262bbd6940085748f3be6afa52ae317155181ece31b66351ccffa4b0",
+      "address": "etl1qnm7rytmt7vtda9gphuvaqcdhg7cekyd42sm5w7",
+      "phrase_fr": "abrasif appuyer prétexte alléger exister intrigue brousse dégrafer amour flamme intense bolide armature algèbre élève nature aviser prénom diluer comédie problème limonade huileux autruche",
+      "phrase_en": "absurd avoid scissors anxiety gather lottery category door army half long cage bachelor another expect people blade school educate curtain scrub monitor lady beyond"
+    },
+    {
+      "private": "55c5f1391f196e2fd126e27d10b47bef47a3b48d9058558cd05cbdea3b7bff92",
+      "public": "034ad67233735dc155793c2c7311892bd88aea67ffcabb233c1d46c8d008d6077f",
+      "address": "etl1qqg850vphtjul66melv309rauvsjygsjjeagccp",
+      "phrase_fr": "entendre chien édifier damier mascotte bafouer détacher siècle humour ivresse blanchir soigneux hiberner sénateur commande amateur enseigne figure avoine horloge négation pompier volume esquiver",
+      "phrase_en": "fiction convince exact dilemma notice blood duty sword laptop mad bus teach kick surge curve arch few grief blame knock photo sadness wrestle foil"
+    }
+  ],
+  "signatures": [
+    {
+      "key": 0,
+      "purpose": "tx",
+      "message": "",
+      "signature": "1f632ae18677c942ada0c8f1bf149d4e80d85d535d09f9e131c0be7c1a6108620a3cc30a5dddc20c7bc27e5d45ea88099f6b3f6738db851e41e6eb983683ca3cc9"
+    },
+    {
+      "key": 1,
+      "purpose": "participation",
+      "message": "010101",
+      "signature": "1fb633b41b07caf8b2c86b95a5636f543ecf3a85f313dc3b9720936c853007d0e71512a5468801f431a3e71006487697b834d42deee30f6cdb70d7bf8e27a937d6"
+    },
+    {
+      "key": 2,
+      "purpose": "block-proposal",
+      "message": "0202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202",
+      "signature": "1f29a425baec0346273fe2fd8b695d2cba87ea230afb084aabce8a084b4ea54b687f1604d878875d6f38f73796d9fdf2c2674053d0414002048090dde8496983a7"
+    },
+    {
+      "key": 3,
+      "purpose": "proposal",
+      "message": "",
+      "signature": "1fdd672253a1b4b9e1d14c584afdfeada8d582caa95c0b72d32550fd89aef14c600bc2e131c84c540814bdef642073ef3d62f8cfa2cdd6e96d62165fd152152202"
+    },
+    {
+      "key": 0,
+      "purpose": "registration",
+      "message": "040404",
+      "signature": "2086b0977f1914e58a6e2f76552eb909ed40482ff9af595fd358bea91a794fd17b635cc8c46f82ff8680520b39d281c520448d04956207c2d3ac388e92cfe3ccb2"
+    },
+    {
+      "key": 1,
+      "purpose": "sponsorship",
+      "message": "0505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505",
+      "signature": "208a241f144e85573e7620cbd06b8d8f78bf0a952b451ce7e2195eccbb2e6c59a0266562343c450ff4ea4291229eea9e702c72e6a8389da40fedf4d097ab8ac77e"
+    },
+    {
+      "key": 2,
+      "purpose": "block-vote",
+      "message": "",
+      "signature": "1f9144e23f53a5c6c1bad412ee283d862df8a191077d47dac78ff8c681c4f744f104c7a5951270480732b147d369e5fa4719f6f7b8f85daf70b66065975fd9a76b"
+    },
+    {
+      "key": 3,
+      "purpose": "ipc-vote",
+      "message": "070707",
+      "signature": "200cd8061c1e5015e058b2202b6b01ef10eca37b4b1a058d840bd5a3868a8da27c0f00fe95428a24d0ae070d2520e17d61983d59de07e5965aa30b764efd5e59c6"
+    },
+    {
+      "key": 0,
+      "purpose": "exclusion-vote",
+      "message": "0808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808",
+      "signature": "1fcc6bf54bc95dee66f9adcd0ad0f3e44cae4347d69dea9a3bb1d1d9d92cf99bc86962d76e86f1954005920d7be166665a0b5a7fcbf815f25a76ae9cde3f820a11"
+    },
+    {
+      "key": 1,
+      "purpose": "param-vote",
+      "message": "",
+      "signature": "20cff19f88f6af9108c2c45403aeb5dd2b4f83a0be8274bd720829e8dd2328c8203402add8b50874492d9fe244b204f0feebc8cae9fdab506e29311172f4a81aa5"
+    }
+  ],
+  "transactions": [
+    {
+      "key": 0,
+      "to": "etl1q4l4pd352ee0a4aa0jmekn7kzqzuxexq223l89u",
+      "amount": "1",
+      "nonce": "0",
+      "timestamp": "1800000000",
+      "fee_bps": "10",
+      "min_fee": "10000",
+      "fee": "10000",
+      "body": "019b8d0400c5c5437218ec92f5aa3d3fa0906163bdafea16c68ace5fdaf7af96f369fac200b86c980a000000000000000100000000000027100000000000000000000000006b49d200",
+      "signature": "20d67e0448c1e21222518da6a79492ad8fe813e0bfe4628358d536ec4b380a35304a875bcaa4b84adada3f47de5424e01d2e626a90e3b794f867ed1d2392e5c599",
+      "id": "6c9ba089266b8cd14c397392317a236af7008946da5110e84efde5ab9acc292b",
+      "encoded": "019b8d0400c5c5437218ec92f5aa3d3fa0906163bdafea16c68ace5fdaf7af96f369fac200b86c980a000000000000000100000000000027100000000000000000000000006b49d20020d67e0448c1e21222518da6a79492ad8fe813e0bfe4628358d536ec4b380a35304a875bcaa4b84adada3f47de5424e01d2e626a90e3b794f867ed1d2392e5c599"
+    },
+    {
+      "key": 1,
+      "to": "etl1qnm7rytmt7vtda9gphuvaqcdhg7cekyd42sm5w7",
+      "amount": "10000000",
+      "nonce": "7",
+      "timestamp": "1800000000",
+      "fee_bps": "10",
+      "min_fee": "10000",
+      "fee": "10000",
+      "body": "01afea16c68ace5fdaf7af96f369fac200b86c980a9efc322f6bf316de9501bf19d061b747b19b11b5000000000098968000000000000027100000000000000007000000006b49d200",
+      "signature": "1f313b2d37b93bb77137732f6357baade5edfcd947ce8d7e20458cf947c242e72a59c42b5a0ed38c870179be9970f5fecd98bcd0a3adc001caad7d6e398d2e9fbb",
+      "id": "4e13ee0072d05344c5bb06a32783e46f7ec2d584596bc19725fa7a115037c6c0",
+      "encoded": "01afea16c68ace5fdaf7af96f369fac200b86c980a9efc322f6bf316de9501bf19d061b747b19b11b5000000000098968000000000000027100000000000000007000000006b49d2001f313b2d37b93bb77137732f6357baade5edfcd947ce8d7e20458cf947c242e72a59c42b5a0ed38c870179be9970f5fecd98bcd0a3adc001caad7d6e398d2e9fbb"
+    },
+    {
+      "key": 2,
+      "to": "etl1qqg850vphtjul66melv309rauvsjygsjjeagccp",
+      "amount": "150000000",
+      "nonce": "42",
+      "timestamp": "1793000000",
+      "fee_bps": "10",
+      "min_fee": "10000",
+      "fee": "150000",
+      "body": "019efc322f6bf316de9501bf19d061b747b19b11b5020f47b0375cb9fd6b79fb22f28fbc64244442520000000008f0d18000000000000249f0000000000000002a000000006adf0240",
+      "signature": "1f30c1a3f5e88706ea47dbfeeec19d6d3f0ce8501a111358ba71f146c0d93bac021bce690f4e52a335ddc5cbc80c9f871a974a23f268725ece1153de85c6e8652c",
+      "id": "fa10a0f11358676bbbfd608c1f29c66ff574099a8c0f38aa4f703512910d9f6a",
+      "encoded": "019efc322f6bf316de9501bf19d061b747b19b11b5020f47b0375cb9fd6b79fb22f28fbc64244442520000000008f0d18000000000000249f0000000000000002a000000006adf02401f30c1a3f5e88706ea47dbfeeec19d6d3f0ce8501a111358ba71f146c0d93bac021bce690f4e52a335ddc5cbc80c9f871a974a23f268725ece1153de85c6e8652c"
+    },
+    {
+      "key": 3,
+      "to": "etl1qnwxsgqx9c4phyx8vjt6650fl5zgxzcaav8qcw0",
+      "amount": "100000000",
+      "nonce": "1",
+      "timestamp": "1800086400",
+      "fee_bps": "20",
+      "min_fee": "20000",
+      "fee": "200000",
+      "body": "01020f47b0375cb9fd6b79fb22f28fbc64244442529b8d0400c5c5437218ec92f5aa3d3fa0906163bd0000000005f5e1000000000000030d400000000000000001000000006b4b2380",
+      "signature": "20c0813fdcec5219e510e0ebbe71ef48f0daa7ed247c0a35f6f33dd50b2cae5e6d0a8b704a5eaeeff39e835165be9472242d75051488e7254a2b20b10eb2b948ce",
+      "id": "e1a131ab303604f20d7f1151b23e7e2d33e5f7475e9459030e5e99fda44629ae",
+      "encoded": "01020f47b0375cb9fd6b79fb22f28fbc64244442529b8d0400c5c5437218ec92f5aa3d3fa0906163bd0000000005f5e1000000000000030d400000000000000001000000006b4b238020c0813fdcec5219e510e0ebbe71ef48f0daa7ed247c0a35f6f33dd50b2cae5e6d0a8b704a5eaeeff39e835165be9472242d75051488e7254a2b20b10eb2b948ce"
+    },
+    {
+      "key": 0,
+      "to": "etl1qqg850vphtjul66melv309rauvsjygsjjeagccp",
+      "amount": "18446744073709551615",
+      "nonce": "18446744073709551615",
+      "timestamp": "9223372036854775807",
+      "fee_bps": "10000",
+      "min_fee": "0",
+      "fee": "18446744073709551615",
+      "body": "019b8d0400c5c5437218ec92f5aa3d3fa0906163bd020f47b0375cb9fd6b79fb22f28fbc6424444252ffffffffffffffffffffffffffffffffffffffffffffffff7fffffffffffffff",
+      "signature": "209f0e07e790b3cdea5eeca0c0e7cfb816265590bdceafab0df005e7d14c005c727fd6b7f0d066db34ebad461e213b3e4fcc24620cb3decfd0b305a159a240f6c5",
+      "id": "dedc5ba47403e02d6c2c80824a13262293e61c8f6d6edf0de17c52fffa496f6f",
+      "encoded": "019b8d0400c5c5437218ec92f5aa3d3fa0906163bd020f47b0375cb9fd6b79fb22f28fbc6424444252ffffffffffffffffffffffffffffffffffffffffffffffff7fffffffffffffff209f0e07e790b3cdea5eeca0c0e7cfb816265590bdceafab0df005e7d14c005c727fd6b7f0d066db34ebad461e213b3e4fcc24620cb3decfd0b305a159a240f6c5"
+    },
+    {
+      "key": 1,
+      "to": "etl1qnwxsgqx9c4phyx8vjt6650fl5zgxzcaav8qcw0",
+      "amount": "123456789",
+      "nonce": "3",
+      "timestamp": "-1",
+      "fee_bps": "5",
+      "min_fee": "10000",
+      "fee": "61728",
+      "body": "01afea16c68ace5fdaf7af96f369fac200b86c980a9b8d0400c5c5437218ec92f5aa3d3fa0906163bd00000000075bcd15000000000000f1200000000000000003ffffffffffffffff",
+      "signature": "1f7e77c642e7fb6b339806ec286e4f72089f9a6e1abfca3e748adb0d8a88c155b8454ee0af94a2a5ffcd6402ee4f7ccc76eab95855826871944b200c6512d8d9b6",
+      "id": "fc2797676b21baee14ac6587dc54b97bdf238d406b851f41a18641ac779d4685",
+      "encoded": "01afea16c68ace5fdaf7af96f369fac200b86c980a9b8d0400c5c5437218ec92f5aa3d3fa0906163bd00000000075bcd15000000000000f1200000000000000003ffffffffffffffff1f7e77c642e7fb6b339806ec286e4f72089f9a6e1abfca3e748adb0d8a88c155b8454ee0af94a2a5ffcd6402ee4f7ccc76eab95855826871944b200c6512d8d9b6"
+    }
+  ],
+  "vaults": [
+    {
+      "passphrase": "correct horse battery staple",
+      "key": 2,
+      "vault": "{\"address\":\"etl1qnm7rytmt7vtda9gphuvaqcdhg7cekyd42sm5w7\",\"cipher\":{\"name\":\"aes-256-gcm\",\"nonce\":\"ICAgICAgICAgICAg\"},\"ciphertext\":\"tHdUtwjQPuSVj5jeSFDOfGHM4Bh7ESUFvz6nb6cspKCZRSuuQePa+Xw9mgPAPc1g\",\"kdf\":{\"iterations\":600000,\"name\":\"pbkdf2-sha256\",\"salt\":\"EBAQEBAQEBAQEBAQEBAQEA==\"},\"version\":1}"
+    },
+    {
+      "passphrase": "phrase de passe élève été",
+      "key": 3,
+      "vault": "{\"address\":\"etl1qqg850vphtjul66melv309rauvsjygsjjeagccp\",\"cipher\":{\"name\":\"aes-256-gcm\",\"nonce\":\"ISEhISEhISEhISEh\"},\"ciphertext\":\"AIGGPaT6vUnVYr1ha0BoUPAgHCK3F4t8go2YXRTe8z33Py90oLgDRaa7YYDLwqCF\",\"kdf\":{\"iterations\":600000,\"name\":\"pbkdf2-sha256\",\"salt\":\"EREREREREREREREREREREQ==\"},\"version\":1}"
+    }
+  ]
+}

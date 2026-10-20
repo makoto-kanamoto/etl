@@ -1,0 +1,24 @@
+{
+  "note": "Empreintes SRI (sha384) des fichiers tiers, vérifiées par vendor.test.js. Provenance : registre npm, archives contrôlées contre dist.integrity.",
+  "packages": {
+    "@noble/secp256k1@3.2.0": {
+      "dir": "vendor/noble-secp256k1-3.2.0",
+      "npm_integrity": "sha512-Z3ZAWOTxJ0EuTuZTi7Y69iK7GgrLHh8sgm45lVDhg/b3Nk1TpAiKhick2KkZisHuupeepSkyIydN/J459SdX1w=="
+    },
+    "@noble/hashes@2.4.0": {
+      "dir": "vendor/noble-hashes-2.4.0",
+      "npm_integrity": "sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA=="
+    }
+  },
+  "files": {
+    "vendor/noble-secp256k1-3.2.0/index.js": "sha384-4BHknTkY/0+1oNvQQZbk8OQpEajGr0DRx+BmOlsMLVGA7M4wKOaBCbB3oleI9Tul",
+    "vendor/noble-hashes-2.4.0/_blake.js": "sha384-rOU4Miz94772LfWtR0BKt7ADNRWghCLuiFZwl+YBOth14zJqyjySY5Qn0yc23/T4",
+    "vendor/noble-hashes-2.4.0/_md.js": "sha384-+inj+kU2SrziXaCzySRcSf7kOiLEfScN7pI3vq97++FGKDRSw3MJ0t0l37dQWmKc",
+    "vendor/noble-hashes-2.4.0/_u64.js": "sha384-SPLtaj6mblQ3NtLCy4eidRByUQWvhD8+J1MpyW8ejRRfwyGrzdElsKxcrcBmGjZY",
+    "vendor/noble-hashes-2.4.0/blake2.js": "sha384-vzOUDPVzzcaFAU+ZPG/75JDyZtpwZEfLNQBDrAVOeMyzDulPPpDEVVWFcqFJlmSv",
+    "vendor/noble-hashes-2.4.0/blake3.js": "sha384-E9R7rvWrC4i2O9K2foVuNJa//Zbv7TWHL15HosAw5Msg1mMvbfMlPEv9DzUxoq9t",
+    "vendor/noble-hashes-2.4.0/hmac.js": "sha384-T+vGWnGryWubEFH8lQdk8LN00eOX+mpsmHwdXuC6L6KIIn46POY/2hauzVrdjZNH",
+    "vendor/noble-hashes-2.4.0/sha2.js": "sha384-YXgpTrphhgj/WMtfF9PcPZQOE57vqATkv4wTjdFflOBTMR5ro2T6S/MkCc9vVH5q",
+    "vendor/noble-hashes-2.4.0/utils.js": "sha384-YFMR8BWPimRHARZs0bAtgjKOWPQL0ND/lZk6QwHVzhzx71FWSqzQb1ToPgVtqapB"
+  }
+}
