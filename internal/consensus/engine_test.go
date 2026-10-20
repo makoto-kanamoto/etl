@@ -372,8 +372,22 @@ func TestParamVoteFlow(t *testing.T) {
 	if fee != 10 {
 		t.Fatal("frais changés avant l'activation")
 	}
+	// Jour de l'activation, avant le bloc : aucun bloc finalisé depuis le jour 1, le mempool a encore les
+	// anciens frais ; une transaction soumise aux nouveaux frais doit être acceptée et incluse.
+	early, dest := s.nodes[4], s.nodes[8]
+	s.at(time.Unix(chaintest.Day(31), 0).Add(-2 * time.Hour))
+	f20early, _ := blockchain.RequiredFee(blockchain.UnitsPerETL/2, s.p.With(blockchain.ParamFeeBps, 20))
+	tx0 := blockchain.Transaction{From: early.wallet.Addr, To: dest.wallet.Addr, Amount: blockchain.UnitsPerETL / 2, Fee: f20early, Timestamp: s.now.Unix()}
+	_ = tx0.Sign(early.wallet.Key, s.p.ChainID)
+	if err := early.e.SubmitTransaction(tx0); err != nil {
+		t.Fatalf("transaction aux nouveaux frais le jour de l'activation : %v", err)
+	}
+	s.flush()
 	s.runDay(31)
 	s.requireHeight(2)
+	if b := mustBlock(t, s, 2); len(b.Txs) != 1 {
+		t.Fatal("transaction du jour de l'activation non incluse")
+	}
 	from, to := s.nodes[3], s.nodes[7]
 	s.at(time.Unix(chaintest.Day(32), 0).Add(-2 * time.Hour))
 	newP := s.p.With(blockchain.ParamFeeBps, 20)

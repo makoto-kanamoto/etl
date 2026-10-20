@@ -67,6 +67,11 @@ func TestValidateProposal(t *testing.T) {
 	weakPOL := NewCertificate(Prevote, &good.Block.Header, r0, votes(t, p, n.founders[:6], Prevote, &good.Block.Header, r0), p)
 	samePOL := pol
 	samePOL.Round = RoundID{day(2), 0}
+	// Vrais pré-votes au tour même de la re-proposition : signatures valides, mais preuve non antérieure.
+	r2 := RoundID{day(2), 0}
+	realSamePOL := NewCertificate(Prevote, &good.Block.Header, r2, votes(t, p, n.founders[:7], Prevote, &good.Block.Header, r2), p)
+	r21 := RoundID{day(2), 1}
+	laterPOL := NewCertificate(Prevote, &good.Block.Header, r21, votes(t, p, n.founders[:7], Prevote, &good.Block.Header, r21), p)
 	other := n.fresh(t, 1, 0, n.nominate(t, 1, n.founders[:9]), nil)
 	otherPOL := NewCertificate(Prevote, &other.Block.Header, r0, votes(t, p, n.founders[:7], Prevote, &other.Block.Header, r0), p)
 	resign := func(pr Proposal) Proposal { _ = pr.Sign(n.keys[pr.Proposer().Hash], p); return pr }
@@ -97,10 +102,31 @@ func TestValidateProposal(t *testing.T) {
 			x.Nomination = append(append([]Participation(nil), nom1...), participate(t, p, n.tip.Hash(), outsider, day(1)))
 			return x
 		}()), ErrProposalNomination},
+		// Nominations triées par ticket : seul le contrôle de chaque participation peut les refuser.
+		"nomination triée d'un non-admis": {resign(func() Proposal {
+			x := good
+			n.track(outsider)
+			x.Nomination = append(append([]Participation(nil), nom1...), participate(t, p, n.tip.Hash(), outsider, day(1)))
+			sortByTicket(x.Nomination, n.tip.Hash())
+			return x
+		}()), ErrProposalNomination},
+		"nomination triée d'une participation d'un autre jour": {resign(func() Proposal {
+			x := good
+			x.Nomination = []Participation{participate(t, p, n.tip.Hash(), n.founders[0], day(2))}
+			for _, pt := range nom1 {
+				if pt.Miner != n.founders[0].addr {
+					x.Nomination = append(x.Nomination, pt)
+				}
+			}
+			sortByTicket(x.Nomination, n.tip.Hash())
+			return x
+		}()), ErrProposalNomination},
 		"nouveau bloc d'un autre jour":  {resign(func() Proposal { x := good; x.Round.Day = day(2); x.Nomination = nom2; return x }()), ErrProposalFresh},
 		"re-proposition sans preuve":    {resign(func() Proposal { x := again; x.POL = nil; return x }()), ErrProposalFresh},
 		"preuve insuffisante":           {n.repropose(t, 2, 0, nom2, good.Block, &weakPOL), ErrProposalPOL},
 		"preuve pas antérieure au tour": {n.repropose(t, 2, 0, nom2, good.Block, &samePOL), ErrProposalPOL},
+		"preuve du même tour":           {n.repropose(t, 2, 0, nom2, good.Block, &realSamePOL), ErrProposalPOL},
+		"preuve d'un tour postérieur":   {n.repropose(t, 2, 0, nom2, good.Block, &laterPOL), ErrProposalPOL},
 		"preuve d'un autre bloc":        {n.repropose(t, 2, 0, nom2, good.Block, &otherPOL), ErrProposalPOL},
 		"bloc invalide": {resign(func() Proposal {
 			x := good

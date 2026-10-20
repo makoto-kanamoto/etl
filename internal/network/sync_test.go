@@ -128,21 +128,28 @@ func (c tamperChain) BlockAt(height uint64) (blockchain.Block, error) {
 func TestSyncMaliciousPeerBanned(t *testing.T) {
 	f := newFixture(t)
 	h := buildHistory(t, f.net, 20)
-	liar := f.syncHost(t, tamperChain{h.store(t, storage.Options{Pruning: false}, 20), 10}, func(c *Config) { c.Archive = true })
+	unlimited := func(c *Config) { c.RatePerSecond, c.RateBurst = 1e9, 1e9 }
+	liar := f.syncHost(t, tamperChain{h.store(t, storage.Options{Pruning: false}, 20), 10}, func(c *Config) { c.Archive = true; unlimited(c) })
 	// Le menteur est le seul nœud archive : toujours interrogé en premier (test déterministe).
 	// Le pair honnête, non archive, garde quand même ses 20 blocs (moins que la durée de conservation).
 	honest := f.syncHost(t, h.store(t, storage.DefaultOptions(), 20), nil)
 	fresh := h.store(t, storage.DefaultOptions(), 0)
-	node := f.syncHost(t, fresh, nil)
+	// Débit illimité : seul un bannissement POUR BLOC INVALIDE doit écarter le menteur
+	// (sinon le limiteur de débit masquerait une boucle de requêtes vers lui).
+	node := f.syncHost(t, fresh, unlimited)
 	connect(t, node, liar)
 	connect(t, node, honest)
-	if err := node.SyncOnce(context.Background()); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := node.SyncOnce(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if fresh.Tip().Height != 20 {
 		t.Fatalf("hauteur %d, attendu 20", fresh.Tip().Height)
 	}
-	eventually(t, "menteur déconnecté", func() bool { in, _ := liar.PeerCount(); return in == 0 })
+	if !node.IsBanned(liar.Addr()) {
+		t.Fatal("le nœud doit avoir banni le menteur pour bloc invalide")
+	}
 }
 
 func TestCheckpoints(t *testing.T) {
@@ -286,4 +293,54 @@ func TestSyncWire(t *testing.T) {
 func FuzzDecodeBlocks(f *testing.F) {
 	f.Add(encodeBlocks(1, [][]byte{{1}, {2, 3}}))
 	f.Fuzz(func(t *testing.T, in []byte) { _, _ = decodeBlocks(in) })
+}
+
+// Bloc concurrent dont le certificat ne vient pas de notre registre (aucun votant commun) :
+// simple donnée invalide — l'émetteur est banni, le nœud NE s'arrête PAS.
+func TestForeignConflictBansWithoutHalting(t *testing.T) {
+	f := newFixture(t)
+	other := chaintest.NewWithFounders(t, f.net.P, f.net.Founders)
+	b1, c1 := f.net.Next(t, 1, nil)
+	alt := other.Build(t, 1, func(b *blockchain.Block) { b.Participants = b.Participants[:9] })
+	// Certificat signé par 10 inconnus : signatures valides, mais aucun votant de notre registre.
+	var votes []blockchain.Vote
+	for i := 0; i < 10; i++ {
+		w := chaintest.NewWallet(t, f.net.P)
+		v, _ := blockchain.SignVote(w.Key, blockchain.Precommit, &alt.Header, chaintest.RoundOf(&alt.Header), f.net.P)
+		votes = append(votes, v)
+	}
+	fake := blockchain.NewCertificate(blockchain.Precommit, &alt.Header, chaintest.RoundOf(&alt.Header), votes, f.net.P)
+
+	h := &history{net: f.net, blocks: []blockchain.Block{b1}, certs: []blockchain.Certificate{c1}}
+	node := f.syncHost(t, h.store(t, storage.DefaultOptions(), 1), nil)
+	attacker := f.syncHost(t, nil, nil)
+	connect(t, attacker, node)
+	eventually(t, "connexion", func() bool { in, _ := node.PeerCount(); return in == 1 })
+	attacker.Broadcast(Message{Type: MsgFinalized, Payload: EncodeFinalized(&alt, &fake)})
+	eventually(t, "émetteur banni", func() bool { in, _ := node.PeerCount(); return in == 0 })
+	if node.Halted() {
+		t.Fatal("arrêt injustifié : aucun votant de notre registre n'a voté deux fois")
+	}
+}
+
+// Un nœud archive l'annonce dans la poignée de main ; un nœud ordinaire, non.
+func TestArchiveServiceAnnounced(t *testing.T) {
+	f := newFixture(t)
+	archive := f.host(t, newRecorder(Accept), func(c *Config) { c.Archive = true })
+	plain := f.host(t, newRecorder(Accept), nil)
+	node := f.host(t, newRecorder(Accept), func(c *Config) { c.MaxOutbound = 0 })
+	connect(t, node, archive)
+	connect(t, node, plain)
+	services := map[string]uint8{}
+	node.mu.Lock()
+	for p := range node.peers {
+		services[p.dialAddr] = p.services
+	}
+	node.mu.Unlock()
+	if services[archive.Addr().String()]&ServiceArchive == 0 {
+		t.Fatal("service archive non annoncé")
+	}
+	if services[plain.Addr().String()]&ServiceArchive != 0 {
+		t.Fatal("service archive annoncé à tort")
+	}
 }

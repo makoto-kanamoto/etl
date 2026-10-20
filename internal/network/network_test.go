@@ -389,3 +389,28 @@ func FuzzDecoders(f *testing.F) {
 		}
 	})
 }
+
+// Un message relayé n'est jamais renvoyé à celui qui l'a envoyé.
+func TestNoEchoToSender(t *testing.T) {
+	f := newFixture(t)
+	node := f.host(t, newRecorder(Accept), nil)
+	other := f.host(t, newRecorder(Accept), func(c *Config) { c.MaxOutbound = 0 })
+	_ = other.Connect(node.Addr().String())
+	conn := rawClient(t, f, node.Addr().String())
+	defer conn.Close()
+	eventually(t, "connexions", func() bool { in, _ := node.PeerCount(); return in == 2 })
+	m := f.txMessage(t, 0)
+	if err := writeFrame(conn, m); err != nil {
+		t.Fatal(err)
+	}
+	conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	for {
+		got, err := readFrame(conn, 1<<20)
+		if err != nil {
+			break // délai écoulé : rien reçu en retour
+		}
+		if got.Type == MsgTx {
+			t.Fatal("message renvoyé à son émetteur")
+		}
+	}
+}

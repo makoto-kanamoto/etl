@@ -586,3 +586,44 @@ func TestGovPersisted(t *testing.T) {
 		t.Fatalf("paramètres falsifiés : err = %v", err)
 	}
 }
+
+// Le stockage valide chaque bloc avec les paramètres en vigueur à sa date, pas ceux de base :
+// difficulté abaissée par vote (18 → 16 bits), un bloc dont les participations ne valent que
+// 16 bits est accepté après l'activation (sous la base, il passerait 1 fois sur 4^10).
+func TestAppendUsesParamsInForce(t *testing.T) {
+	p := chaintest.Params()
+	p.TargetBits, p.Target = 18, blockchain.TargetFromBits(18)
+	net := chaintest.New(t, p)
+	s := open(t, dbPath(t), p, DefaultOptions())
+	if err := s.Init(&net.Genesis); err != nil {
+		t.Fatal(err)
+	}
+	var votes []blockchain.ParamVote
+	for _, w := range net.Founders[:7] {
+		v, err := blockchain.SignParamVote(w.Key, blockchain.ParamTargetBits, 16, chaintest.Day(1)/86400, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		votes = append(votes, v)
+	}
+	sort.Slice(votes, func(i, j int) bool { return bytes.Compare(votes[i].Voter.Hash[:], votes[j].Voter.Hash[:]) < 0 })
+	b, c := net.Next(t, 1, func(b *blockchain.Block) {
+		b.ParamChanges = []blockchain.ParamChange{{ID: blockchain.ParamTargetBits, Value: 16, Votes: votes}}
+	})
+	if err := s.Append(&b, &c); err != nil {
+		t.Fatal(err)
+	}
+	b, c = net.Next(t, 31, nil) // participations minées à 16 bits (paramètres en vigueur)
+	weak := 0
+	for _, pt := range b.Participants {
+		if pt.Verify(b.Header.PrevHash, b.Header.Timestamp, p) != nil {
+			weak++
+		}
+	}
+	if weak == 0 {
+		t.Fatal("prémisse : au moins une participation sous la difficulté de base")
+	}
+	if err := s.Append(&b, &c); err != nil {
+		t.Fatalf("bloc valide aux paramètres en vigueur refusé : %v", err)
+	}
+}
