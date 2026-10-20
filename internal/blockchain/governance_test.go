@@ -201,7 +201,7 @@ func TestGovernanceCodec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(EncodeBlock(&got), enc) || got.Header.VotesRoot != VotesRoot(got.IPCVotes, got.Exclusions) {
+	if !bytes.Equal(EncodeBlock(&got), enc) || got.Header.VotesRoot != VotesRoot(got.IPCVotes, got.Exclusions, got.ParamChanges) {
 		t.Fatal("aller-retour du bloc différent")
 	}
 	for i := 0; i < len(enc); i++ {

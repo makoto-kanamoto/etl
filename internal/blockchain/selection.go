@@ -25,6 +25,7 @@ const (
 
 // Role renvoie le rôle d'un nœud pour le jour du bloc à l'heure blockTime.
 func (s *State) Role(a crypto.Address, blockTime int64, p Params) Role {
+	p = s.ParamsAt(p, blockTime) // durée d'observation en vigueur ce jour-là
 	node := s.nodes[a.Hash]
 	day := dayOf(blockTime)
 	switch {

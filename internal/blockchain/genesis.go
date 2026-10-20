@@ -49,7 +49,7 @@ func Genesis(p Params, message string, ipc IPCRecord, timestamp int64, founders 
 		TxRoot:           TxRoot(nil),
 		ParticipantsRoot: ParticipantsRoot(nil),
 		RegistryRoot:     RegistryRoot(nil, nil, nil, nil),
-		VotesRoot:        VotesRoot(nil, nil),
+		VotesRoot:        VotesRoot(nil, nil, nil),
 		IPC:              &ipc,
 		Proposer:         crypto.Address{HRP: p.AddressHRP},
 	}}

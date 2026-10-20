@@ -108,9 +108,10 @@ type Block struct {
 	VoteEquivocations []VoteEquivocation // preuves de double vote, triées par votant
 
 	// Gouvernance
-	IPCVotes   []IPCVote        // votes pour Header.IPC, triés par votant (vide si pas de mise à jour)
-	Exclusions []Exclusion      // exclusions Sybil votées, triées par cible
-	Founders   []crypto.Address // genesis uniquement : fondateurs admis d'office
+	IPCVotes     []IPCVote        // votes pour Header.IPC, triés par votant (vide si pas de mise à jour)
+	Exclusions   []Exclusion      // exclusions Sybil votées, triées par cible
+	ParamChanges []ParamChange    // changements de paramètres votés, triés par paramètre
+	Founders     []crypto.Address // genesis uniquement : fondateurs admis d'office
 }
 
 // Sign signe le bloc avec la clé du proposant.
@@ -184,7 +185,7 @@ func ValidateBlock(b *Block, prev *Header, p Params, isAdmitted func(crypto.Addr
 		return ErrBlockPartRoot
 	case h.RegistryRoot != RegistryRoot(b.Registrations, b.Observations, b.Equivocations, b.VoteEquivocations):
 		return ErrBlockRegistryRoot
-	case h.VotesRoot != VotesRoot(b.IPCVotes, b.Exclusions):
+	case h.VotesRoot != VotesRoot(b.IPCVotes, b.Exclusions, b.ParamChanges):
 		return ErrBlockVotesRoot
 	case len(b.Founders) > 0:
 		return ErrBlockFounders

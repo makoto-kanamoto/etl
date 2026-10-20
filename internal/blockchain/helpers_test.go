@@ -11,7 +11,7 @@ import (
 // testParams : paramètres par défaut (10 fondateurs, seuils réels) avec une cible PoW facile.
 func testParams() Params {
 	p := DefaultParams()
-	p.Target = TargetFromBits(8)
+	p.TargetBits, p.Target = 8, TargetFromBits(8)
 	return p
 }
 
@@ -111,9 +111,9 @@ func (n *testNet) build(t testing.TB, d int, nodes []wallet, edit func(*Block)) 
 	var recv []Received
 	for _, w := range nodes {
 		n.track(w)
-		recv = append(recv, Received{Participation: participate(t, n.p, prevHash, w, ts), ReceivedAt: time.Unix(ts, 0)})
+		recv = append(recv, Received{Participation: participate(t, n.st.ParamsAt(n.p, ts), prevHash, w, ts), ReceivedAt: time.Unix(ts, 0)})
 	}
-	dp := Eligible(recv, &n.tip, ts, n.p, func(a crypto.Address) Role { return n.st.Role(a, ts, n.p) })
+	dp := Eligible(recv, &n.tip, ts, n.st.ParamsAt(n.p, ts), func(a crypto.Address) Role { return n.st.Role(a, ts, n.p) })
 	b := Block{
 		Header:        Header{Height: n.tip.Height + 1, PrevHash: prevHash, Timestamp: ts},
 		Participants:  dp.Participants,
@@ -136,7 +136,7 @@ func (n *testNet) finalize(t testing.TB, b *Block) {
 	b.Header.TxRoot = TxRoot(b.Txs)
 	b.Header.ParticipantsRoot = ParticipantsRoot(b.Participants)
 	b.Header.RegistryRoot = RegistryRoot(b.Registrations, b.Observations, b.Equivocations, b.VoteEquivocations)
-	b.Header.VotesRoot = VotesRoot(b.IPCVotes, b.Exclusions)
+	b.Header.VotesRoot = VotesRoot(b.IPCVotes, b.Exclusions, b.ParamChanges)
 	b.Header.StateRoot = crypto.Hash{}
 	if root, err := n.st.PreviewRoot(b, n.p); err == nil { // bloc invalide : racine laissée nulle
 		b.Header.StateRoot = root
@@ -150,7 +150,8 @@ func (n *testNet) finalize(t testing.TB, b *Block) {
 
 // apply valide puis applique un bloc ; renvoie la première erreur.
 func (n *testNet) apply(b *Block) error {
-	if err := ValidateBlock(b, &n.tip, n.p, n.st.IsAdmitted); err != nil {
+	// Paramètres en vigueur à la date du bloc, comme le stockage.
+	if err := ValidateBlock(b, &n.tip, n.st.ParamsAt(n.p, b.Header.Timestamp), n.st.IsAdmitted); err != nil {
 		return err
 	}
 	if err := n.st.ApplyBlock(b, n.p); err != nil {

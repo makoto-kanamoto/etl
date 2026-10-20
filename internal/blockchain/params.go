@@ -19,7 +19,8 @@ type Params struct {
 	MaxBlockTxs int    // transactions par bloc au maximum (= débit quotidien) — gouvernable
 	DailyReward uint64 // récompense du jour en unités, partagée entre les participants — gouvernable
 
-	Target crypto.Hash // cible PoW fixe — gouvernable
+	TargetBits uint        // difficulté : bits de tête à zéro — gouvernable
+	Target     crypto.Hash // cible PoW correspondante (TargetFromBits(TargetBits))
 
 	BlockTimeOfDay   time.Duration // heure du bloc après minuit UTC (23:00)
 	SubmissionWindow time.Duration // durée de la fenêtre de participation (30 s)
@@ -54,6 +55,7 @@ func DefaultParams() Params {
 		MinFee:           10_000,           // 0.0001 ETL
 		MaxBlockTxs:      100_000,          // ~14 Mo
 		DailyReward:      10 * UnitsPerETL, // émission constante, pas de halving
+		TargetBits:       DefaultTargetBits,
 		Target:           TargetFromBits(DefaultTargetBits),
 		BlockTimeOfDay:   23 * time.Hour,
 		SubmissionWindow: 30 * time.Second,

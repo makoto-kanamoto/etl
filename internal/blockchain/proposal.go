@@ -77,8 +77,10 @@ func (pr *Proposal) VerifySignature(p Params) error {
 // ValidateProposal vérifie tout ce qui ne dépend pas de la vue locale du nœud :
 // tour, nomination, signature, validité du bloc (StateRoot compris), cohérence d'un nouveau bloc
 // ou preuve de verrou d'une re-proposition. Un échec désigne un proposant fautif.
+// p : paramètres de base ; ceux en vigueur à chaque date sont recalculés depuis l'état.
 func ValidateProposal(pr *Proposal, prev *Header, st *State, p Params) error {
 	r := pr.Round
+	pDay := st.ParamsAt(p, r.Day) // difficulté en vigueur le jour du tour
 	if int(r.Round) >= p.MaxRounds || !isBlockTime(r.Day, p) || r.Day <= prev.Timestamp || int(r.Round) >= len(pr.Nomination) {
 		return ErrProposalRound
 	}
@@ -86,7 +88,7 @@ func ValidateProposal(pr *Proposal, prev *Header, st *State, p Params) error {
 	var prevTicket crypto.Hash
 	for i := range pr.Nomination {
 		pt := &pr.Nomination[i]
-		if pt.Verify(prevHash, r.Day, p) != nil || !st.IsAdmitted(pt.Miner) {
+		if pt.Verify(prevHash, r.Day, pDay) != nil || !st.IsAdmitted(pt.Miner) {
 			return ErrProposalNomination
 		}
 		t := Ticket(prevHash, pt.Miner)
@@ -99,7 +101,7 @@ func ValidateProposal(pr *Proposal, prev *Header, st *State, p Params) error {
 		return err
 	}
 	b := &pr.Block
-	if err := ValidateBlock(b, prev, p, st.IsAdmitted); err != nil {
+	if err := ValidateBlock(b, prev, st.ParamsAt(p, b.Header.Timestamp), st.IsAdmitted); err != nil {
 		return err
 	}
 	if _, err := st.Prepare(b, p); err != nil {
@@ -143,7 +145,7 @@ func CheckProposal(pr *Proposal, prev *Header, st *State, recv []Received, now t
 			early = append(early, rc)
 		}
 	}
-	expected := Eligible(early, prev, r.Day, p, func(a crypto.Address) Role { return st.Role(a, r.Day, p) })
+	expected := Eligible(early, prev, r.Day, st.ParamsAt(p, r.Day), func(a crypto.Address) Role { return st.Role(a, r.Day, p) })
 
 	included := map[addrKey]bool{}
 	for i := range pr.Nomination {

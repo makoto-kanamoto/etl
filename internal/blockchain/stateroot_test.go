@@ -14,24 +14,32 @@ func TestStateRootCoversEveryField(t *testing.T) {
 			map[addrKey]Account{k1: {Balance: 5, Nonce: 1}},
 			map[addrKey]Node{k2: {Status: StatusAdmitted, AdmittedDay: 10, LastParticipationDay: 12}},
 			IPCRecord{Value: 100000, Period: "2026-Q3"}, IPCRecord{Value: 103070, Period: "2026-Q4"},
+			map[ParamID]uint64{ParamFeeBps: 10}, map[ParamID]PendingParam{ParamDailyReward: {Value: 5, ActivationDay: 100}},
 		)
 	}
 	ref := base().Root()
 	mutations := map[string]func(*State){
-		"solde":             func(s *State) { s.accounts[k1] = Account{Balance: 6, Nonce: 1} },
-		"nonce":             func(s *State) { s.accounts[k1] = Account{Balance: 5, Nonce: 2} },
-		"nouveau compte":    func(s *State) { s.accounts[k2] = Account{} },
-		"statut":            func(s *State) { n := s.nodes[k2]; n.Status = StatusInactive; s.nodes[k2] = n },
-		"fondateur":         func(s *State) { n := s.nodes[k2]; n.Founder = true; s.nodes[k2] = n },
-		"parrain":           func(s *State) { n := s.nodes[k2]; n.Sponsor = k1; s.nodes[k2] = n },
-		"dernière présence": func(s *State) { n := s.nodes[k2]; n.LastParticipationDay++; s.nodes[k2] = n },
-		"interdiction":      func(s *State) { n := s.nodes[k2]; n.SponsorBanUntil = 1; s.nodes[k2] = n },
-		"compte ↔ nœud":     func(s *State) { s.nodes[k1] = s.nodes[k2]; delete(s.nodes, k2) },
-		"nœud supprimé":     func(s *State) { delete(s.nodes, k2) },
-		"IPC courant":       func(s *State) { s.ipc.Value++ },
-		"période IPC":       func(s *State) { s.ipc.Period = "2027-Q1" },
-		"source IPC":        func(s *State) { s.ipc.SourceSHA256[0] = 1 },
-		"IPC de référence":  func(s *State) { s.baseIPC.Value++ },
+		"solde":                func(s *State) { s.accounts[k1] = Account{Balance: 6, Nonce: 1} },
+		"nonce":                func(s *State) { s.accounts[k1] = Account{Balance: 5, Nonce: 2} },
+		"nouveau compte":       func(s *State) { s.accounts[k2] = Account{} },
+		"statut":               func(s *State) { n := s.nodes[k2]; n.Status = StatusInactive; s.nodes[k2] = n },
+		"fondateur":            func(s *State) { n := s.nodes[k2]; n.Founder = true; s.nodes[k2] = n },
+		"parrain":              func(s *State) { n := s.nodes[k2]; n.Sponsor = k1; s.nodes[k2] = n },
+		"dernière présence":    func(s *State) { n := s.nodes[k2]; n.LastParticipationDay++; s.nodes[k2] = n },
+		"interdiction":         func(s *State) { n := s.nodes[k2]; n.SponsorBanUntil = 1; s.nodes[k2] = n },
+		"compte ↔ nœud":        func(s *State) { s.nodes[k1] = s.nodes[k2]; delete(s.nodes, k2) },
+		"nœud supprimé":        func(s *State) { delete(s.nodes, k2) },
+		"IPC courant":          func(s *State) { s.ipc.Value++ },
+		"période IPC":          func(s *State) { s.ipc.Period = "2027-Q1" },
+		"source IPC":           func(s *State) { s.ipc.SourceSHA256[0] = 1 },
+		"IPC de référence":     func(s *State) { s.baseIPC.Value++ },
+		"paramètre en vigueur": func(s *State) { s.gov.values[ParamFeeBps] = 11 },
+		"changement en attente": func(s *State) {
+			s.gov.pending[ParamDailyReward] = PendingParam{Value: 6, ActivationDay: 100}
+		},
+		"date d'activation": func(s *State) {
+			s.gov.pending[ParamDailyReward] = PendingParam{Value: 5, ActivationDay: 101}
+		},
 	}
 	for name, mutate := range mutations {
 		s := base()

@@ -1,10 +1,12 @@
 package storage
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"testing"
 
@@ -543,5 +545,44 @@ func TestIPCPersisted(t *testing.T) {
 	})
 	if _, err := Open(path, net.P, DefaultOptions()); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("IPC falsifié : err = %v", err)
+	}
+}
+
+// Les paramètres gouvernés (en vigueur et en attente) survivent au redémarrage ; falsifiés, ils sont refusés.
+func TestGovPersisted(t *testing.T) {
+	s, net, path := newChain(t, DefaultOptions())
+	var votes []blockchain.ParamVote
+	for _, w := range net.Founders[:7] {
+		v, err := blockchain.SignParamVote(w.Key, blockchain.ParamFeeBps, 20, chaintest.Day(1)/86400, net.P)
+		if err != nil {
+			t.Fatal(err)
+		}
+		votes = append(votes, v)
+	}
+	sort.Slice(votes, func(i, j int) bool { return bytes.Compare(votes[i].Voter.Hash[:], votes[j].Voter.Hash[:]) < 0 })
+	b, c := net.Next(t, 1, func(b *blockchain.Block) {
+		b.ParamChanges = []blockchain.ParamChange{{ID: blockchain.ParamFeeBps, Value: 20, Votes: votes}}
+	})
+	if err := s.Append(&b, &c); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s = open(t, path, net.P, DefaultOptions())
+	var pending map[blockchain.ParamID]blockchain.PendingParam
+	s.ReadState(func(st *blockchain.State) { pending = st.PendingParams() })
+	if pending[blockchain.ParamFeeBps].Value != 20 {
+		t.Fatal("changement en attente perdu au redémarrage")
+	}
+	s.Close()
+	tamper(t, path, bucketMeta, keyGov, func(v []byte) []byte {
+		values, pend, _ := blockchain.DecodeGov(v)
+		pp := pend[blockchain.ParamFeeBps]
+		pp.ActivationDay = 0 // activation immédiate frauduleuse
+		pend[blockchain.ParamFeeBps] = pp
+		st := blockchain.NewStateFrom(nil, nil, blockchain.IPCRecord{}, blockchain.IPCRecord{}, values, pend)
+		return st.EncodeGov()
+	})
+	if _, err := Open(path, net.P, DefaultOptions()); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("paramètres falsifiés : err = %v", err)
 	}
 }

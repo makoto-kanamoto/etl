@@ -22,6 +22,7 @@ func (e *Engine) Handle(m network.Message) network.Verdict {
 		if err != nil {
 			return network.Reject
 		}
+		e.refreshPoolParams(e.cfg.Now())
 		if e.pool.Add(tx, e.chain, e.cfg.Now()) != nil {
 			return network.Ignore // doublon, nonce dépassé, solde… : pas forcément malveillant
 		}
@@ -59,6 +60,12 @@ func (e *Engine) Handle(m network.Message) network.Verdict {
 			return network.Reject
 		}
 		return e.onExclusionVote(v)
+	case network.MsgParamVote:
+		v, err := blockchain.DecodeParamVote(m.Payload, hrp)
+		if err != nil {
+			return network.Reject
+		}
+		return e.onParamVote(v)
 	case network.MsgRegistration:
 		r, err := blockchain.DecodeRegistration(m.Payload, hrp)
 		if err != nil {
@@ -86,7 +93,7 @@ func (e *Engine) onParticipation(pt blockchain.Participation) network.Verdict {
 		return network.Ignore // hors fenêtre : périmée ou prématurée
 	}
 	// Une participation d'un autre jour échoue ici : périmée, pas forcément malveillante.
-	if pt.Verify(hs.prev.Hash(), day, p) != nil {
+	if pt.Verify(hs.prev.Hash(), day, e.paramsAt(day)) != nil {
 		return network.Ignore
 	}
 	var role blockchain.Role
@@ -321,6 +328,8 @@ func (e *Engine) afterFinalize() {
 // afterFinalizeLocked purge le mempool et ce qui a été inclus ou est devenu inutile.
 func (e *Engine) afterFinalizeLocked() {
 	now := e.cfg.Now()
+	tipTime := e.chain.Tip().Timestamp // hors de ReadState : pas de verrou de lecture imbriqué
+	e.refreshPoolParams(now)
 	e.pool.Update(e.chain, now)
 	e.chain.ReadState(func(st *blockchain.State) {
 		for k := range e.veqs {
@@ -342,6 +351,14 @@ func (e *Engine) afterFinalizeLocked() {
 		for target := range e.ex {
 			if st.Node(crypto.Address{Hash: target}).Status == blockchain.StatusExcluded {
 				delete(e.ex, target)
+			}
+		}
+		// Votes de paramètres devenus sans objet : changement inscrit (en attente) ou valeur déjà en vigueur.
+		pending := st.PendingParams()
+		current := st.ParamsAt(e.cfg.Params, tipTime)
+		for k := range e.pv {
+			if _, busy := pending[k.id]; busy || current.Get(k.id) == k.value {
+				delete(e.pv, k)
 			}
 		}
 	})
@@ -407,9 +424,8 @@ func (e *Engine) onRegistration(r blockchain.Registration) network.Verdict {
 
 // SubmitTransaction ajoute une transaction au mempool et la diffuse.
 func (e *Engine) SubmitTransaction(tx blockchain.Transaction) error {
-	if err := tx.Verify(e.cfg.Params); err != nil {
-		return err
-	}
+	// Frais en vigueur pour le prochain bloc (ils peuvent avoir changé par vote).
+	e.refreshPoolParams(e.cfg.Now())
 	if err := e.pool.Add(tx, e.chain, e.cfg.Now()); err != nil {
 		return err
 	}
@@ -442,6 +458,47 @@ func (e *Engine) SubmitExclusionVote(target crypto.Address) error {
 	}
 	e.onExclusionVote(v)
 	e.net.Broadcast(network.Message{Type: network.MsgExclusionVote, Payload: blockchain.EncodeExclusionVote(&v)})
+	return nil
+}
+
+func (e *Engine) onParamVote(v blockchain.ParamVote) network.Verdict {
+	today := e.cfg.Now().Unix() / 86400
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	ok := false
+	e.chain.ReadState(func(st *blockchain.State) { ok = st.IsAdmitted(v.Voter) })
+	if !ok || v.Day > today+1 || today-v.Day >= blockchain.ParamVoteDays {
+		return network.Ignore
+	}
+	k := paramKey{v.ID, v.Value}
+	if e.pv[k] == nil {
+		e.pv[k] = map[addrKey]blockchain.ParamVote{}
+	}
+	if _, dup := e.pv[k][v.Voter.Hash]; dup {
+		return network.Ignore
+	}
+	e.pv[k][v.Voter.Hash] = v
+	return network.Accept
+}
+
+// SubmitParamVote signe et diffuse le vote de ce nœud pour une nouvelle valeur d'un paramètre
+// gouvernable (décision de l'opérateur). Bornes et variation maximale vérifiées d'emblée.
+func (e *Engine) SubmitParamVote(id blockchain.ParamID, value uint64) error {
+	if e.cfg.Key == nil {
+		return ErrPassive
+	}
+	var current uint64
+	tipTime := e.chain.Tip().Timestamp // hors de ReadState : pas de verrou de lecture imbriqué
+	e.chain.ReadState(func(st *blockchain.State) { current = st.ParamsAt(e.cfg.Params, tipTime).Get(id) })
+	if err := blockchain.CheckParamChange(id, current, value); err != nil {
+		return err
+	}
+	v, err := blockchain.SignParamVote(e.cfg.Key, id, value, e.cfg.Now().Unix()/86400, e.cfg.Params)
+	if err != nil {
+		return err
+	}
+	e.onParamVote(v)
+	e.net.Broadcast(network.Message{Type: network.MsgParamVote, Payload: blockchain.EncodeParamVote(&v)})
 	return nil
 }
 

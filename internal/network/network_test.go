@@ -339,6 +339,9 @@ func TestStatelessChecks(t *testing.T) {
 	badBlock.Block.Signature[3] ^= 1
 	_ = badBlock.Sign(proposer.Key, p)
 	reg := f.net.Register(t, chaintest.NewWallet(t, p), f.net.Founders[2], 1)
+	pv, _ := blockchain.SignParamVote(w.Key, blockchain.ParamFeeBps, 20, 1, p)
+	badPV := pv
+	badPV.Value = 30
 	badReg := reg
 	badReg.SponsorSig[4] ^= 1
 	ipc, _ := blockchain.SignIPCVote(w.Key, blockchain.IPCRecord{Value: 1, Period: "2026-Q4"}, p)
@@ -350,21 +353,23 @@ func TestStatelessChecks(t *testing.T) {
 		m  Message
 		ok bool
 	}{
-		"transaction":            {f.txMessage(t, 0), true},
-		"transaction falsifiée":  {Message{MsgTx, tamper(f.txMessage(t, 0).Payload)}, false},
-		"participation":          {Message{MsgParticipation, blockchain.EncodeParticipation(&pt)}, true},
-		"participation tronquée": {Message{MsgParticipation, blockchain.EncodeParticipation(&pt)[:10]}, false},
-		"vote":                   {Message{MsgVote, blockchain.EncodeVote(&vote)}, true},
-		"vote falsifié":          {Message{MsgVote, tamper(blockchain.EncodeVote(&vote))}, false},
-		"vote IPC":               {Message{MsgIPCVote, blockchain.EncodeIPCVote(&ipc)}, true},
-		"vote d'exclusion":       {Message{MsgExclusionVote, blockchain.EncodeExclusionVote(&ex)}, true},
-		"proposition":            {Message{MsgProposal, blockchain.EncodeProposal(&pr)}, true},
-		"proposition mal signée": {Message{MsgProposal, blockchain.EncodeProposal(&badPr)}, false},
-		"bloc proposé mal signé": {Message{MsgProposal, blockchain.EncodeProposal(&badBlock)}, false},
-		"candidature":            {Message{MsgRegistration, blockchain.EncodeRegistration(&reg)}, true},
-		"parrainage falsifié":    {Message{MsgRegistration, blockchain.EncodeRegistration(&badReg)}, false},
-		"bloc finalisé":          {Message{MsgFinalized, EncodeFinalized(&b, &cert)}, true},
-		"certificat d'un autre":  {Message{MsgFinalized, EncodeFinalized(&other, &cert)}, false},
+		"transaction":                {f.txMessage(t, 0), true},
+		"transaction falsifiée":      {Message{MsgTx, tamper(f.txMessage(t, 0).Payload)}, false},
+		"participation":              {Message{MsgParticipation, blockchain.EncodeParticipation(&pt)}, true},
+		"participation tronquée":     {Message{MsgParticipation, blockchain.EncodeParticipation(&pt)[:10]}, false},
+		"vote":                       {Message{MsgVote, blockchain.EncodeVote(&vote)}, true},
+		"vote falsifié":              {Message{MsgVote, tamper(blockchain.EncodeVote(&vote))}, false},
+		"vote IPC":                   {Message{MsgIPCVote, blockchain.EncodeIPCVote(&ipc)}, true},
+		"vote d'exclusion":           {Message{MsgExclusionVote, blockchain.EncodeExclusionVote(&ex)}, true},
+		"proposition":                {Message{MsgProposal, blockchain.EncodeProposal(&pr)}, true},
+		"proposition mal signée":     {Message{MsgProposal, blockchain.EncodeProposal(&badPr)}, false},
+		"bloc proposé mal signé":     {Message{MsgProposal, blockchain.EncodeProposal(&badBlock)}, false},
+		"candidature":                {Message{MsgRegistration, blockchain.EncodeRegistration(&reg)}, true},
+		"vote de paramètre":          {Message{MsgParamVote, blockchain.EncodeParamVote(&pv)}, true},
+		"vote de paramètre falsifié": {Message{MsgParamVote, blockchain.EncodeParamVote(&badPV)}, false},
+		"parrainage falsifié":        {Message{MsgRegistration, blockchain.EncodeRegistration(&badReg)}, false},
+		"bloc finalisé":              {Message{MsgFinalized, EncodeFinalized(&b, &cert)}, true},
+		"certificat d'un autre":      {Message{MsgFinalized, EncodeFinalized(&other, &cert)}, false},
 	} {
 		if err := checkStateless(c.m, p); (err == nil) != c.ok {
 			t.Errorf("%s : err = %v", name, err)

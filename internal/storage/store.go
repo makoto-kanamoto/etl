@@ -62,6 +62,7 @@ var (
 	keyLock    = []byte("lock") // verrou de ce nœud : hauteur | jour | tour | bloc
 	keyBaseIPC = []byte("ipc_base")
 	keyIPC     = []byte("ipc")
+	keyGov     = []byte("gov") // paramètres gouvernables en vigueur et en attente
 )
 
 // Store est la chaîne locale. Ses méthodes sont sûres en accès concurrent.
@@ -156,7 +157,11 @@ func (s *Store) load() error {
 		if err1 != nil || err2 != nil {
 			return ErrCorrupt
 		}
-		state := blockchain.NewStateFrom(accounts, nodes, baseIPC, ipc)
+		params, pending, err := blockchain.DecodeGov(meta.Get(keyGov))
+		if err != nil {
+			return ErrCorrupt
+		}
+		state := blockchain.NewStateFrom(accounts, nodes, baseIPC, ipc, params, pending)
 		if state.Root() != tip.StateRoot {
 			return ErrCorrupt
 		}
@@ -215,7 +220,8 @@ func (s *Store) Append(b *blockchain.Block, cert *blockchain.Certificate) error 
 	if !s.ready {
 		return ErrNotInitialized
 	}
-	if err := blockchain.ValidateBlock(b, &s.tip, s.p, s.state.IsAdmitted); err != nil {
+	// Paramètres en vigueur à la date du bloc (changements votés arrivés à échéance compris).
+	if err := blockchain.ValidateBlock(b, &s.tip, s.state.ParamsAt(s.p, b.Header.Timestamp), s.state.IsAdmitted); err != nil {
 		return err
 	}
 	// Le certificat se vérifie contre l'état AVANT le bloc : qui pouvait voter, combien de nœuds actifs.
@@ -253,6 +259,7 @@ func (s *Store) write(tx *bolt.Tx, b *blockchain.Block, c *blockchain.Changes) e
 		{bucketMeta, keyTip, height},
 		{bucketMeta, keyBaseIPC, blockchain.AppendIPCRecord(nil, c.BaseIPC)},
 		{bucketMeta, keyIPC, blockchain.AppendIPCRecord(nil, c.IPC)},
+		{bucketMeta, keyGov, c.Gov},
 	}
 	for _, p := range puts {
 		if err := tx.Bucket(p.bucket).Put(p.key, p.value); err != nil {

@@ -270,3 +270,29 @@ func TestNonceTooLow(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// Frais changés par vote : après SetParams, Update écarte les transactions au montant de frais périmé,
+// et Add refuse les nouvelles.
+func TestSetParamsDropsStaleFees(t *testing.T) {
+	net, m := setup(t)
+	f := net.Founders
+	old := tx(t, net, f[0], f[1].Addr, blockchain.UnitsPerETL/2, 0)
+	if err := m.Add(old, net.State, now()); err != nil {
+		t.Fatal(err)
+	}
+	newP := net.P.With(blockchain.ParamFeeBps, 20)
+	m.SetParams(newP)
+	m.Update(net.State, now())
+	if m.Has(old.ID) {
+		t.Fatal("transaction aux frais périmés conservée")
+	}
+	if err := m.Add(old, net.State, now()); !errors.Is(err, blockchain.ErrTxFee) {
+		t.Fatalf("frais périmés à l'admission : err = %v", err)
+	}
+	fee, _ := blockchain.RequiredFee(blockchain.UnitsPerETL/2, newP)
+	fresh := blockchain.Transaction{From: f[0].Addr, To: f[1].Addr, Amount: blockchain.UnitsPerETL / 2, Fee: fee, Timestamp: now().Unix()}
+	_ = fresh.Sign(f[0].Key, net.P.ChainID)
+	if err := m.Add(fresh, net.State, now()); err != nil {
+		t.Fatalf("nouveaux frais : %v", err)
+	}
+}

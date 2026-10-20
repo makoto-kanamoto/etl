@@ -75,6 +75,12 @@ func checkStateless(m Message, p blockchain.Params) error {
 			return errInvalid
 		}
 		return v.Verify(p)
+	case MsgParamVote:
+		v, err := blockchain.DecodeParamVote(m.Payload, hrp)
+		if err != nil {
+			return errInvalid
+		}
+		return v.Verify(p)
 	case MsgRegistration:
 		reg, err := blockchain.DecodeRegistration(m.Payload, hrp)
 		if err != nil {

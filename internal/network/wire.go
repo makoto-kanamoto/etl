@@ -39,6 +39,7 @@ const (
 	MsgIPCVote
 	MsgExclusionVote
 	MsgRegistration // candidature (ou réactivation) d'un nœud
+	MsgParamVote    // vote de changement d'un paramètre gouvernable
 	MsgProposal     // bloc proposé, en attente de votes
 	MsgFinalized    // bloc finalisé + certificat
 

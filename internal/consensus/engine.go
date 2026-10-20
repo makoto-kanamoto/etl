@@ -71,7 +71,8 @@ type Engine struct {
 	ipc  map[blockchain.IPCRecord]map[addrKey]blockchain.IPCVote
 	ex   map[addrKey]map[addrKey]blockchain.ExclusionVote // cible → votant → vote
 	regs map[addrKey]blockchain.Registration
-	veqs map[addrKey]blockchain.VoteEquivocation // preuves de double vote en attente d'inclusion
+	veqs map[addrKey]blockchain.VoteEquivocation       // preuves de double vote en attente d'inclusion
+	pv   map[paramKey]map[addrKey]blockchain.ParamVote // votes de paramètres, par (paramètre, valeur)
 }
 
 // heightState est l'état de la hauteur en cours de finalisation (tous jours et tours confondus).
@@ -109,6 +110,36 @@ type roundState struct {
 	precommits   map[crypto.Hash]map[addrKey]blockchain.Vote
 }
 
+type paramKey struct {
+	id    blockchain.ParamID
+	value uint64
+}
+
+// paramsAt (verrou d'état non tenu) renvoie les paramètres en vigueur à la date blockTime.
+func (e *Engine) paramsAt(blockTime int64) blockchain.Params {
+	var p blockchain.Params
+	e.chain.ReadState(func(st *blockchain.State) { p = st.ParamsAt(e.cfg.Params, blockTime) })
+	return p
+}
+
+// nextBlockTime renvoie la date du prochain bloc à l'heure now : le 23:00 du jour, ou du lendemain
+// si celui du jour est déjà finalisé ou passé.
+func (e *Engine) nextBlockTime(now time.Time) int64 {
+	t := e.dayOf(now)
+	if !now.Before(blockchain.RoundStart(t, uint8(e.cfg.Params.MaxRounds), e.cfg.Params)) {
+		t += 86400
+	}
+	if tip := e.chain.Tip(); t <= tip.Timestamp {
+		t = tip.Timestamp + 86400
+	}
+	return t
+}
+
+// refreshPoolParams donne au mempool les paramètres (frais) en vigueur pour le prochain bloc.
+func (e *Engine) refreshPoolParams(now time.Time) {
+	e.pool.SetParams(e.paramsAt(e.nextBlockTime(now)))
+}
+
 type voteKey struct {
 	voter addrKey
 	t     blockchain.VoteType
@@ -122,7 +153,8 @@ func New(cfg Config, chain Chain, pool *mempool.Pool, net Broadcaster) *Engine {
 	}
 	e := &Engine{cfg: cfg, chain: chain, pool: pool, net: net,
 		ipc: map[blockchain.IPCRecord]map[addrKey]blockchain.IPCVote{}, ex: map[addrKey]map[addrKey]blockchain.ExclusionVote{},
-		regs: map[addrKey]blockchain.Registration{}, veqs: map[addrKey]blockchain.VoteEquivocation{}}
+		regs: map[addrKey]blockchain.Registration{}, veqs: map[addrKey]blockchain.VoteEquivocation{},
+		pv: map[paramKey]map[addrKey]blockchain.ParamVote{}}
 	if cfg.Key != nil {
 		e.me = cfg.Key.PublicKey().Address(cfg.Params.AddressHRP)
 	}
@@ -234,11 +266,12 @@ func (e *Engine) maybeMine(now time.Time) {
 	}
 	ds.mined = true
 	prevHash := hs.prev.Hash()
+	pDay := e.paramsAt(day) // difficulté en vigueur ce jour-là
 	e.mu.Unlock()
 
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(start.Add(p.SubmissionWindow).Sub(now)))
 	defer cancel()
-	pt, err := blockchain.MineParticipation(ctx, e.cfg.Key, prevHash, day, p)
+	pt, err := blockchain.MineParticipation(ctx, e.cfg.Key, prevHash, day, pDay)
 	if err != nil {
 		return
 	}
@@ -260,6 +293,9 @@ func (e *Engine) maybePropose(now time.Time) {
 		return
 	}
 	hs.round(r).proposed = true
+	// Frais en vigueur ce jour-là : le mempool écarte les transactions devenues invalides.
+	e.pool.SetParams(e.paramsAt(r.Day))
+	e.pool.Update(e.chain, now)
 	var pr *blockchain.Proposal
 	e.chain.ReadState(func(st *blockchain.State) { pr = e.buildProposal(st, hs, r) })
 	e.mu.Unlock()
@@ -275,7 +311,8 @@ func (e *Engine) maybePropose(now time.Time) {
 // sinon construit un nouveau bloc. Renvoie nil si ce nœud n'est pas le proposant du tour.
 func (e *Engine) buildProposal(st *blockchain.State, hs *heightState, r blockchain.RoundID) *blockchain.Proposal {
 	p := e.cfg.Params
-	dp := blockchain.Eligible(hs.day(r.Day).recv, &hs.prev, r.Day, p, func(a crypto.Address) blockchain.Role { return e.roleOf(st, a, r.Day) })
+	pDay := st.ParamsAt(p, r.Day)
+	dp := blockchain.Eligible(hs.day(r.Day).recv, &hs.prev, r.Day, pDay, func(a crypto.Address) blockchain.Role { return e.roleOf(st, a, r.Day) })
 	if int(r.Round) >= len(dp.Participants) || dp.Participants[r.Round].Miner != e.me {
 		return nil
 	}
@@ -284,7 +321,7 @@ func (e *Engine) buildProposal(st *blockchain.State, hs *heightState, r blockcha
 		pol := hs.valid.pol
 		pr.Block, pr.POL = *hs.valid.block, &pol
 	} else {
-		b := e.buildBlock(st, hs, r, dp)
+		b := e.buildBlock(st, hs, r, dp, pDay)
 		if b == nil {
 			return nil
 		}
@@ -297,14 +334,14 @@ func (e *Engine) buildProposal(st *blockchain.State, hs *heightState, r blockcha
 }
 
 // buildBlock (verrou tenu) construit un nouveau bloc pour le tour r.
-func (e *Engine) buildBlock(st *blockchain.State, hs *heightState, r blockchain.RoundID, dp blockchain.DayParticipations) *blockchain.Block {
-	p := e.cfg.Params
+func (e *Engine) buildBlock(st *blockchain.State, hs *heightState, r blockchain.RoundID, dp blockchain.DayParticipations, pDay blockchain.Params) *blockchain.Block {
+	p := e.cfg.Params // base : State.PreviewRoot recalcule les paramètres en vigueur
 	b := &blockchain.Block{
 		Header:        blockchain.Header{Height: hs.height, PrevHash: hs.prev.Hash(), Timestamp: r.Day, Round: r.Round, Proposer: e.me},
 		Participants:  dp.Participants,
 		Observations:  dp.Observations,
 		Equivocations: dp.Equivocations,
-		Txs:           e.pool.Select(st, r.Day, p.MaxBlockTxs),
+		Txs:           e.pool.Select(st, r.Day, pDay.MaxBlockTxs),
 	}
 	ok := func() bool { _, err := st.PreviewRoot(withRoots(b), p); return err == nil }
 	if !ok() { // ne devrait pas arriver : la sélection du mempool est simulée
@@ -334,6 +371,11 @@ func (e *Engine) buildBlock(st *blockchain.State, hs *heightState, r blockchain.
 		try(func() { rr := rec; b.Header.IPC, b.IPCVotes = &rr, votes },
 			func() { b.Header.IPC, b.IPCVotes = nil, nil })
 	}
+	for _, ch := range e.paramQuorums(st, r.Day) {
+		ch := ch
+		try(func() { b.ParamChanges = append(b.ParamChanges, ch) },
+			func() { b.ParamChanges = b.ParamChanges[:len(b.ParamChanges)-1] })
+	}
 	for _, ex := range e.exclusionQuorums(st, r.Day) {
 		ex := ex
 		try(func() { b.Exclusions = append(b.Exclusions, ex) },
@@ -354,7 +396,7 @@ func withRoots(b *blockchain.Block) *blockchain.Block {
 	b.Header.TxRoot = blockchain.TxRoot(b.Txs)
 	b.Header.ParticipantsRoot = blockchain.ParticipantsRoot(b.Participants)
 	b.Header.RegistryRoot = blockchain.RegistryRoot(b.Registrations, b.Observations, b.Equivocations, b.VoteEquivocations)
-	b.Header.VotesRoot = blockchain.VotesRoot(b.IPCVotes, b.Exclusions)
+	b.Header.VotesRoot = blockchain.VotesRoot(b.IPCVotes, b.Exclusions, b.ParamChanges)
 	return b
 }
 
@@ -436,5 +478,38 @@ func sortedVeqs(m map[addrKey]blockchain.VoteEquivocation) []blockchain.VoteEqui
 		out = append(out, v)
 	}
 	sort.Slice(out, func(i, j int) bool { return bytes.Compare(out[i].A.Voter.Hash[:], out[j].A.Voter.Hash[:]) < 0 })
+	return out
+}
+
+// paramQuorums renvoie, par paramètre croissant, une valeur ayant atteint le seuil
+// (paramètres sans changement déjà en attente uniquement).
+func (e *Engine) paramQuorums(st *blockchain.State, blockTime int64) []blockchain.ParamChange {
+	need := blockchain.Quorum(st.ActiveCount())
+	today := blockTime / 86400
+	pending := st.PendingParams()
+	best := map[blockchain.ParamID]blockchain.ParamChange{}
+	for k, byVoter := range e.pv {
+		if _, busy := pending[k.id]; busy {
+			continue
+		}
+		ch := blockchain.ParamChange{ID: k.id, Value: k.value}
+		for _, v := range byVoter {
+			if st.IsAdmitted(v.Voter) && v.Day <= today && today-v.Day < blockchain.ParamVoteDays {
+				ch.Votes = append(ch.Votes, v)
+			}
+		}
+		if len(ch.Votes) < need {
+			continue
+		}
+		if cur, ok := best[k.id]; !ok || len(ch.Votes) > len(cur.Votes) || (len(ch.Votes) == len(cur.Votes) && ch.Value < cur.Value) {
+			sort.Slice(ch.Votes, func(i, j int) bool { return bytes.Compare(ch.Votes[i].Voter.Hash[:], ch.Votes[j].Voter.Hash[:]) < 0 })
+			best[k.id] = ch
+		}
+	}
+	out := make([]blockchain.ParamChange, 0, len(best))
+	for _, ch := range best {
+		out = append(out, ch)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }

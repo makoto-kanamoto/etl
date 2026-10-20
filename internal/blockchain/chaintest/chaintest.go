@@ -16,7 +16,7 @@ import (
 // Params renvoie les paramètres par défaut avec une cible PoW facile.
 func Params() blockchain.Params {
 	p := blockchain.DefaultParams()
-	p.Target = blockchain.TargetFromBits(8)
+	p.TargetBits, p.Target = 8, blockchain.TargetFromBits(8)
 	return p
 }
 
@@ -91,13 +91,13 @@ func (n *Net) Build(tb testing.TB, d int, edit func(*blockchain.Block)) blockcha
 	prevHash := n.Tip.Hash()
 	var recv []blockchain.Received
 	for _, w := range n.Founders {
-		pt, err := blockchain.MineParticipation(context.Background(), w.Key, prevHash, ts, n.P)
+		pt, err := blockchain.MineParticipation(context.Background(), w.Key, prevHash, ts, n.State.ParamsAt(n.P, ts))
 		if err != nil {
 			tb.Fatal(err)
 		}
 		recv = append(recv, blockchain.Received{Participation: pt, ReceivedAt: time.Unix(ts, 0)})
 	}
-	dp := blockchain.Eligible(recv, &n.Tip, ts, n.P, func(a crypto.Address) blockchain.Role { return n.State.Role(a, ts, n.P) })
+	dp := blockchain.Eligible(recv, &n.Tip, ts, n.State.ParamsAt(n.P, ts), func(a crypto.Address) blockchain.Role { return n.State.Role(a, ts, n.P) })
 	b := blockchain.Block{
 		Header:        blockchain.Header{Height: n.Tip.Height + 1, PrevHash: prevHash, Timestamp: ts, Proposer: dp.Participants[0].Miner},
 		Participants:  dp.Participants,
@@ -110,7 +110,7 @@ func (n *Net) Build(tb testing.TB, d int, edit func(*blockchain.Block)) blockcha
 	b.Header.TxRoot = blockchain.TxRoot(b.Txs)
 	b.Header.ParticipantsRoot = blockchain.ParticipantsRoot(b.Participants)
 	b.Header.RegistryRoot = blockchain.RegistryRoot(b.Registrations, b.Observations, b.Equivocations, b.VoteEquivocations)
-	b.Header.VotesRoot = blockchain.VotesRoot(b.IPCVotes, b.Exclusions)
+	b.Header.VotesRoot = blockchain.VotesRoot(b.IPCVotes, b.Exclusions, b.ParamChanges)
 	if root, err := n.State.PreviewRoot(&b, n.P); err == nil {
 		b.Header.StateRoot = root
 	}
@@ -125,7 +125,7 @@ func (n *Net) Build(tb testing.TB, d int, edit func(*blockchain.Block)) blockcha
 func (n *Net) Next(tb testing.TB, d int, edit func(*blockchain.Block)) (blockchain.Block, blockchain.Certificate) {
 	tb.Helper()
 	b := n.Build(tb, d, edit)
-	if err := blockchain.ValidateBlock(&b, &n.Tip, n.P, n.State.IsAdmitted); err != nil {
+	if err := blockchain.ValidateBlock(&b, &n.Tip, n.State.ParamsAt(n.P, b.Header.Timestamp), n.State.IsAdmitted); err != nil {
 		tb.Fatal(err)
 	}
 	c := n.Certify(tb, &b.Header, len(n.keys))

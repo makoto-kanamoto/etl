@@ -29,6 +29,7 @@ const (
 	PurposeBlockVote     Purpose = "block-vote"
 	PurposeIPCVote       Purpose = "ipc-vote"
 	PurposeExclusionVote Purpose = "exclusion-vote"
+	PurposeParamVote     Purpose = "param-vote"
 )
 
 var (

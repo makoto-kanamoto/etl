@@ -68,6 +68,14 @@ type Pool struct {
 	seq      uint64
 }
 
+// SetParams met à jour les paramètres en vigueur (frais, gouvernés par vote) : à appeler après
+// chaque bloc, avant Update, pour que les transactions devenues invalides soient écartées.
+func (m *Pool) SetParams(p blockchain.Params) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.p = p
+}
+
 // New crée un mempool vide.
 func New(p blockchain.Params, opt Options) *Pool {
 	return &Pool{p: p, opt: opt, byID: map[crypto.Hash]*entry{}, accounts: map[addrKey]map[uint64]*entry{}}
@@ -99,11 +107,14 @@ func addCost(total uint64, tx *blockchain.Transaction) (uint64, bool) {
 
 // Add admet une transaction ; st est l'état du dernier bloc finalisé, now l'heure locale.
 func (m *Pool) Add(tx blockchain.Transaction, st Accounts, now time.Time) error {
-	if err := tx.Verify(m.p); err != nil {
+	m.mu.Lock()
+	p := m.p
+	m.mu.Unlock()
+	if err := tx.Verify(p); err != nil {
 		return err
 	}
 	ts := time.Unix(tx.Timestamp, 0)
-	if ts.After(now.Add(m.p.ClockTolerance)) {
+	if ts.After(now.Add(p.ClockTolerance)) {
 		return ErrFuture
 	}
 	if now.Sub(ts) > m.opt.MaxAge {
@@ -224,7 +235,9 @@ func (m *Pool) Update(st Accounts, now time.Time) {
 		for _, n := range nonces {
 			e := queue[n]
 			tooOld := now.Sub(time.Unix(e.tx.Timestamp, 0)) > m.opt.MaxAge
-			if n < acc.Nonce || n >= acc.Nonce+uint64(m.opt.MaxPerAccount) || tooOld || broken {
+			// Frais changés par vote : une transaction au montant de frais périmé n'est plus valide.
+			stale := e.tx.Verify(m.p) != nil
+			if n < acc.Nonce || n >= acc.Nonce+uint64(m.opt.MaxPerAccount) || tooOld || stale || broken {
 				m.drop(k, n)
 				continue
 			}

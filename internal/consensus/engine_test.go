@@ -268,8 +268,12 @@ func TestDoubleVoteSanctioned(t *testing.T) {
 	h2.Round = 1
 	v1, _ := blockchain.SignVote(cheater.wallet.Key, blockchain.Prevote, &h1, r, s.p)
 	v2, _ := blockchain.SignVote(cheater.wallet.Key, blockchain.Prevote, &h2, r, s.p)
-	s.send(2, -1, network.Message{Type: network.MsgVote, Payload: blockchain.EncodeVote(&v1)})
-	s.send(2, -1, network.Message{Type: network.MsgVote, Payload: blockchain.EncodeVote(&v2)})
+	// Comme le relais du vrai réseau, tous les nœuds reçoivent les deux votes — le tricheur aussi :
+	// s'il est le proposant du jour (une fois sur dix), il ne doit pas pouvoir « oublier » la preuve.
+	for _, n := range s.nodes {
+		n.e.Handle(network.Message{Type: network.MsgVote, Payload: blockchain.EncodeVote(&v1)})
+		n.e.Handle(network.Message{Type: network.MsgVote, Payload: blockchain.EncodeVote(&v2)})
+	}
 	s.flush()
 	s.nodes[0].e.mu.Lock()
 	_, got := s.nodes[0].e.veqs[cheater.wallet.Addr.Hash]
@@ -342,5 +346,47 @@ func TestInvalidProposalRejected(t *testing.T) {
 	s.now = blockchain.RoundStart(bt, 0, s.p).Add(time.Second)
 	if v := s.nodes[1].e.Handle(network.Message{Type: network.MsgProposal, Payload: blockchain.EncodeProposal(&pr)}); v != network.Reject {
 		t.Fatalf("proposition invalide : verdict %v, attendu Reject", v)
+	}
+}
+
+// Flux complet : 7 nœuds votent des frais à 0,2 % ; changement inscrit au jour 1, appliqué au jour 31.
+func TestParamVoteFlow(t *testing.T) {
+	s := newSim(t)
+	s.at(time.Unix(chaintest.Day(1), 0).Add(-time.Hour))
+	if err := s.nodes[0].e.SubmitParamVote(blockchain.ParamFeeBps, 21); err != blockchain.ErrParamStep {
+		t.Fatalf("variation trop forte : err = %v", err)
+	}
+	for _, n := range s.nodes[:7] {
+		if err := n.e.SubmitParamVote(blockchain.ParamFeeBps, 20); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.flush()
+	s.runDay(1)
+	s.requireHeight(1)
+	if b := mustBlock(t, s, 1); len(b.ParamChanges) != 1 {
+		t.Fatal("changement non inscrit dans le bloc")
+	}
+	var fee uint64
+	s.nodes[0].store.ReadState(func(st *blockchain.State) { fee = st.ParamsAt(s.p, chaintest.Day(30)).FeeBps })
+	if fee != 10 {
+		t.Fatal("frais changés avant l'activation")
+	}
+	s.runDay(31)
+	s.requireHeight(2)
+	from, to := s.nodes[3], s.nodes[7]
+	s.at(time.Unix(chaintest.Day(32), 0).Add(-2 * time.Hour))
+	newP := s.p.With(blockchain.ParamFeeBps, 20)
+	f20, _ := blockchain.RequiredFee(blockchain.UnitsPerETL/2, newP)
+	tx := blockchain.Transaction{From: from.wallet.Addr, To: to.wallet.Addr, Amount: blockchain.UnitsPerETL / 2, Fee: f20, Timestamp: s.now.Unix()}
+	_ = tx.Sign(from.wallet.Key, s.p.ChainID)
+	if err := from.e.SubmitTransaction(tx); err != nil {
+		t.Fatalf("transaction aux nouveaux frais : %v", err)
+	}
+	s.flush()
+	s.runDay(32)
+	s.requireHeight(3)
+	if b := mustBlock(t, s, 3); len(b.Txs) != 1 {
+		t.Fatal("transaction aux nouveaux frais non incluse")
 	}
 }

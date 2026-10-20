@@ -104,8 +104,8 @@ type Exclusion struct {
 
 // --- Engagement dans l'en-tête ---
 
-// VotesRoot engage l'en-tête sur les votes IPC et les exclusions du bloc.
-func VotesRoot(ipcVotes []IPCVote, exclusions []Exclusion) crypto.Hash {
+// VotesRoot engage l'en-tête sur les votes IPC, les exclusions et les changements de paramètres du bloc.
+func VotesRoot(ipcVotes []IPCVote, exclusions []Exclusion, params []ParamChange) crypto.Hash {
 	ipcIDs := make([]crypto.Hash, len(ipcVotes))
 	for i := range ipcVotes {
 		ipcIDs[i] = crypto.Sum(crypto.ContextRegistry, appendIPCVote([]byte{'I'}, &ipcVotes[i]))
@@ -114,7 +114,11 @@ func VotesRoot(ipcVotes []IPCVote, exclusions []Exclusion) crypto.Hash {
 	for i := range exclusions {
 		exIDs[i] = crypto.Sum(crypto.ContextRegistry, appendExclusion([]byte{'X'}, &exclusions[i]))
 	}
-	return merkleRoot([]crypto.Hash{merkleRoot(ipcIDs), merkleRoot(exIDs)})
+	pIDs := make([]crypto.Hash, len(params))
+	for i := range params {
+		pIDs[i] = crypto.Sum(crypto.ContextRegistry, appendParamChange([]byte{'P'}, &params[i]))
+	}
+	return merkleRoot([]crypto.Hash{merkleRoot(ipcIDs), merkleRoot(exIDs), merkleRoot(pIDs)})
 }
 
 // --- Vérification à l'application d'un bloc ---

@@ -120,6 +120,46 @@ func DecodeRegistration(b []byte, hrp string) (Registration, error) {
 // EncodeIPCVote renvoie l'encodage d'un vote IPC (pour le réseau).
 func EncodeIPCVote(v *IPCVote) []byte { return appendIPCVote(nil, v) }
 
+func appendParamVote(b []byte, v *ParamVote) []byte {
+	b = appendAddr(b, v.Voter)
+	b = append(b, paramMessage(v.ID, v.Value, v.Day)...)
+	return append(b, v.Signature[:]...)
+}
+
+// appendParamChange : paramètre, valeur, puis (votant, jour, signature) pour chaque vote.
+func appendParamChange(b []byte, ch *ParamChange) []byte {
+	b = append(b, byte(ch.ID))
+	b = binary.BigEndian.AppendUint64(b, ch.Value)
+	b = binary.BigEndian.AppendUint32(b, uint32(len(ch.Votes)))
+	for i := range ch.Votes {
+		b = appendAddr(b, ch.Votes[i].Voter)
+		b = binary.BigEndian.AppendUint64(b, uint64(ch.Votes[i].Day))
+		b = append(b, ch.Votes[i].Signature[:]...)
+	}
+	return b
+}
+
+// EncodeParamVote renvoie l'encodage d'un vote de paramètre (pour le réseau).
+func EncodeParamVote(v *ParamVote) []byte { return appendParamVote(nil, v) }
+
+// DecodeParamVote décode un vote de paramètre.
+func DecodeParamVote(b []byte, hrp string) (ParamVote, error) {
+	r := &reader{b: b, hrp: hrp}
+	v := ParamVote{Voter: r.addr(), ID: ParamID(r.u8()), Value: r.u64(), Day: r.i64(), Signature: r.sig()}
+	return v, r.done()
+}
+
+func (r *reader) paramChange() ParamChange {
+	ch := ParamChange{ID: ParamID(r.u8()), Value: r.u64()}
+	if n := r.count(exVoteSize); n > 0 {
+		ch.Votes = make([]ParamVote, n)
+		for i := range ch.Votes {
+			ch.Votes[i] = ParamVote{Voter: r.addr(), ID: ch.ID, Value: ch.Value, Day: r.i64(), Signature: r.sig()}
+		}
+	}
+	return ch
+}
+
 // EncodeExclusionVote renvoie l'encodage d'un vote d'exclusion (pour le réseau).
 func EncodeExclusionVote(v *ExclusionVote) []byte { return appendExclusionVote(nil, v) }
 
@@ -205,6 +245,10 @@ func EncodeBlock(blk *Block) []byte {
 	b = binary.BigEndian.AppendUint32(b, uint32(len(blk.Exclusions)))
 	for i := range blk.Exclusions {
 		b = appendExclusion(b, &blk.Exclusions[i])
+	}
+	b = binary.BigEndian.AppendUint32(b, uint32(len(blk.ParamChanges)))
+	for i := range blk.ParamChanges {
+		b = appendParamChange(b, &blk.ParamChanges[i])
 	}
 	b = binary.BigEndian.AppendUint32(b, uint32(len(blk.Founders)))
 	for _, f := range blk.Founders {
@@ -552,6 +596,12 @@ func DecodeBlock(b []byte, hrp string) (Block, error) {
 		blk.Exclusions = make([]Exclusion, n)
 		for i := range blk.Exclusions {
 			blk.Exclusions[i] = r.exclusion()
+		}
+	}
+	if n := r.count(1 + 8 + 4); n > 0 {
+		blk.ParamChanges = make([]ParamChange, n)
+		for i := range blk.ParamChanges {
+			blk.ParamChanges[i] = r.paramChange()
 		}
 	}
 	if n := r.count(crypto.AddressHashSize); n > 0 {

@@ -129,7 +129,9 @@ func TestSyncMaliciousPeerBanned(t *testing.T) {
 	f := newFixture(t)
 	h := buildHistory(t, f.net, 20)
 	liar := f.syncHost(t, tamperChain{h.store(t, storage.Options{Pruning: false}, 20), 10}, func(c *Config) { c.Archive = true })
-	honest := f.syncHost(t, h.store(t, storage.Options{Pruning: false}, 20), func(c *Config) { c.Archive = true })
+	// Le menteur est le seul nœud archive : toujours interrogé en premier (test déterministe).
+	// Le pair honnête, non archive, garde quand même ses 20 blocs (moins que la durée de conservation).
+	honest := f.syncHost(t, h.store(t, storage.DefaultOptions(), 20), nil)
 	fresh := h.store(t, storage.DefaultOptions(), 0)
 	node := f.syncHost(t, fresh, nil)
 	connect(t, node, liar)
