@@ -1,0 +1,456 @@
+package consensus
+
+import (
+	"errors"
+	"time"
+
+	"github.com/makoto-kanamoto/etl/internal/blockchain"
+	"github.com/makoto-kanamoto/etl/internal/crypto"
+	"github.com/makoto-kanamoto/etl/internal/network"
+)
+
+// Handle implémente network.Handler : appelé une fois par message diffusé, après les vérifications
+// sans contexte (décodage, signatures). Le moteur décide selon l'état :
+//   - Accept : utile, relayé ;
+//   - Ignore : périmé ou sans rôle — ni relayé, ni sanctionné (l'émetteur peut être honnête) ;
+//   - Reject : invalide quelle que soit la vue locale — l'émetteur est banni.
+func (e *Engine) Handle(m network.Message) network.Verdict {
+	hrp := e.cfg.Params.AddressHRP
+	switch m.Type {
+	case network.MsgTx:
+		tx, err := blockchain.DecodeTransaction(m.Payload, hrp)
+		if err != nil {
+			return network.Reject
+		}
+		if e.pool.Add(tx, e.chain, e.cfg.Now()) != nil {
+			return network.Ignore // doublon, nonce dépassé, solde… : pas forcément malveillant
+		}
+		return network.Accept
+	case network.MsgParticipation:
+		pt, err := blockchain.DecodeParticipation(m.Payload, hrp)
+		if err != nil {
+			return network.Reject
+		}
+		return e.onParticipation(pt)
+	case network.MsgProposal:
+		pr, err := blockchain.DecodeProposal(m.Payload, hrp)
+		if err != nil {
+			return network.Reject
+		}
+		return e.onProposal(&pr)
+	case network.MsgVote:
+		v, err := blockchain.DecodeVote(m.Payload, hrp)
+		if err != nil {
+			return network.Reject
+		}
+		return e.onVote(v)
+	case network.MsgFinalized:
+		e.afterFinalize() // déjà appliqué par le réseau : passer à la hauteur suivante
+		return network.Accept
+	case network.MsgIPCVote:
+		v, err := blockchain.DecodeIPCVote(m.Payload, hrp)
+		if err != nil {
+			return network.Reject
+		}
+		return e.onIPCVote(v)
+	case network.MsgExclusionVote:
+		v, err := blockchain.DecodeExclusionVote(m.Payload, hrp)
+		if err != nil {
+			return network.Reject
+		}
+		return e.onExclusionVote(v)
+	case network.MsgRegistration:
+		r, err := blockchain.DecodeRegistration(m.Payload, hrp)
+		if err != nil {
+			return network.Reject
+		}
+		return e.onRegistration(r)
+	}
+	return network.Ignore
+}
+
+func (e *Engine) broadcast(out []network.Message) {
+	for _, m := range out {
+		e.net.Broadcast(m)
+	}
+}
+
+func (e *Engine) onParticipation(pt blockchain.Participation) network.Verdict {
+	p, now := e.cfg.Params, e.cfg.Now()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	hs := e.ensureHeight()
+	day := e.dayOf(now)
+	start := time.Unix(day, 0)
+	if day <= hs.prev.Timestamp || now.Before(start) || !now.Before(start.Add(p.SubmissionWindow)) {
+		return network.Ignore // hors fenêtre : périmée ou prématurée
+	}
+	// Une participation d'un autre jour échoue ici : périmée, pas forcément malveillante.
+	if pt.Verify(hs.prev.Hash(), day, p) != nil {
+		return network.Ignore
+	}
+	var role blockchain.Role
+	e.chain.ReadState(func(st *blockchain.State) { role = e.roleOf(st, pt.Miner, day) })
+	if role == blockchain.RoleNone {
+		return network.Ignore
+	}
+	ds := hs.day(day)
+	ds.recv = append(ds.recv, blockchain.Received{Participation: pt, ReceivedAt: now})
+	return network.Accept
+}
+
+// Refus liés à la vue locale : le proposant peut être honnête. On ne pré-vote pas, on relaie, sans sanction.
+func viewDependent(err error) bool {
+	return errors.Is(err, blockchain.ErrMissingParticipation) ||
+		errors.Is(err, blockchain.ErrEquivocatorIncluded) ||
+		errors.Is(err, blockchain.ErrRoundTooEarly)
+}
+
+func (e *Engine) onProposal(pr *blockchain.Proposal) network.Verdict {
+	p, now := e.cfg.Params, e.cfg.Now()
+	e.mu.Lock()
+	hs := e.ensureHeight()
+	if pr.Block.Header.Height != hs.height || hs.committed {
+		e.mu.Unlock()
+		return network.Ignore
+	}
+	rs := hs.round(pr.Round)
+	if rs.proposal != nil {
+		e.mu.Unlock()
+		return network.Ignore // déjà une proposition pour ce tour
+	}
+	var err error
+	e.chain.ReadState(func(st *blockchain.State) {
+		err = blockchain.CheckProposal(pr, &hs.prev, st, hs.day(pr.Round.Day).recv, now, p)
+	})
+	if err != nil && !viewDependent(err) {
+		e.mu.Unlock()
+		return network.Reject // proposition objectivement invalide : proposant fautif
+	}
+	h := pr.Block.Header.Hash()
+	blk := pr.Block
+	hs.blocks[h] = &blk
+	if pr.POL != nil && (hs.valid == nil || hs.valid.round.Before(pr.POL.Round)) {
+		hs.valid = &lockInfo{round: pr.POL.Round, block: &blk, pol: *pr.POL}
+	}
+	var out []network.Message
+	if err == nil {
+		rs.proposal = pr
+		out = append(out, e.tryPrevote(hs, pr.Round, now)...)
+	}
+	out = append(out, e.process(hs, pr.Round, h, now)...)
+	e.mu.Unlock()
+	e.broadcast(out)
+	return network.Accept
+}
+
+// tryPrevote (verrou tenu) pré-vote la proposition du tour r si r est le tour en cours, selon les
+// règles de verrouillage :
+//   - nouveau bloc : si le nœud n'est pas verrouillé, ou verrouillé sur ce bloc ;
+//   - re-proposition avec preuve au tour vr : si le verrou est antérieur ou égal à vr, ou porte sur ce bloc.
+func (e *Engine) tryPrevote(hs *heightState, r blockchain.RoundID, now time.Time) []network.Message {
+	rs := hs.round(r)
+	cur, ok := e.currentRound(now)
+	if !ok || cur != r || rs.proposal == nil || rs.prevoted || !e.canVote() {
+		return nil
+	}
+	pr := rs.proposal
+	h := pr.Block.Header.Hash()
+	allowed := hs.locked == nil || hs.locked.block.Header.Hash() == h ||
+		(pr.POL != nil && !pr.POL.Round.Before(hs.locked.round))
+	if !allowed {
+		return nil
+	}
+	rs.prevoted = true
+	if m, ok := e.castVote(hs, blockchain.Prevote, r, &pr.Block.Header); ok {
+		return append([]network.Message{m}, e.process(hs, r, h, now)...)
+	}
+	return nil
+}
+
+// canVote (verrou tenu) : clé présente, pas d'arrêt, nœud admis.
+func (e *Engine) canVote() bool {
+	if e.cfg.Key == nil || e.halted() {
+		return false
+	}
+	admitted := false
+	e.chain.ReadState(func(st *blockchain.State) { admitted = st.IsAdmitted(e.me) })
+	return admitted
+}
+
+// castVote (verrou tenu) enregistre le vote sur disque AVANT de le signer et de le diffuser :
+// un nœud ne signe jamais deux votes différents pour (hauteur, jour, tour, type).
+func (e *Engine) castVote(hs *heightState, t blockchain.VoteType, r blockchain.RoundID, h *blockchain.Header) (network.Message, bool) {
+	if e.chain.RecordVote(t, h.Height, r, h.Hash()) != nil {
+		return network.Message{}, false
+	}
+	v, err := blockchain.SignVote(e.cfg.Key, t, h, r, e.cfg.Params)
+	if err != nil {
+		return network.Message{}, false
+	}
+	e.recordVote(hs, v)
+	return network.Message{Type: network.MsgVote, Payload: blockchain.EncodeVote(&v)}, true
+}
+
+// recordVote (verrou tenu) comptabilise un vote et détecte le double vote (même type, même tour).
+func (e *Engine) recordVote(hs *heightState, v blockchain.Vote) {
+	k := voteKey{v.Voter.Hash, v.Type, v.Round}
+	if first, ok := hs.first[k]; ok && first.BlockHash != v.BlockHash {
+		e.veqs[v.Voter.Hash] = blockchain.NewVoteEquivocation(first, v) // incluse dans un prochain bloc
+	} else if !ok {
+		hs.first[k] = v
+	}
+	rs := hs.round(v.Round)
+	set := rs.prevotes
+	if v.Type == blockchain.Precommit {
+		set = rs.precommits
+	}
+	if set[v.BlockHash] == nil {
+		set[v.BlockHash] = map[addrKey]blockchain.Vote{}
+	}
+	set[v.BlockHash][v.Voter.Hash] = v
+}
+
+func (e *Engine) onVote(v blockchain.Vote) network.Verdict {
+	now := e.cfg.Now()
+	e.mu.Lock()
+	hs := e.ensureHeight()
+	if v.Height != hs.height || hs.committed {
+		e.mu.Unlock()
+		return network.Ignore
+	}
+	admitted := false
+	e.chain.ReadState(func(st *blockchain.State) { admitted = st.IsAdmitted(v.Voter) })
+	rs := hs.round(v.Round)
+	set := rs.prevotes
+	if v.Type == blockchain.Precommit {
+		set = rs.precommits
+	}
+	if !admitted {
+		e.mu.Unlock()
+		return network.Ignore
+	}
+	if _, dup := set[v.BlockHash][v.Voter.Hash]; dup {
+		e.mu.Unlock()
+		return network.Ignore
+	}
+	e.recordVote(hs, v)
+	out := e.process(hs, v.Round, v.BlockHash, now)
+	e.mu.Unlock()
+	e.broadcast(out)
+	return network.Accept
+}
+
+// process (verrou tenu) réagit aux seuils atteints pour le bloc h au tour r :
+//   - > 2/3 de pré-votes : bloc « valide » (à re-proposer) ; si r est le tour en cours, se
+//     verrouiller (sur disque) puis pré-engager ;
+//   - > 2/3 de pré-engagements : certificat, stockage, bloc finalisé à diffuser.
+func (e *Engine) process(hs *heightState, r blockchain.RoundID, h crypto.Hash, now time.Time) []network.Message {
+	block := hs.blocks[h]
+	if block == nil || hs.committed {
+		return nil // votes en avance sur la proposition : réexaminés à son arrivée
+	}
+	p := e.cfg.Params
+	rs := hs.round(r)
+	var need int
+	e.chain.ReadState(func(st *blockchain.State) { need = blockchain.Quorum(st.ActiveCount()) })
+	var out []network.Message
+
+	if len(rs.prevotes[h]) >= need {
+		pol := blockchain.NewCertificate(blockchain.Prevote, &block.Header, r, votesOf(rs.prevotes[h]), p)
+		if hs.valid == nil || hs.valid.round.Before(r) {
+			hs.valid = &lockInfo{round: r, block: block, pol: pol}
+		}
+		if cur, ok := e.currentRound(now); ok && cur == r && !rs.precommitted && e.canVote() {
+			rs.precommitted = true
+			if e.chain.SaveLock(block, &pol) == nil { // verrou sur disque AVANT le pré-engagement
+				hs.locked = &lockInfo{round: r, block: block, pol: pol}
+				if m, ok := e.castVote(hs, blockchain.Precommit, r, &block.Header); ok {
+					out = append(out, m)
+				}
+			}
+		}
+	}
+
+	if len(rs.precommits[h]) >= need {
+		cert := blockchain.NewCertificate(blockchain.Precommit, &block.Header, r, votesOf(rs.precommits[h]), p)
+		var err error
+		e.chain.ReadState(func(st *blockchain.State) { err = blockchain.VerifyCertificate(&cert, &block.Header, st, p) })
+		if err == nil && e.chain.Append(block, &cert) == nil {
+			hs.committed = true
+			out = append(out, network.Message{Type: network.MsgFinalized, Payload: network.EncodeFinalized(block, &cert)})
+			e.afterFinalizeLocked()
+		}
+	}
+	return out
+}
+
+func votesOf(m map[addrKey]blockchain.Vote) []blockchain.Vote {
+	out := make([]blockchain.Vote, 0, len(m))
+	for _, v := range m {
+		out = append(out, v)
+	}
+	return out
+}
+
+// TickVotes (appelé par Tick) : pré-vote une proposition arrivée juste avant son tour, et
+// réexamine les seuils du tour en cours.
+func (e *Engine) tickVotes(now time.Time) {
+	e.mu.Lock()
+	hs := e.ensureHeight()
+	r, ok := e.currentRound(now)
+	if !ok || hs.committed {
+		e.mu.Unlock()
+		return
+	}
+	out := e.tryPrevote(hs, r, now)
+	rs := hs.round(r)
+	for h := range rs.prevotes {
+		out = append(out, e.process(hs, r, h, now)...)
+	}
+	e.mu.Unlock()
+	e.broadcast(out)
+}
+
+func (e *Engine) afterFinalize() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.afterFinalizeLocked()
+}
+
+// afterFinalizeLocked purge le mempool et ce qui a été inclus ou est devenu inutile.
+func (e *Engine) afterFinalizeLocked() {
+	now := e.cfg.Now()
+	e.pool.Update(e.chain, now)
+	e.chain.ReadState(func(st *blockchain.State) {
+		for k := range e.veqs {
+			if st.Status(e.veqs[k].A.Voter) == blockchain.StatusExcluded {
+				delete(e.veqs, k)
+			}
+		}
+		for k, r := range e.regs {
+			if (st.Status(r.Candidate) != blockchain.StatusUnknown && st.Status(r.Candidate) != blockchain.StatusInactive) ||
+				now.Unix()/86400 >= r.Day+e.cfg.Params.RegistrationDays {
+				delete(e.regs, k)
+			}
+		}
+		for rec := range e.ipc {
+			if rec.Period <= st.IPC().Period {
+				delete(e.ipc, rec)
+			}
+		}
+		for target := range e.ex {
+			if st.Node(crypto.Address{Hash: target}).Status == blockchain.StatusExcluded {
+				delete(e.ex, target)
+			}
+		}
+	})
+	e.ensureHeight()
+}
+
+func (e *Engine) onIPCVote(v blockchain.IPCVote) network.Verdict {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	ok := false
+	e.chain.ReadState(func(st *blockchain.State) { ok = st.IsAdmitted(v.Voter) && v.Record.Period > st.IPC().Period })
+	if !ok {
+		return network.Ignore
+	}
+	if e.ipc[v.Record] == nil {
+		e.ipc[v.Record] = map[addrKey]blockchain.IPCVote{}
+	}
+	if _, dup := e.ipc[v.Record][v.Voter.Hash]; dup {
+		return network.Ignore
+	}
+	e.ipc[v.Record][v.Voter.Hash] = v
+	return network.Accept
+}
+
+func (e *Engine) onExclusionVote(v blockchain.ExclusionVote) network.Verdict {
+	today := e.cfg.Now().Unix() / 86400
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	ok := false
+	e.chain.ReadState(func(st *blockchain.State) {
+		ok = st.IsAdmitted(v.Voter) && st.Status(v.Target) != blockchain.StatusUnknown &&
+			st.Status(v.Target) != blockchain.StatusExcluded
+	})
+	if !ok || v.Day > today+1 || today-v.Day >= blockchain.ExclusionVoteDays {
+		return network.Ignore
+	}
+	t := v.Target.Hash
+	if e.ex[t] == nil {
+		e.ex[t] = map[addrKey]blockchain.ExclusionVote{}
+	}
+	if _, dup := e.ex[t][v.Voter.Hash]; dup {
+		return network.Ignore
+	}
+	e.ex[t][v.Voter.Hash] = v
+	return network.Accept
+}
+
+func (e *Engine) onRegistration(r blockchain.Registration) network.Verdict {
+	today := e.cfg.Now().Unix() / 86400
+	if today < r.Day-1 || today >= r.Day+e.cfg.Params.RegistrationDays {
+		return network.Ignore
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if _, dup := e.regs[r.Candidate.Hash]; dup {
+		return network.Ignore
+	}
+	e.regs[r.Candidate.Hash] = r
+	return network.Accept
+}
+
+// --- Points d'entrée pour le wallet, l'oracle et l'opérateur ---
+
+// SubmitTransaction ajoute une transaction au mempool et la diffuse.
+func (e *Engine) SubmitTransaction(tx blockchain.Transaction) error {
+	if err := tx.Verify(e.cfg.Params); err != nil {
+		return err
+	}
+	if err := e.pool.Add(tx, e.chain, e.cfg.Now()); err != nil {
+		return err
+	}
+	e.net.Broadcast(network.Message{Type: network.MsgTx, Payload: blockchain.EncodeTransaction(&tx)})
+	return nil
+}
+
+// SubmitIPCVote signe et diffuse le vote de ce nœud pour un triplet IPC lu à la source (oracle).
+func (e *Engine) SubmitIPCVote(rec blockchain.IPCRecord) error {
+	if e.cfg.Key == nil {
+		return ErrPassive
+	}
+	v, err := blockchain.SignIPCVote(e.cfg.Key, rec, e.cfg.Params)
+	if err != nil {
+		return err
+	}
+	e.onIPCVote(v)
+	e.net.Broadcast(network.Message{Type: network.MsgIPCVote, Payload: blockchain.EncodeIPCVote(&v)})
+	return nil
+}
+
+// SubmitExclusionVote signe et diffuse un vote d'exclusion Sybil (décision de l'opérateur).
+func (e *Engine) SubmitExclusionVote(target crypto.Address) error {
+	if e.cfg.Key == nil {
+		return ErrPassive
+	}
+	v, err := blockchain.SignExclusionVote(e.cfg.Key, target, e.cfg.Now().Unix()/86400, e.cfg.Params)
+	if err != nil {
+		return err
+	}
+	e.onExclusionVote(v)
+	e.net.Broadcast(network.Message{Type: network.MsgExclusionVote, Payload: blockchain.EncodeExclusionVote(&v)})
+	return nil
+}
+
+// SubmitRegistration diffuse une candidature déjà signée par le candidat (et le parrain).
+func (e *Engine) SubmitRegistration(r blockchain.Registration) error {
+	if err := r.VerifySignatures(e.cfg.Params); err != nil {
+		return err
+	}
+	e.onRegistration(r)
+	e.net.Broadcast(network.Message{Type: network.MsgRegistration, Payload: blockchain.EncodeRegistration(&r)})
+	return nil
+}

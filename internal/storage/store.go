@@ -51,6 +51,7 @@ var (
 	bucketHeaders  = []byte("headers")  // hauteur → en-tête
 	bucketBlocks   = []byte("blocks")   // hauteur → bloc complet (élagué au-delà de KeepBlocks)
 	bucketCerts    = []byte("certs")    // hauteur → certificat de finalité (élagué comme les blocs)
+	bucketVotes    = []byte("votes")    // hauteur | jour | tour | type → hash du bloc voté par CE nœud
 	bucketHashes   = []byte("hashes")   // hash → hauteur
 	bucketAccounts = []byte("accounts") // adresse → compte
 	bucketNodes    = []byte("nodes")    // adresse → entrée du registre
@@ -58,7 +59,7 @@ var (
 	keyChainID = []byte("chain_id")
 	keyGenesis = []byte("genesis")
 	keyTip     = []byte("tip")
-	keyVoted   = []byte("voted") // dernier vote émis par ce nœud : hauteur | hash
+	keyLock    = []byte("lock") // verrou de ce nœud : hauteur | jour | tour | bloc
 	keyBaseIPC = []byte("ipc_base")
 	keyIPC     = []byte("ipc")
 )
@@ -105,7 +106,7 @@ func (s *Store) Close() error {
 
 func (s *Store) load() error {
 	return s.db.Update(func(tx *bolt.Tx) error {
-		for _, name := range [][]byte{bucketMeta, bucketHeaders, bucketBlocks, bucketCerts, bucketHashes, bucketAccounts, bucketNodes} {
+		for _, name := range [][]byte{bucketMeta, bucketHeaders, bucketBlocks, bucketCerts, bucketVotes, bucketHashes, bucketAccounts, bucketNodes} {
 			if _, err := tx.CreateBucketIfNotExists(name); err != nil {
 				return err
 			}
@@ -277,6 +278,17 @@ func (s *Store) write(tx *bolt.Tx, b *blockchain.Block, c *blockchain.Changes) e
 	if err := s.prune(tx, b.Header.Height); err != nil {
 		return err
 	}
+	// Votes des hauteurs finalisées : devenus inutiles (RecordVote refuse ces hauteurs de toute façon).
+	var done [][]byte
+	vc := tx.Bucket(bucketVotes).Cursor()
+	for k, _ := vc.First(); k != nil && binary.BigEndian.Uint64(k) <= b.Header.Height; k, _ = vc.Next() {
+		done = append(done, append([]byte(nil), k...))
+	}
+	for _, k := range done {
+		if err := tx.Bucket(bucketVotes).Delete(k); err != nil {
+			return err
+		}
+	}
 	if s.failBeforeCommit != nil {
 		return s.failBeforeCommit()
 	}
@@ -411,21 +423,70 @@ func (s *Store) CertificateAt(height uint64) (c blockchain.Certificate, err erro
 	return c, err
 }
 
-// RecordVote enregistre sur disque, AVANT diffusion, le vote que ce nœud s'apprête à émettre.
-// Refuse tout second vote pour un autre bloc à la même hauteur, ou pour une hauteur passée :
-// un nœud qui redémarre ne peut pas se faire exclure pour double vote.
-// Revoter pour le même bloc (rediffusion) est permis.
-func (s *Store) RecordVote(height uint64, hash crypto.Hash) error {
+// RecordVote enregistre sur disque, AVANT diffusion, le vote que ce nœud s'apprête à signer.
+// Refuse un second vote du même type, au même tour et à la même hauteur, pour un autre bloc :
+// un nœud qui redémarre ne peut pas se faire exclure pour double vote. Revoter pour le même
+// bloc (rediffusion) est permis. Refuse aussi tout vote pour une hauteur déjà finalisée.
+func (s *Store) RecordVote(t blockchain.VoteType, height uint64, r blockchain.RoundID, hash crypto.Hash) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
-		meta := tx.Bucket(bucketMeta)
-		if last := meta.Get(keyVoted); len(last) == 8+crypto.HashSize {
-			lastHeight := binary.BigEndian.Uint64(last)
-			if height < lastHeight || (height == lastHeight && string(last[8:]) != string(hash[:])) {
+		if tip, ok := s.tipHeight(tx); ok && height <= tip {
+			return ErrAlreadyVoted
+		}
+		key := binary.BigEndian.AppendUint64(nil, height)
+		key = binary.BigEndian.AppendUint64(key, uint64(r.Day))
+		key = append(key, r.Round, byte(t))
+		votes := tx.Bucket(bucketVotes)
+		if prev := votes.Get(key); prev != nil {
+			if string(prev) != string(hash[:]) {
 				return ErrAlreadyVoted
 			}
+			return nil
 		}
-		return meta.Put(keyVoted, append(u64(height), hash[:]...))
+		return votes.Put(key, hash[:])
 	})
+}
+
+func (s *Store) tipHeight(tx *bolt.Tx) (uint64, bool) {
+	v := tx.Bucket(bucketMeta).Get(keyTip)
+	if len(v) != 8 {
+		return 0, false
+	}
+	return binary.BigEndian.Uint64(v), true
+}
+
+// SaveLock enregistre sur disque le verrou de ce nœud et sa preuve (plus de 2/3 de pré-votes),
+// AVANT de diffuser son pré-engagement : un nœud qui redémarre et oublierait son verrou pourrait
+// casser la sécurité ; sans la preuve, il ne pourrait plus re-proposer son bloc.
+func (s *Store) SaveLock(b *blockchain.Block, pol *blockchain.Certificate) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		blk := blockchain.EncodeBlock(b)
+		v := binary.BigEndian.AppendUint32(nil, uint32(len(blk)))
+		v = append(v, blk...)
+		return tx.Bucket(bucketMeta).Put(keyLock, append(v, blockchain.EncodeCertificate(pol)...))
+	})
+}
+
+// Lock renvoie le verrou de ce nœud pour la hauteur en cours et sa preuve (ok = false s'il n'y en a pas).
+func (s *Store) Lock() (b blockchain.Block, pol blockchain.Certificate, ok bool) {
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bucketMeta).Get(keyLock)
+		if len(v) < 4 {
+			return nil
+		}
+		n := binary.BigEndian.Uint32(v)
+		if uint64(n) > uint64(len(v)-4) {
+			return nil
+		}
+		blk, err1 := blockchain.DecodeBlock(v[4:4+n], s.p.AddressHRP)
+		c, err2 := blockchain.DecodeCertificate(v[4+n:], s.p.AddressHRP)
+		tip, _ := s.tipHeight(tx)
+		if err1 != nil || err2 != nil || blk.Header.Height != tip+1 {
+			return nil // verrou d'une hauteur déjà finalisée : périmé
+		}
+		b, pol, ok = blk, c, true
+		return nil
+	})
+	return b, pol, ok
 }
 
 // HeightOf renvoie la hauteur d'un bloc à partir de son hash.

@@ -175,10 +175,6 @@ func TestSybilExclusionVote(t *testing.T) {
 	} {
 		n.expectRefused(t, name, n.build(t, 9, f, c.edit), c.want)
 	}
-	// La cible ne peut pas toucher sa part le jour même de son exclusion.
-	n.expectRefused(t, "cible participante", n.build(t, 9, append(append([]wallet(nil), f...), fake),
-		withExclusions(exclusion(t, p, f[:8], fake.addr, 9))), ErrEquivocatorPresent)
-
 	// 8 votes sur 11 actifs, signés il y a 29 jours : exclusion.
 	n.produce(t, 38, f, withExclusions(exclusion(t, p, f[:8], fake.addr, 9)))
 	if n.st.Status(fake.addr) != StatusExcluded {
@@ -251,5 +247,48 @@ func TestGovernanceUsesRegistryBeforeBlock(t *testing.T) {
 	})
 	if n.st.Status(f[0].addr) != StatusExcluded || n.st.Status(f[9].addr) != StatusExcluded {
 		t.Fatal("les deux exclusions doivent s'appliquer")
+	}
+}
+
+// Un nœud exclu PAR un bloc peut figurer parmi ses participants (le rang du proposant en dépend),
+// mais il ne touche pas sa part ce jour-là ; les autres se partagent la récompense.
+func TestExcludedByBlockGetsNoShare(t *testing.T) {
+	p := testParams()
+	n := newNet(t, p)
+	f := n.founders
+	target := f[9]
+	n.produce(t, 1, f, withExclusions(exclusion(t, p, f[:7], target.addr, 1)))
+	if n.st.Status(target.addr) != StatusExcluded {
+		t.Fatal("cible non exclue")
+	}
+	if got := n.st.Account(target.addr).Balance; got != 0 {
+		t.Fatalf("la cible a touché %s le jour de son exclusion", FormatETL(got))
+	}
+	if got := n.st.Account(f[0].addr).Balance; got != 10*UnitsPerETL/9 {
+		t.Fatalf("part des autres : %s, attendu 10 ÷ 9", FormatETL(got))
+	}
+	// Le lendemain, un nœud déjà exclu ne peut plus participer : un bloc qui l'inclurait est refusé.
+	b := n.build(t, 2, f, func(b *Block) {
+		if len(b.Participants) != 9 {
+			t.Fatalf("%d participants retenus, l'exclu doit être écarté", len(b.Participants))
+		}
+		b.Participants = append(b.Participants, participate(t, p, n.tip.Hash(), target, day(2)))
+		sortByTicket(b.Participants, n.tip.Hash())
+		b.Header.Proposer = b.Participants[0].Miner
+	})
+	if err := n.apply(&b); err != ErrBlockNotAdmitted {
+		t.Fatalf("participation d'un exclu : err = %v", err)
+	}
+}
+
+// Même règle pour la double participation prouvée dans le bloc.
+func TestEquivocatorInSameBlockGetsNoShare(t *testing.T) {
+	p := testParams()
+	n := newNet(t, p)
+	cheater := n.founders[0]
+	a, b := doubleParticipation(t, n, cheater, 1)
+	n.produce(t, 1, n.founders, func(bl *Block) { bl.Equivocations = []Equivocation{NewEquivocation(a, b)} })
+	if n.st.Status(cheater.addr) != StatusExcluded || n.st.Account(cheater.addr).Balance != 0 {
+		t.Fatal("le tricheur doit être exclu sans toucher sa part")
 	}
 }

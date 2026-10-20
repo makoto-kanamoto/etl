@@ -452,29 +452,69 @@ func TestRecordVote(t *testing.T) {
 	b1 := net.Build(t, 1, nil)
 	alt := net.Build(t, 1, func(b *blockchain.Block) { b.Participants = b.Participants[:9] })
 	h1, hAlt := b1.Header.Hash(), alt.Header.Hash()
+	r0 := chaintest.RoundOf(&b1.Header)
+	r1 := blockchain.RoundID{Day: r0.Day, Round: r0.Round + 1}
+	pv, pc := blockchain.Prevote, blockchain.Precommit
 
-	if err := s.RecordVote(1, h1); err != nil {
+	if err := s.RecordVote(pv, 1, r0, h1); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RecordVote(1, h1); err != nil {
+	if err := s.RecordVote(pv, 1, r0, h1); err != nil {
 		t.Fatalf("rediffusion du même vote : %v", err)
 	}
-	if err := s.RecordVote(1, hAlt); !errors.Is(err, ErrAlreadyVoted) {
-		t.Fatalf("second vote à la même hauteur : err = %v", err)
+	if err := s.RecordVote(pv, 1, r0, hAlt); !errors.Is(err, ErrAlreadyVoted) {
+		t.Fatalf("second pré-vote au même tour : err = %v", err)
+	}
+	// Autre type, ou autre tour : un vote différent est normal.
+	if err := s.RecordVote(pc, 1, r0, h1); err != nil {
+		t.Fatalf("pré-engagement après pré-vote : %v", err)
+	}
+	if err := s.RecordVote(pv, 1, r1, hAlt); err != nil {
+		t.Fatalf("pré-vote d'un autre bloc au tour suivant : %v", err)
 	}
 	s.Close()
 	// Après redémarrage, la protection tient toujours.
 	s = open(t, path, net.P, DefaultOptions())
-	defer s.Close()
-	if err := s.RecordVote(1, hAlt); !errors.Is(err, ErrAlreadyVoted) {
+	if err := s.RecordVote(pc, 1, r0, hAlt); !errors.Is(err, ErrAlreadyVoted) {
 		t.Fatalf("après redémarrage : err = %v", err)
 	}
-	if err := s.RecordVote(2, hAlt); err != nil {
-		t.Fatalf("hauteur suivante : %v", err)
+	// Une fois la hauteur finalisée, plus aucun vote pour elle.
+	b, c := net.Next(t, 1, nil)
+	if err := s.Append(&b, &c); err != nil {
+		t.Fatal(err)
 	}
-	if err := s.RecordVote(1, h1); !errors.Is(err, ErrAlreadyVoted) {
-		t.Fatalf("vote pour une hauteur passée : err = %v", err)
+	if err := s.RecordVote(pv, 1, blockchain.RoundID{Day: r0.Day + 86400}, h1); !errors.Is(err, ErrAlreadyVoted) {
+		t.Fatalf("vote pour une hauteur finalisée : err = %v", err)
 	}
+	s.Close()
+}
+
+// Le verrou et sa preuve survivent au redémarrage, et deviennent caducs une fois la hauteur finalisée.
+func TestLockPersisted(t *testing.T) {
+	s, net, path := newChain(t, DefaultOptions())
+	if _, _, ok := s.Lock(); ok {
+		t.Fatal("verrou inattendu sur une base neuve")
+	}
+	b := net.Build(t, 1, nil)
+	pol := net.Certify(t, &b.Header, 10)
+	pol.Type = blockchain.Prevote // la forme suffit ici : le stockage ne revérifie pas la preuve
+	if err := s.SaveLock(&b, &pol); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s = open(t, path, net.P, DefaultOptions())
+	got, gotPOL, ok := s.Lock()
+	if !ok || got.Header.Hash() != b.Header.Hash() || gotPOL.BlockHash != pol.BlockHash || len(gotPOL.Votes) != len(pol.Votes) {
+		t.Fatal("verrou perdu au redémarrage")
+	}
+	fb, fc := net.Next(t, 1, nil)
+	if err := s.Append(&fb, &fc); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := s.Lock(); ok {
+		t.Fatal("verrou d'une hauteur finalisée encore actif")
+	}
+	s.Close()
 }
 
 func TestIPCPersisted(t *testing.T) {

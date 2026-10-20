@@ -23,6 +23,7 @@ const (
 	PurposeTx            Purpose = "tx"
 	PurposeParticipation Purpose = "participation"
 	PurposeBlockProposal Purpose = "block-proposal"
+	PurposeProposal      Purpose = "proposal"
 	PurposeRegistration  Purpose = "registration"
 	PurposeSponsorship   Purpose = "sponsorship"
 	PurposeBlockVote     Purpose = "block-vote"

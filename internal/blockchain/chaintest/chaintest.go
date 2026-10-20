@@ -136,7 +136,8 @@ func (n *Net) Next(tb testing.TB, d int, edit func(*blockchain.Block)) (blockcha
 	return b, c
 }
 
-// Certify fait voter jusqu'à max nœuds admis (état courant, donc AVANT le bloc) pour l'en-tête h.
+// Certify fait pré-engager jusqu'à max nœuds admis (état courant, donc AVANT le bloc) pour l'en-tête h,
+// au tour (date, tour) du bloc : c'est un certificat de finalité.
 func (n *Net) Certify(tb testing.TB, h *blockchain.Header, max int) blockchain.Certificate {
 	tb.Helper()
 	var votes []blockchain.Vote
@@ -147,13 +148,18 @@ func (n *Net) Certify(tb testing.TB, h *blockchain.Header, max int) blockchain.C
 		if !n.State.IsAdmitted(addr) {
 			continue
 		}
-		v, err := blockchain.SignVote(key, h, n.P)
+		v, err := blockchain.SignVote(key, blockchain.Precommit, h, RoundOf(h), n.P)
 		if err != nil {
 			tb.Fatal(err)
 		}
 		votes = append(votes, v)
 	}
-	return blockchain.NewCertificate(h, votes, n.P)
+	return blockchain.NewCertificate(blockchain.Precommit, h, RoundOf(h), votes, n.P)
+}
+
+// RoundOf renvoie le tour d'origine d'un bloc : sa date et son tour.
+func RoundOf(h *blockchain.Header) blockchain.RoundID {
+	return blockchain.RoundID{Day: h.Timestamp, Round: h.Round}
 }
 
 // Track enregistre la clé d'un portefeuille (pour qu'il puisse voter une fois admis).

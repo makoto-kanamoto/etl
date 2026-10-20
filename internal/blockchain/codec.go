@@ -21,7 +21,7 @@ var ErrDecode = errors.New("blockchain: encodage invalide")
 const (
 	participationSize = crypto.AddressHashSize + 8 + crypto.SignatureSize
 	registrationSize  = 2*crypto.AddressHashSize + 8 + 2*crypto.SignatureSize
-	voteSize          = crypto.AddressHashSize + 8 + crypto.HashSize + crypto.SignatureSize
+	voteSize          = crypto.AddressHashSize + 1 + 8 + 9 + crypto.HashSize + crypto.SignatureSize
 	ipcVoteMinSize    = crypto.AddressHashSize + 8 + 1 + 32 + crypto.SignatureSize
 	exclusionMinSize  = crypto.AddressHashSize + 4
 	exVoteSize        = crypto.AddressHashSize + 8 + crypto.SignatureSize
@@ -59,9 +59,15 @@ func appendRegistration(b []byte, r *Registration) []byte {
 	return append(b, r.SponsorSig[:]...)
 }
 
+func appendRound(b []byte, r RoundID) []byte {
+	return append(binary.BigEndian.AppendUint64(b, uint64(r.Day)), r.Round)
+}
+
 func appendVote(b []byte, v *Vote) []byte {
 	b = appendAddr(b, v.Voter)
+	b = append(b, byte(v.Type))
 	b = binary.BigEndian.AppendUint64(b, v.Height)
+	b = appendRound(b, v.Round)
 	b = append(b, v.BlockHash[:]...)
 	return append(b, v.Signature[:]...)
 }
@@ -101,6 +107,16 @@ func DecodeParticipation(b []byte, hrp string) (Participation, error) {
 	return pt, r.done()
 }
 
+// EncodeRegistration renvoie l'encodage d'une candidature (pour le réseau).
+func EncodeRegistration(reg *Registration) []byte { return appendRegistration(nil, reg) }
+
+// DecodeRegistration décode une candidature.
+func DecodeRegistration(b []byte, hrp string) (Registration, error) {
+	r := &reader{b: b, hrp: hrp}
+	reg := r.registration()
+	return reg, r.done()
+}
+
 // EncodeIPCVote renvoie l'encodage d'un vote IPC (pour le réseau).
 func EncodeIPCVote(v *IPCVote) []byte { return appendIPCVote(nil, v) }
 
@@ -112,8 +128,13 @@ func EncodeVote(v *Vote) []byte { return appendVote(nil, v) }
 
 // EncodeCertificate renvoie l'encodage compact d'un certificat :
 // hauteur et hash une seule fois, puis (votant, signature) pour chaque vote.
-func EncodeCertificate(c *Certificate) []byte {
-	b := binary.BigEndian.AppendUint64(nil, c.Height)
+func EncodeCertificate(c *Certificate) []byte { return appendCertificate(nil, c) }
+
+// appendCertificate : type, hauteur, tour et hash une seule fois, puis (votant, signature) par vote.
+func appendCertificate(b []byte, c *Certificate) []byte {
+	b = append(b, byte(c.Type))
+	b = binary.BigEndian.AppendUint64(b, c.Height)
+	b = appendRound(b, c.Round)
 	b = append(b, c.BlockHash[:]...)
 	b = binary.BigEndian.AppendUint32(b, uint32(len(c.Votes)))
 	for i := range c.Votes {
@@ -275,8 +296,23 @@ func (r *reader) tx() Transaction {
 	return tx
 }
 
+func (r *reader) round() RoundID {
+	return RoundID{Day: r.i64(), Round: r.u8()}
+}
+
 func (r *reader) vote() Vote {
-	return Vote{Voter: r.addr(), Height: r.u64(), BlockHash: r.hash(), Signature: r.sig()}
+	return Vote{Voter: r.addr(), Type: VoteType(r.u8()), Height: r.u64(), Round: r.round(), BlockHash: r.hash(), Signature: r.sig()}
+}
+
+func (r *reader) certificate() Certificate {
+	c := Certificate{Type: VoteType(r.u8()), Height: r.u64(), Round: r.round(), BlockHash: r.hash()}
+	if n := r.count(certVoteSize); n > 0 {
+		c.Votes = make([]Vote, n)
+		for i := range c.Votes {
+			c.Votes[i] = Vote{Voter: r.addr(), Type: c.Type, Height: c.Height, Round: c.Round, BlockHash: c.BlockHash, Signature: r.sig()}
+		}
+	}
+	return c
 }
 
 func (r *reader) ipcRecord() IPCRecord {
@@ -349,14 +385,69 @@ func DecodeVote(b []byte, hrp string) (Vote, error) {
 // DecodeCertificate décode un certificat.
 func DecodeCertificate(b []byte, hrp string) (Certificate, error) {
 	r := &reader{b: b, hrp: hrp}
-	c := Certificate{Height: r.u64(), BlockHash: r.hash()}
-	if n := r.count(certVoteSize); n > 0 {
-		c.Votes = make([]Vote, n)
-		for i := range c.Votes {
-			c.Votes[i] = Vote{Voter: r.addr(), Height: c.Height, BlockHash: c.BlockHash, Signature: r.sig()}
+	c := r.certificate()
+	return c, r.done()
+}
+
+// EncodeProposal renvoie l'encodage d'une proposition :
+// tour | longueur + bloc | nomination | drapeau + (longueur + preuve de verrou) | signature.
+func EncodeProposal(pr *Proposal) []byte {
+	b := appendRound(nil, pr.Round)
+	blk := EncodeBlock(&pr.Block)
+	b = binary.BigEndian.AppendUint32(b, uint32(len(blk)))
+	b = append(b, blk...)
+	b = binary.BigEndian.AppendUint32(b, uint32(len(pr.Nomination)))
+	for i := range pr.Nomination {
+		b = appendParticipation(b, &pr.Nomination[i])
+	}
+	if pr.POL == nil {
+		b = append(b, 0)
+	} else {
+		pol := EncodeCertificate(pr.POL)
+		b = append(b, 1)
+		b = binary.BigEndian.AppendUint32(b, uint32(len(pol)))
+		b = append(b, pol...)
+	}
+	return append(b, pr.Signature[:]...)
+}
+
+// DecodeProposal décode une proposition.
+func DecodeProposal(b []byte, hrp string) (Proposal, error) {
+	r := &reader{b: b, hrp: hrp}
+	pr := Proposal{Round: r.round()}
+	n := r.u32()
+	if r.err == nil && uint64(n) > uint64(len(r.b)) {
+		r.err = ErrDecode
+	}
+	blkBytes := r.take(int(min(n, uint32(len(r.b)))))
+	if r.err == nil {
+		var err error
+		if pr.Block, err = DecodeBlock(blkBytes, hrp); err != nil {
+			r.err = ErrDecode
 		}
 	}
-	return c, r.done()
+	if k := r.count(participationSize); k > 0 {
+		pr.Nomination = make([]Participation, k)
+		for i := range pr.Nomination {
+			pr.Nomination[i] = r.participation()
+		}
+	}
+	if r.boolean() {
+		n := r.u32()
+		if r.err == nil && uint64(n) > uint64(len(r.b)) {
+			r.err = ErrDecode
+		}
+		polBytes := r.take(int(min(n, uint32(len(r.b)))))
+		if r.err == nil {
+			pol, err := DecodeCertificate(polBytes, hrp)
+			if err != nil {
+				r.err = ErrDecode
+			}
+			pr.POL = &pol
+		}
+	}
+	pr.Signature = r.sig()
+	return pr, r.done()
 }
 
 // DecodeIPCVote décode un vote IPC.

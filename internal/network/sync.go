@@ -341,11 +341,12 @@ func (h *Host) acceptFinalized(b *blockchain.Block, c *blockchain.Certificate) e
 }
 
 // conflict compare notre certificat et le leur pour la même hauteur. Deux certificats de plus de
-// 2/3 du même registre ont forcément des votants en commun : leurs doubles votes sont la preuve
-// d'une rupture de sécurité. Sans votant commun, leur certificat ne vient pas de notre registre :
-// simple donnée invalide.
+// 2/3 du même registre ont forcément des votants en commun, qui ont pré-engagé deux blocs
+// différents : rupture de sécurité, le nœud s'arrête. Au même tour, c'est un double vote prouvable
+// (preuve d'exclusion) ; à des tours différents, ces votants ont violé leur verrou.
+// Sans votant commun, leur certificat ne vient pas de notre registre : simple donnée invalide.
 func (h *Host) conflict(height uint64, ours crypto.Hash, b *blockchain.Block, theirs *blockchain.Certificate) error {
-	if theirs.Height != height || theirs.BlockHash != b.Header.Hash() {
+	if theirs.Type != blockchain.Precommit || theirs.Height != height || theirs.BlockHash != b.Header.Hash() {
 		return errInvalid
 	}
 	mine, err := h.cfg.Chain.CertificateAt(height)
@@ -357,12 +358,16 @@ func (h *Host) conflict(height uint64, ours crypto.Hash, b *blockchain.Block, th
 		byVoter[v.Voter.Hash] = v
 	}
 	var evidence []blockchain.VoteEquivocation
+	culprits := 0
 	for _, v := range theirs.Votes {
 		if m, ok := byVoter[v.Voter.Hash]; ok && v.Verify(h.cfg.Params) == nil && m.Verify(h.cfg.Params) == nil {
-			evidence = append(evidence, blockchain.NewVoteEquivocation(m, v))
+			culprits++
+			if m.Round == v.Round {
+				evidence = append(evidence, blockchain.NewVoteEquivocation(m, v))
+			}
 		}
 	}
-	if len(evidence) == 0 {
+	if culprits == 0 {
 		return errInvalid
 	}
 	h.halt(Alert{Height: height, Ours: ours, Theirs: b.Header.Hash(), Evidence: evidence,

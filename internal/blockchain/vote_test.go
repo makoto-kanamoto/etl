@@ -3,7 +3,6 @@ package blockchain
 import (
 	"bytes"
 	"testing"
-	"time"
 
 	"github.com/makoto-kanamoto/etl/internal/crypto"
 )
@@ -14,8 +13,7 @@ func TestQuorum(t *testing.T) {
 			t.Errorf("Quorum(%d) = %d, attendu %d", n, got, want)
 		}
 	}
-	// Strictement plus de 2/3, et le plus petit tel nombre.
-	for n := 1; n <= 3000; n++ {
+	for n := 1; n <= 3000; n++ { // strictement plus de 2/3, et le plus petit tel nombre
 		q := Quorum(n)
 		if 3*q <= 2*n || 3*(q-1) > 2*n {
 			t.Fatalf("Quorum(%d) = %d n'est pas le plus petit nombre > 2n/3", n, q)
@@ -23,42 +21,63 @@ func TestQuorum(t *testing.T) {
 	}
 }
 
-// vote fait voter w pour l'en-tête h.
-func vote(t testing.TB, p Params, w wallet, h *Header) Vote {
+func TestRoundIDOrder(t *testing.T) {
+	a, b, c := RoundID{Day: 100, Round: 4}, RoundID{Day: 200, Round: 0}, RoundID{Day: 200, Round: 1}
+	if !a.Before(b) || !b.Before(c) || c.Before(a) || a.Before(a) {
+		t.Fatal("ordre (jour, tour) incorrect")
+	}
+}
+
+// rid : le tour d'origine d'un bloc (sa date, son tour).
+func rid(h *Header) RoundID { return RoundID{Day: h.Timestamp, Round: h.Round} }
+
+func vote(t testing.TB, p Params, w wallet, typ VoteType, h *Header, r RoundID) Vote {
 	t.Helper()
-	v, err := SignVote(w.key, h, p)
+	v, err := SignVote(w.key, typ, h, r, p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return v
 }
 
-func votes(t testing.TB, p Params, ws []wallet, h *Header) []Vote {
+func votes(t testing.TB, p Params, ws []wallet, typ VoteType, h *Header, r RoundID) []Vote {
 	var out []Vote
 	for _, w := range ws {
-		out = append(out, vote(t, p, w, h))
+		out = append(out, vote(t, p, w, typ, h, r))
 	}
 	return out
+}
+
+// certify : certificat de finalité (pré-engagements) au tour d'origine du bloc.
+func certify(t testing.TB, p Params, ws []wallet, h *Header) Certificate {
+	return NewCertificate(Precommit, h, rid(h), votes(t, p, ws, Precommit, h, rid(h)), p)
 }
 
 func TestVoteSignVerify(t *testing.T) {
 	p := testParams()
 	n := newNet(t, p)
 	b := n.build(t, 1, n.founders, nil)
-	v := vote(t, p, n.founders[0], &b.Header)
+	v := vote(t, p, n.founders[0], Prevote, &b.Header, rid(&b.Header))
 	if err := v.Verify(p); err != nil {
 		t.Fatal(err)
 	}
 	other := testParams()
 	other.ChainID = "ETL-DE"
-	forged := v
-	forged.BlockHash[0] ^= 1
-	wrongUse := v // signature d'une participation présentée comme vote
-	wrongUse.Signature, _ = n.founders[0].key.Sign(p.ChainID, crypto.PurposeParticipation, voteMessage(v.Height, v.BlockHash))
+	mutate := func(f func(*Vote)) Vote { x := v; f(&x); return x }
 	for name, c := range map[string]struct {
 		v Vote
 		p Params
-	}{"hash modifié": {forged, p}, "autre fork": {v, other}, "autre usage": {wrongUse, p}} {
+	}{
+		"hash modifié":          {mutate(func(x *Vote) { x.BlockHash[0] ^= 1 }), p},
+		"pré-vote → pré-engag.": {mutate(func(x *Vote) { x.Type = Precommit }), p},
+		"autre tour":            {mutate(func(x *Vote) { x.Round.Round++ }), p},
+		"autre jour":            {mutate(func(x *Vote) { x.Round.Day += 86400 }), p},
+		"type inconnu":          {mutate(func(x *Vote) { x.Type = 3 }), p},
+		"autre fork":            {v, other},
+		"signature d'autre usage": {mutate(func(x *Vote) {
+			x.Signature, _ = n.founders[0].key.Sign(p.ChainID, crypto.PurposeParticipation, voteMessage(x.Type, x.Height, x.Round, x.BlockHash))
+		}), p},
+	} {
 		if err := c.v.Verify(c.p); err != ErrVoteSignature {
 			t.Errorf("%s : err = %v", name, err)
 		}
@@ -69,22 +88,27 @@ func TestVerifyCertificate(t *testing.T) {
 	p := testParams()
 	n := newNet(t, p)
 	b := n.build(t, 1, n.founders, nil)
-	h := &b.Header
+	h, r := &b.Header, rid(&b.Header)
 
-	seven := NewCertificate(h, votes(t, p, n.founders[:7], h), p)
-	if err := VerifyCertificate(&seven, h, n.st, p); err != nil {
-		t.Fatalf("7 votes sur 10 : %v", err)
+	if c := certify(t, p, n.founders[:7], h); VerifyCertificate(&c, h, n.st, p) != nil {
+		t.Fatal("7 pré-engagements sur 10 refusés")
 	}
-	six := NewCertificate(h, votes(t, p, n.founders[:6], h), p)
-	if err := VerifyCertificate(&six, h, n.st, p); err != ErrQuorum {
-		t.Fatalf("6 votes sur 10 (= 60 %%) : err = %v", err)
+	if c := certify(t, p, n.founders[:6], h); VerifyCertificate(&c, h, n.st, p) != ErrQuorum {
+		t.Fatal("6 pré-engagements sur 10 acceptés")
 	}
-
-	// NewCertificate écarte doublons, votes pour un autre bloc et signatures fausses.
+	prevotes := NewCertificate(Prevote, h, r, votes(t, p, n.founders, Prevote, h, r), p)
+	if err := VerifyCertificate(&prevotes, h, n.st, p); err != ErrCertificateType {
+		t.Fatalf("des pré-votes ne finalisent pas : err = %v", err)
+	}
+	if err := VerifyPOL(&prevotes, h, n.st, p); err != nil {
+		t.Fatalf("preuve de verrou valide refusée : %v", err)
+	}
+	// NewCertificate écarte doublons, autres types, autres tours et votes pour un autre bloc.
 	alt := n.build(t, 1, n.founders[:9], nil)
-	mixed := votes(t, p, n.founders[:6], h)
-	mixed = append(mixed, mixed[0], vote(t, p, n.founders[6], &alt.Header))
-	if c := NewCertificate(h, mixed, p); len(c.Votes) != 6 {
+	mixed := votes(t, p, n.founders[:6], Precommit, h, r)
+	mixed = append(mixed, mixed[0], vote(t, p, n.founders[6], Prevote, h, r),
+		vote(t, p, n.founders[7], Precommit, h, RoundID{r.Day, r.Round + 1}), vote(t, p, n.founders[8], Precommit, &alt.Header, r))
+	if c := NewCertificate(Precommit, h, r, mixed, p); len(c.Votes) != 6 {
 		t.Fatalf("NewCertificate a gardé %d votes, attendu 6", len(c.Votes))
 	}
 
@@ -93,24 +117,23 @@ func TestVerifyCertificate(t *testing.T) {
 		edit func(*Certificate)
 		want error
 	}{
-		"certificat d'un autre bloc": {func(c *Certificate) { c.BlockHash = alt.Header.Hash() }, ErrCertificateTarget},
-		"vote pour un autre bloc": {func(c *Certificate) { // même votant, autre bloc
-			c.Votes[3], _ = SignVote(n.keys[c.Votes[3].Voter.Hash], &alt.Header, p)
+		"autre bloc": {func(c *Certificate) { c.BlockHash = alt.Header.Hash() }, ErrCertificateTarget},
+		"vote d'un autre tour": {func(c *Certificate) {
+			c.Votes[3], _ = SignVote(n.keys[c.Votes[3].Voter.Hash], Precommit, h, RoundID{r.Day, r.Round + 1}, p)
 		}, ErrCertificateTarget},
 		"votant en double": {func(c *Certificate) { c.Votes[1] = c.Votes[0] }, ErrCertificateOrder},
-		"votes non triés":  {func(c *Certificate) { c.Votes[0], c.Votes[1] = c.Votes[1], c.Votes[0] }, ErrCertificateOrder},
+		"non triés":        {func(c *Certificate) { c.Votes[0], c.Votes[1] = c.Votes[1], c.Votes[0] }, ErrCertificateOrder},
 		"votant non admis": {func(c *Certificate) {
-			c.Votes = append(c.Votes, vote(t, p, outsider, h))
+			c.Votes = append(c.Votes, vote(t, p, outsider, Precommit, h, r))
 			sortVotes(c.Votes)
 		}, ErrCertificateVoter},
-		"signature falsifiée": {func(c *Certificate) { c.Votes[2].Signature[10] ^= 1 }, nil},
+		"signature falsifiée": {func(c *Certificate) { c.Votes[2].Signature[10] ^= 1 }, ErrVoteSignature},
 	}
 	for name, c := range cases {
-		cert := NewCertificate(h, votes(t, p, n.founders[:8], h), p)
+		cert := certify(t, p, n.founders[:8], h)
 		cert.Votes = append([]Vote(nil), cert.Votes...)
 		c.edit(&cert)
-		err := VerifyCertificate(&cert, h, n.st, p)
-		if (c.want == nil && err == nil) || (c.want != nil && err != c.want) {
+		if err := VerifyCertificate(&cert, h, n.st, p); err != c.want {
 			t.Errorf("%s : err = %v, attendu %v", name, err, c.want)
 		}
 	}
@@ -120,147 +143,61 @@ func TestVerifyCertificate(t *testing.T) {
 func TestQuorumFollowsActiveNodes(t *testing.T) {
 	p := testParams()
 	n := newNet(t, p)
-	n.produce(t, 30, n.founders[:7], nil) // 3 fondateurs absents depuis 30 jours
-	if n.st.ActiveCount() != 7 {
-		t.Fatalf("%d actifs", n.st.ActiveCount())
-	}
+	n.produce(t, 30, n.founders[:7], nil)
 	b := n.build(t, 31, n.founders[:7], nil)
 	h := &b.Header
-	five := NewCertificate(h, votes(t, p, n.founders[:5], h), p)
-	if err := VerifyCertificate(&five, h, n.st, p); err != nil {
-		t.Fatalf("5 votes sur 7 actifs : %v", err)
+	if c := certify(t, p, n.founders[:5], h); VerifyCertificate(&c, h, n.st, p) != nil {
+		t.Fatal("5 votes sur 7 actifs refusés")
 	}
-	// Le vote d'un inactif ne compte pas.
-	withInactive := NewCertificate(h, votes(t, p, append(n.founders[:4], n.founders[9]), h), p)
-	if err := VerifyCertificate(&withInactive, h, n.st, p); err != ErrCertificateVoter {
-		t.Fatalf("vote d'un inactif : err = %v", err)
+	if c := certify(t, p, append(n.founders[:4:4], n.founders[9]), h); VerifyCertificate(&c, h, n.st, p) != ErrCertificateVoter {
+		t.Fatal("vote d'un inactif compté")
 	}
 }
 
-func TestVoteEquivocationExcludes(t *testing.T) {
+// Double vote = deux votes du même type, au même tour, pour deux blocs. Voter différemment
+// à des tours différents est normal.
+func TestVoteEquivocation(t *testing.T) {
 	p := testParams()
 	n := newNet(t, p)
 	cheater := n.founders[0]
 	b1 := n.build(t, 1, n.founders, nil)
-	alt := n.build(t, 1, n.founders[1:], nil) // bloc concurrent à la même hauteur
-	v1, v2 := vote(t, p, cheater, &b1.Header), vote(t, p, cheater, &alt.Header)
+	alt := n.build(t, 1, n.founders[1:], nil)
+	r := rid(&b1.Header)
+	r2 := RoundID{r.Day, r.Round + 1}
+	pv1, pv2 := vote(t, p, cheater, Prevote, &b1.Header, r), vote(t, p, cheater, Prevote, &alt.Header, r)
 	if err := n.apply(&b1); err != nil {
 		t.Fatal(err)
 	}
-	proof := NewVoteEquivocation(v1, v2)
-
-	other := vote(t, p, n.founders[1], &alt.Header)
-	b2Header := Header{Height: 2}
-	sameHash := VoteEquivocation{A: v1, B: v1}
-	unordered := VoteEquivocation{A: proof.B, B: proof.A}
-	future := NewVoteEquivocation(vote(t, p, cheater, &b2Header), vote(t, p, cheater, &Header{Height: 2, Timestamp: 1}))
-
-	for name, c := range map[string]struct {
-		eq   VoteEquivocation
-		want error
-	}{
-		"même bloc deux fois":  {sameHash, ErrVoteEquivocation},
-		"deux votants":         {NewVoteEquivocation(v1, other), ErrVoteEquivocation},
-		"ordre non canonique":  {unordered, ErrVoteEquivocation},
-		"hauteur du bloc même": {future, ErrVoteEquivocation},
-		"signature falsifiée":  {func() VoteEquivocation { e := proof; e.B.Signature[5] ^= 1; return e }(), ErrVoteEquivocation},
+	proof := NewVoteEquivocation(pv1, pv2)
+	if err := proof.verify(2, p); err != nil {
+		t.Fatalf("double pré-vote au même tour : %v", err)
+	}
+	for name, e := range map[string]VoteEquivocation{
+		"tours différents (normal)": NewVoteEquivocation(pv1, vote(t, p, cheater, Prevote, &alt.Header, r2)),
+		"types différents (normal)": NewVoteEquivocation(pv1, vote(t, p, cheater, Precommit, &alt.Header, r)),
+		"même bloc":                 {A: pv1, B: pv1},
+		"deux votants":              NewVoteEquivocation(pv1, vote(t, p, n.founders[1], Prevote, &alt.Header, r)),
+		"ordre non canonique":       {A: proof.B, B: proof.A},
 	} {
-		blk := n.build(t, 2, n.founders[1:], func(b *Block) { b.VoteEquivocations = []VoteEquivocation{c.eq} })
-		if err := n.apply(&blk); err != c.want {
-			t.Errorf("%s : err = %v, attendu %v", name, err, c.want)
+		if err := e.verify(2, p); err != ErrVoteEquivocation {
+			t.Errorf("%s : err = %v", name, err)
 		}
 	}
+	future := NewVoteEquivocation(vote(t, p, cheater, Precommit, &Header{Height: 3}, r), vote(t, p, cheater, Precommit, &Header{Height: 3, Timestamp: 1}, r))
+	if err := future.verify(2, p); err != ErrVoteEquivocation {
+		t.Fatal("preuve d'une hauteur future acceptée")
+	}
 
-	n.produce(t, 2, n.founders[1:], func(b *Block) { b.VoteEquivocations = []VoteEquivocation{proof} })
+	n.produce(t, 2, n.founders, func(b *Block) { b.VoteEquivocations = []VoteEquivocation{proof} })
 	if n.st.Status(cheater.addr) != StatusExcluded {
 		t.Fatal("double vote non sanctionné")
 	}
-	// Exclu : ses votes ne comptent plus, et la preuve ne peut pas être rejouée.
+	if got := n.st.Account(cheater.addr).Balance; got != UnitsPerETL {
+		t.Fatalf("le tricheur ne touche pas sa part le jour de son exclusion : solde %s", FormatETL(got))
+	}
 	b3 := n.build(t, 3, n.founders[1:], nil)
-	c := NewCertificate(&b3.Header, votes(t, p, n.founders, &b3.Header), p)
-	if err := VerifyCertificate(&c, &b3.Header, n.st, p); err != ErrCertificateVoter {
-		t.Fatalf("vote d'un exclu : err = %v", err)
-	}
-	replay := n.build(t, 3, n.founders[1:], func(b *Block) { b.VoteEquivocations = []VoteEquivocation{proof} })
-	if err := n.apply(&replay); err != ErrVoteEquivocation {
-		t.Fatalf("preuve rejouée : err = %v", err)
-	}
-}
-
-// proposal construit un bloc du jour d à partir de participations choisies (tri canonique).
-func (n *testNet) proposal(t testing.TB, d int, pts []Participation, obs []Participation) Block {
-	t.Helper()
-	pts = append([]Participation(nil), pts...)
-	sortByTicket(pts, n.tip.Hash())
-	b := Block{
-		Header:       Header{Height: n.tip.Height + 1, PrevHash: n.tip.Hash(), Timestamp: day(d), Proposer: pts[0].Miner},
-		Participants: pts,
-		Observations: obs,
-	}
-	n.finalize(t, &b)
-	return b
-}
-
-func TestCheckProposal(t *testing.T) {
-	p := testParams()
-	n := newNet(t, p)
-	cand := newWallet(t, p)
-	n.produce(t, 1, n.founders, withRegs(n.register(t, cand, n.founders[0], 1)))
-
-	ts := day(2)
-	start := time.Unix(ts, 0)
-	prev := n.tip.Hash()
-	var pts []Participation
-	var recv []Received
-	for i, w := range n.founders {
-		pt := participate(t, p, prev, w, ts)
-		pts = append(pts, pt)
-		recv = append(recv, Received{Participation: pt, ReceivedAt: start.Add(time.Duration(i+1) * time.Second)})
-	}
-	obs := []Participation{participate(t, p, prev, cand, ts)}
-	recv = append(recv, Received{Participation: obs[0], ReceivedAt: start.Add(3 * time.Second)})
-	round0 := RoundStart(ts, 0, p)
-	check := func(b Block, r []Received) error { return CheckProposal(&b, &n.tip, n.st, r, round0, p) }
-
-	if err := check(n.proposal(t, 2, pts, obs), recv); err != nil {
-		t.Fatalf("bloc complet : %v", err)
-	}
-	// Fondateur 4 reçu à 23:00:05 puis omis : refus.
-	omitted := append(append([]Participation(nil), pts[:4]...), pts[5:]...)
-	if err := check(n.proposal(t, 2, omitted, obs), recv); err != ErrMissingParticipation {
-		t.Fatalf("omission d'une participation reçue à temps : err = %v", err)
-	}
-	// Même omission, mais reçue à 23:00:27 (après la tolérance) : accepté.
-	late := append([]Received(nil), recv...)
-	late[4].ReceivedAt = start.Add(27 * time.Second)
-	if err := check(n.proposal(t, 2, omitted, obs), late); err != nil {
-		t.Fatalf("omission d'une participation tardive : %v", err)
-	}
-	// Observation du candidat omise : refus.
-	if err := check(n.proposal(t, 2, pts, nil), recv); err != ErrMissingParticipation {
-		t.Fatalf("omission d'une observation : err = %v", err)
-	}
-	// Ce nœud a vu le fondateur 3 participer deux fois : le bloc ne doit pas l'inclure.
-	second := pts[3]
-	for second.Nonce++; !second.PoWHash(prev, ts).MeetsTarget(p.Target); second.Nonce++ {
-	}
-	second.Signature, _ = n.founders[3].key.Sign(p.ChainID, crypto.PurposeParticipation, powMessage(prev, ts, second.Miner, second.Nonce))
-	double := append(append([]Received(nil), recv...), Received{Participation: second, ReceivedAt: start.Add(20 * time.Second)})
-	if err := check(n.proposal(t, 2, pts, obs), double); err != ErrEquivocatorIncluded {
-		t.Fatalf("tricheur inclus : err = %v", err)
-	}
-	// Seconde participation reçue à 23:00:28 seulement : le proposant a pu ne pas la voir.
-	// Refuser permettrait à un seul tricheur de faire sauter la journée.
-	lateDouble := append(append([]Received(nil), recv...), Received{Participation: second, ReceivedAt: start.Add(28 * time.Second)})
-	if err := check(n.proposal(t, 2, pts, obs), lateDouble); err != nil {
-		t.Fatalf("double participation tardive : %v", err)
-	}
-	// Bloc invalide (racine d'état fausse) : refus.
-	bad := n.proposal(t, 2, pts, obs)
-	bad.Header.StateRoot[0] ^= 1
-	_ = bad.Sign(n.keys[bad.Header.Proposer.Hash], p.ChainID)
-	if err := check(bad, recv); err != ErrStateRoot {
-		t.Fatalf("racine fausse : err = %v", err)
+	if c := certify(t, p, n.founders, &b3.Header); VerifyCertificate(&c, &b3.Header, n.st, p) != ErrCertificateVoter {
+		t.Fatal("vote d'un exclu compté")
 	}
 }
 
@@ -268,24 +205,23 @@ func TestCertificateCodec(t *testing.T) {
 	p := testParams()
 	n := newNet(t, p)
 	b := n.build(t, 1, n.founders, nil)
-	c := NewCertificate(&b.Header, votes(t, p, n.founders, &b.Header), p)
-	enc := EncodeCertificate(&c)
-	got, err := DecodeCertificate(enc, p.AddressHRP)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := VerifyCertificate(&got, &b.Header, n.st, p); err != nil {
-		t.Fatalf("certificat décodé invalide : %v", err)
-	}
-	if !bytes.Equal(EncodeCertificate(&got), enc) {
-		t.Fatal("ré-encodage différent")
-	}
-	for i := 0; i < len(enc); i++ {
-		if _, err := DecodeCertificate(enc[:i], p.AddressHRP); err == nil {
-			t.Fatalf("certificat tronqué à %d octets accepté", i)
+	for _, typ := range []VoteType{Prevote, Precommit} {
+		c := NewCertificate(typ, &b.Header, rid(&b.Header), votes(t, p, n.founders, typ, &b.Header, rid(&b.Header)), p)
+		enc := EncodeCertificate(&c)
+		got, err := DecodeCertificate(enc, p.AddressHRP)
+		if err != nil || !bytes.Equal(EncodeCertificate(&got), enc) {
+			t.Fatalf("type %d : aller-retour : %v", typ, err)
+		}
+		if err := verifyVotes(&got, typ, b.Header.Height, b.Header.Hash(), n.st, p); err != nil {
+			t.Fatalf("type %d : certificat décodé invalide : %v", typ, err)
+		}
+		for i := 0; i < len(enc); i++ {
+			if _, err := DecodeCertificate(enc[:i], p.AddressHRP); err == nil {
+				t.Fatalf("certificat tronqué à %d octets accepté", i)
+			}
 		}
 	}
-	v := c.Votes[0]
+	v := vote(t, p, n.founders[0], Precommit, &b.Header, rid(&b.Header))
 	if got, err := DecodeVote(EncodeVote(&v), p.AddressHRP); err != nil || got != v {
 		t.Fatalf("vote : %v", err)
 	}
@@ -295,7 +231,7 @@ func FuzzDecodeCertificate(f *testing.F) {
 	p := testParams()
 	n := newNet(f, p)
 	b := n.build(f, 1, n.founders, nil)
-	c := NewCertificate(&b.Header, votes(f, p, n.founders, &b.Header), p)
+	c := certify(f, p, n.founders, &b.Header)
 	f.Add(EncodeCertificate(&c))
 	f.Fuzz(func(t *testing.T, in []byte) {
 		got, err := DecodeCertificate(in, "etl")

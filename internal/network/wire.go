@@ -38,8 +38,9 @@ const (
 	MsgVote
 	MsgIPCVote
 	MsgExclusionVote
-	MsgProposal  // bloc proposé, en attente de votes
-	MsgFinalized // bloc finalisé + certificat
+	MsgRegistration // candidature (ou réactivation) d'un nœud
+	MsgProposal     // bloc proposé, en attente de votes
+	MsgFinalized    // bloc finalisé + certificat
 
 	// Synchronisation (requête → réponse, point à point)
 	MsgGetTip

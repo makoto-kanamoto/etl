@@ -324,14 +324,28 @@ func TestStatelessChecks(t *testing.T) {
 	b, cert := f.net.Next(t, 1, nil)
 	other, _ := f.net.Next(t, 2, nil)
 	w := f.net.Founders[0]
-	vote, _ := blockchain.SignVote(w.Key, &b.Header, p)
+	vote, _ := blockchain.SignVote(w.Key, blockchain.Prevote, &b.Header, chaintest.RoundOf(&b.Header), p)
+	pr := blockchain.Proposal{Round: chaintest.RoundOf(&b.Header), Block: b, Nomination: b.Participants}
+	var proposer chaintest.Wallet
+	for _, fw := range f.net.Founders {
+		if fw.Addr == pr.Proposer() {
+			proposer = fw
+		}
+	}
+	_ = pr.Sign(proposer.Key, p)
+	badPr := pr
+	badPr.Signature[3] ^= 1
+	badBlock := pr
+	badBlock.Block.Signature[3] ^= 1
+	_ = badBlock.Sign(proposer.Key, p)
+	reg := f.net.Register(t, chaintest.NewWallet(t, p), f.net.Founders[2], 1)
+	badReg := reg
+	badReg.SponsorSig[4] ^= 1
 	ipc, _ := blockchain.SignIPCVote(w.Key, blockchain.IPCRecord{Value: 1, Period: "2026-Q4"}, p)
 	ex, _ := blockchain.SignExclusionVote(w.Key, f.net.Founders[1].Addr, 1, p)
 	pt := b.Participants[0]
 
 	tamper := func(bs []byte) []byte { c := append([]byte(nil), bs...); c[len(c)-5] ^= 1; return c }
-	badProposal := b
-	badProposal.Signature[3] ^= 1
 	for name, c := range map[string]struct {
 		m  Message
 		ok bool
@@ -344,8 +358,11 @@ func TestStatelessChecks(t *testing.T) {
 		"vote falsifié":          {Message{MsgVote, tamper(blockchain.EncodeVote(&vote))}, false},
 		"vote IPC":               {Message{MsgIPCVote, blockchain.EncodeIPCVote(&ipc)}, true},
 		"vote d'exclusion":       {Message{MsgExclusionVote, blockchain.EncodeExclusionVote(&ex)}, true},
-		"proposition":            {Message{MsgProposal, blockchain.EncodeBlock(&b)}, true},
-		"proposition mal signée": {Message{MsgProposal, blockchain.EncodeBlock(&badProposal)}, false},
+		"proposition":            {Message{MsgProposal, blockchain.EncodeProposal(&pr)}, true},
+		"proposition mal signée": {Message{MsgProposal, blockchain.EncodeProposal(&badPr)}, false},
+		"bloc proposé mal signé": {Message{MsgProposal, blockchain.EncodeProposal(&badBlock)}, false},
+		"candidature":            {Message{MsgRegistration, blockchain.EncodeRegistration(&reg)}, true},
+		"parrainage falsifié":    {Message{MsgRegistration, blockchain.EncodeRegistration(&badReg)}, false},
 		"bloc finalisé":          {Message{MsgFinalized, EncodeFinalized(&b, &cert)}, true},
 		"certificat d'un autre":  {Message{MsgFinalized, EncodeFinalized(&other, &cert)}, false},
 	} {

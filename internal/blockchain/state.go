@@ -181,6 +181,13 @@ func (s *State) prepare(b *Block, p Params) (*Changes, error) {
 
 	// Registre : le nombre de nœuds actifs est compté au début du bloc.
 	activeBefore := nodes.activeCount()
+	// Nœuds exclus PAR ce bloc : ils peuvent figurer parmi ses participants (le rang du proposant
+	// en dépend), mais ne touchent pas leur part et leur présence n'est pas comptée.
+	excludedNow := excludedBy(b)
+	// Participants vérifiés contre le registre AVANT le bloc.
+	if err := nodes.applyParticipants(b.Participants, excludedNow, day); err != nil {
+		return nil, err
+	}
 	if err := nodes.applyEquivocations(b.Equivocations, h.PrevHash, h.Timestamp, p); err != nil {
 		return nil, err
 	}
@@ -193,9 +200,6 @@ func (s *State) prepare(b *Block, p Params) (*Changes, error) {
 	}
 	ipc, err := applyIPC(h, b.IPCVotes, s.ipc, s.nodes, p)
 	if err != nil {
-		return nil, err
-	}
-	if err := nodes.applyParticipants(b.Participants, day); err != nil {
 		return nil, err
 	}
 	if err := nodes.applyObservations(b.Observations, h.PrevHash, h.Timestamp, p); err != nil {
@@ -262,11 +266,20 @@ func (s *State) prepare(b *Block, p Params) (*Changes, error) {
 		changes[k] = a
 		return nil
 	}
+	rewarded := 0
+	for i := range b.Participants {
+		if !excludedNow[b.Participants[i].Miner.Hash] {
+			rewarded++
+		}
+	}
 	var share uint64
 	if activeBefore >= p.MinActiveNodes {
-		share = RewardShare(h.Height, len(b.Participants), p)
+		share = RewardShare(h.Height, rewarded, p)
 	}
 	for i := range b.Participants {
+		if excludedNow[b.Participants[i].Miner.Hash] {
+			continue
+		}
 		if err := credit(b.Participants[i].Miner.Hash, share); err != nil {
 			return nil, err
 		}

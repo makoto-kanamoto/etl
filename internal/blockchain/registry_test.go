@@ -288,7 +288,6 @@ func TestEquivocationExcludes(t *testing.T) {
 		eq    Equivocation
 		want  error
 	}{
-		"tricheur aussi participant":   {n.founders, NewEquivocation(a, b), ErrEquivocatorPresent},
 		"même participation deux fois": {others, Equivocation{A: a, B: a}, ErrEquivocationInvalid},
 		"deux nœuds différents":        {others, NewEquivocation(a, other), ErrEquivocationInvalid},
 		"ordre non canonique":          {others, func() Equivocation { e := NewEquivocation(a, b); e.A, e.B = e.B, e.A; return e }(), ErrEquivocationInvalid},

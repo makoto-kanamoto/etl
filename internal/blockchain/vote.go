@@ -9,36 +9,34 @@ import (
 	"github.com/makoto-kanamoto/etl/internal/crypto"
 )
 
-// Votes de finalisation : un bloc est définitif quand STRICTEMENT PLUS DE 2/3 des nœuds
-// admis et actifs (registre avant le bloc) l'ont signé. Tant que moins d'un tiers des nœuds
-// trichent, deux blocs concurrents ne peuvent jamais être finalisés tous les deux.
+// Vote en deux temps avec verrouillage (Tendermint, adapté au rythme quotidien d'ETL).
 //
-// Sécurité avant continuité : un nœud ne vote qu'une fois par hauteur. Si aucun bloc
-// n'atteint le seuil, la journée est sautée. Voter pour deux blocs différents à la même
-// hauteur est une faute prouvable : exclusion automatique.
+//	pré-vote        à réception d'une proposition valide : « ce bloc me convient »
+//	pré-engagement  quand plus de 2/3 de pré-votes pour un bloc sont vus dans le tour en cours :
+//	                le nœud se VERROUILLE sur ce bloc et le signe une seconde fois
+//	finalité        plus de 2/3 de pré-engagements pour le même bloc AU MÊME TOUR
+//
+// Un tour est identifié par (jour, tour) ; tant que la hauteur n'est pas finalisée, les tours
+// continuent le lendemain. Un nœud verrouillé ne pré-vote plus que son bloc, sauf preuve de plus
+// de 2/3 de pré-votes pour un autre bloc à un tour postérieur à son verrou.
+//
+// Sécurité : tant que moins d'un tiers des nœuds trichent, jamais deux blocs finalisés à la même
+// hauteur. Continuité : une coupure ne bloque plus la chaîne — personne ne s'est verrouillé sans
+// preuve, et un bloc verrouillé est re-proposé jusqu'à sa finalisation.
 
 var (
-	ErrVoteSignature        = errors.New("blockchain: signature de vote invalide")
-	ErrCertificateTarget    = errors.New("blockchain: certificat d'un autre bloc")
-	ErrCertificateOrder     = errors.New("blockchain: votes du certificat non triés ou en double")
-	ErrCertificateVoter     = errors.New("blockchain: votant non admis")
-	ErrQuorum               = errors.New("blockchain: moins de 2/3 des nœuds actifs ont voté")
-	ErrVoteEquivocation     = errors.New("blockchain: preuve de double vote invalide")
-	ErrMissingParticipation = errors.New("blockchain: le bloc omet une participation reçue avant la tolérance")
-	ErrEquivocatorIncluded  = errors.New("blockchain: le bloc inclut un nœud pris en double participation")
-	ErrRoundTooEarly        = errors.New("blockchain: bloc reçu avant le début de son tour")
+	ErrVoteSignature     = errors.New("blockchain: signature de vote invalide")
+	ErrCertificateTarget = errors.New("blockchain: certificat d'un autre bloc ou d'un autre tour")
+	ErrCertificateOrder  = errors.New("blockchain: votes du certificat non triés ou en double")
+	ErrCertificateVoter  = errors.New("blockchain: votant non admis")
+	ErrCertificateType   = errors.New("blockchain: type de votes du certificat incorrect")
+	ErrQuorum            = errors.New("blockchain: moins de 2/3 des nœuds actifs ont voté")
+	ErrVoteEquivocation  = errors.New("blockchain: preuve de double vote invalide")
 )
 
-// Proposant de secours : si le bloc du tour 0 n'est pas finalisé, le 2e ticket propose au tour 1,
-// et ainsi de suite jusqu'à MaxRounds tours ; au-delà, la journée est sautée.
+// RoundStart renvoie le début du tour round du jour blockTime : fin de la fenêtre de participation + round tours.
 //
 //	tour 0 : 23:00:30   tour 1 : 23:02:30   …   tour 4 : 23:08:30
-//
-// La sécurité ne dépend pas des tours : un nœud ne vote qu'une fois par hauteur, tous tours
-// confondus. Deux blocs finalisés exigeraient deux groupes de plus de 2/3 des nœuds, qui
-// auraient plus d'un tiers des nœuds en commun — ayant donc voté deux fois.
-
-// RoundStart renvoie le début du tour round : fin de la fenêtre de participation + round tours.
 func RoundStart(blockTime int64, round uint8, p Params) time.Time {
 	return time.Unix(blockTime, 0).Add(p.SubmissionWindow + time.Duration(round)*p.RoundDuration)
 }
@@ -49,54 +47,81 @@ func Quorum(n int) int {
 	return 2*n/3 + 1
 }
 
-// Vote est la signature d'un nœud admis pour un bloc.
+// RoundID identifie un tour : le jour (heure du bloc, 23:00:00 UTC) et le tour dans la journée.
+type RoundID struct {
+	Day   int64
+	Round uint8
+}
+
+// Before indique si r précède o dans le temps.
+func (r RoundID) Before(o RoundID) bool {
+	return r.Day < o.Day || (r.Day == o.Day && r.Round < o.Round)
+}
+
+// VoteType distingue les deux temps du vote.
+type VoteType uint8
+
+const (
+	Prevote   VoteType = 1
+	Precommit VoteType = 2
+)
+
+// Vote est la signature d'un nœud admis pour un bloc, à un tour donné.
 type Vote struct {
 	Voter     crypto.Address
+	Type      VoteType
 	Height    uint64
+	Round     RoundID
 	BlockHash crypto.Hash
 	Signature crypto.Signature // usage block-vote
 }
 
-func voteMessage(height uint64, hash crypto.Hash) []byte {
-	b := binary.BigEndian.AppendUint64(nil, height)
+func voteMessage(t VoteType, height uint64, r RoundID, hash crypto.Hash) []byte {
+	b := []byte{byte(t)}
+	b = binary.BigEndian.AppendUint64(b, height)
+	b = binary.BigEndian.AppendUint64(b, uint64(r.Day))
+	b = append(b, r.Round)
 	return append(b, hash[:]...)
 }
 
-// SignVote produit le vote d'un nœud pour l'en-tête h.
-func SignVote(key *crypto.PrivateKey, h *Header, p Params) (Vote, error) {
+// SignVote produit un vote de type t, au tour r, pour le bloc d'en-tête h.
+func SignVote(key *crypto.PrivateKey, t VoteType, h *Header, r RoundID, p Params) (Vote, error) {
 	hash := h.Hash()
-	sig, err := key.Sign(p.ChainID, crypto.PurposeBlockVote, voteMessage(h.Height, hash))
+	sig, err := key.Sign(p.ChainID, crypto.PurposeBlockVote, voteMessage(t, h.Height, r, hash))
 	if err != nil {
 		return Vote{}, err
 	}
-	return Vote{Voter: key.PublicKey().Address(p.AddressHRP), Height: h.Height, BlockHash: hash, Signature: sig}, nil
+	return Vote{Voter: key.PublicKey().Address(p.AddressHRP), Type: t, Height: h.Height, Round: r, BlockHash: hash, Signature: sig}, nil
 }
 
-// Verify contrôle la signature du vote.
+// Verify contrôle le type et la signature du vote.
 func (v *Vote) Verify(p Params) error {
-	if v.Voter.HRP != p.AddressHRP ||
-		crypto.Verify(v.Voter, p.ChainID, crypto.PurposeBlockVote, voteMessage(v.Height, v.BlockHash), v.Signature) != nil {
+	if (v.Type != Prevote && v.Type != Precommit) || v.Voter.HRP != p.AddressHRP ||
+		crypto.Verify(v.Voter, p.ChainID, crypto.PurposeBlockVote, voteMessage(v.Type, v.Height, v.Round, v.BlockHash), v.Signature) != nil {
 		return ErrVoteSignature
 	}
 	return nil
 }
 
-// Certificate prouve qu'un bloc a été finalisé : plus de 2/3 des nœuds actifs l'ont signé.
-// Stocké avec le bloc, il permet à quiconque de vérifier la finalité sans faire confiance.
+// Certificate est un ensemble de plus de 2/3 de votes d'un même type, pour un même bloc, au même tour.
+//   - Precommit : certificat de FINALITÉ, stocké avec le bloc ;
+//   - Prevote : preuve de verrou, jointe à une re-proposition.
 type Certificate struct {
+	Type      VoteType
 	Height    uint64
+	Round     RoundID
 	BlockHash crypto.Hash
 	Votes     []Vote // triés par adresse du votant, un seul par votant
 }
 
-// NewCertificate assemble un certificat à partir de votes pour l'en-tête h
-// (votes invalides, pour un autre bloc ou en double ignorés ; tri canonique).
-func NewCertificate(h *Header, votes []Vote, p Params) Certificate {
+// NewCertificate assemble un certificat de type t, au tour r, pour l'en-tête h
+// (votes invalides, d'un autre type, tour ou bloc, ou en double ignorés ; tri canonique).
+func NewCertificate(t VoteType, h *Header, r RoundID, votes []Vote, p Params) Certificate {
 	hash := h.Hash()
-	c := Certificate{Height: h.Height, BlockHash: hash}
+	c := Certificate{Type: t, Height: h.Height, Round: r, BlockHash: hash}
 	seen := map[addrKey]bool{}
 	for _, v := range votes {
-		if v.Height != h.Height || v.BlockHash != hash || seen[v.Voter.Hash] || v.Verify(p) != nil {
+		if v.Type != t || v.Height != h.Height || v.Round != r || v.BlockHash != hash || seen[v.Voter.Hash] || v.Verify(p) != nil {
 			continue
 		}
 		seen[v.Voter.Hash] = true
@@ -114,10 +139,13 @@ func sortVotes(vs []Vote) {
 	}
 }
 
-// VerifyCertificate vérifie qu'un certificat finalise bien l'en-tête h.
-// st est l'état AVANT le bloc : il définit qui peut voter et le nombre de nœuds actifs.
-func VerifyCertificate(c *Certificate, h *Header, st *State, p Params) error {
-	if c.Height != h.Height || c.BlockHash != h.Hash() {
+// verifyVotes vérifie qu'un certificat de type t porte sur hash à la hauteur height,
+// avec plus de 2/3 des nœuds actifs de st (état AVANT le bloc).
+func verifyVotes(c *Certificate, t VoteType, height uint64, hash crypto.Hash, st *State, p Params) error {
+	if c.Type != t {
+		return ErrCertificateType
+	}
+	if c.Height != height || c.BlockHash != hash {
 		return ErrCertificateTarget
 	}
 	for i := range c.Votes {
@@ -125,7 +153,7 @@ func VerifyCertificate(c *Certificate, h *Header, st *State, p Params) error {
 		if i > 0 && bytes.Compare(c.Votes[i-1].Voter.Hash[:], v.Voter.Hash[:]) >= 0 {
 			return ErrCertificateOrder
 		}
-		if v.Height != c.Height || v.BlockHash != c.BlockHash {
+		if v.Type != c.Type || v.Height != c.Height || v.Round != c.Round || v.BlockHash != c.BlockHash {
 			return ErrCertificateTarget
 		}
 		if !st.IsAdmitted(v.Voter) {
@@ -141,9 +169,21 @@ func VerifyCertificate(c *Certificate, h *Header, st *State, p Params) error {
 	return nil
 }
 
-// VoteEquivocation prouve qu'un nœud a voté pour deux blocs différents à la même hauteur.
+// VerifyCertificate vérifie qu'un certificat de finalité (pré-engagements) finalise l'en-tête h.
+// st est l'état AVANT le bloc : il définit qui peut voter et le nombre de nœuds actifs.
+func VerifyCertificate(c *Certificate, h *Header, st *State, p Params) error {
+	return verifyVotes(c, Precommit, h.Height, h.Hash(), st, p)
+}
+
+// VerifyPOL vérifie une preuve de verrou : plus de 2/3 de pré-votes pour l'en-tête h.
+func VerifyPOL(c *Certificate, h *Header, st *State, p Params) error {
+	return verifyVotes(c, Prevote, h.Height, h.Hash(), st, p)
+}
+
+// VoteEquivocation prouve qu'un nœud a signé deux votes du même type, au même tour et à la même
+// hauteur, pour deux blocs différents. (Voter pour des blocs différents à des tours différents est normal.)
 type VoteEquivocation struct {
-	A, B Vote // même votant, même hauteur, A.BlockHash < B.BlockHash
+	A, B Vote // A.BlockHash < B.BlockHash
 }
 
 // NewVoteEquivocation construit une preuve dans l'ordre canonique.
@@ -160,71 +200,14 @@ func (e *VoteEquivocation) ID() crypto.Hash {
 	return crypto.Sum(crypto.ContextRegistry, appendVote(b, &e.B))
 }
 
-// verify contrôle la preuve ; les votes doivent porter sur une hauteur antérieure au bloc qui l'inclut.
+// verify contrôle la preuve ; les votes ne peuvent pas porter sur une hauteur postérieure au bloc qui l'inclut.
 func (e *VoteEquivocation) verify(blockHeight uint64, p Params) error {
-	if e.A.Voter != e.B.Voter || e.A.Height != e.B.Height || e.A.Height >= blockHeight ||
-		bytes.Compare(e.A.BlockHash[:], e.B.BlockHash[:]) >= 0 {
+	if e.A.Voter != e.B.Voter || e.A.Type != e.B.Type || e.A.Height != e.B.Height || e.A.Round != e.B.Round ||
+		e.A.Height > blockHeight || bytes.Compare(e.A.BlockHash[:], e.B.BlockHash[:]) >= 0 {
 		return ErrVoteEquivocation
 	}
 	if e.A.Verify(p) != nil || e.B.Verify(p) != nil {
 		return ErrVoteEquivocation
-	}
-	return nil
-}
-
-// CheckProposal est ce qu'un nœud honnête vérifie avant de voter pour un bloc :
-//   - le bloc n'arrive pas avant le début de son tour (à ClockTolerance près) : sinon le
-//     proposant d'un tour suivant pourrait prendre de vitesse le proposant légitime ;
-//   - le bloc est valide et s'applique à l'état (StateRoot compris) ;
-//   - il contient toutes les participations valides que ce nœud a reçues AVANT
-//     blockTime + InclusionCutoff (23:00:25) : une participation arrivée plus tard a pu
-//     ne pas atteindre le proposant, son absence ne justifie pas un refus ;
-//   - il n'inclut pas un nœud que ce nœud a vu participer deux fois AVANT la même tolérance.
-//     Sinon, un seul nœud malveillant pourrait envoyer une seconde participation à 23:00:29
-//     à un tiers des nœuds seulement, les faire refuser, et faire sauter la journée.
-//
-// recv : toutes les participations reçues par ce nœud pour ce jour ; now : heure de réception du bloc.
-// Le nœud vote pour le premier bloc qui passe ce contrôle, s'il n'a pas encore voté à cette hauteur.
-func CheckProposal(b *Block, prev *Header, st *State, recv []Received, now time.Time, p Params) error {
-	if now.Before(RoundStart(b.Header.Timestamp, b.Header.Round, p).Add(-p.ClockTolerance)) {
-		return ErrRoundTooEarly
-	}
-	if err := ValidateBlock(b, prev, p, st.IsAdmitted); err != nil {
-		return err
-	}
-	if _, err := st.Prepare(b, p); err != nil {
-		return err
-	}
-	ts := b.Header.Timestamp
-	cutoff := time.Unix(ts, 0).Add(p.InclusionCutoff)
-	var early []Received
-	for _, r := range recv {
-		if r.ReceivedAt.Before(cutoff) {
-			early = append(early, r)
-		}
-	}
-	expected := Eligible(early, prev, ts, p, func(a crypto.Address) Role { return st.Role(a, ts, p) })
-
-	included := map[addrKey]bool{}
-	for i := range b.Participants {
-		included[b.Participants[i].Miner.Hash] = true
-	}
-	for i := range b.Observations {
-		included[b.Observations[i].Miner.Hash] = true
-	}
-	for _, pts := range [][]Participation{expected.Participants, expected.Observations} {
-		for i := range pts {
-			if !included[pts[i].Miner.Hash] {
-				return ErrMissingParticipation
-			}
-		}
-	}
-	// Vu en double participation par ce nœud avant la tolérance : doit être absent du bloc.
-	cheaters := expected.Equivocations
-	for i := range cheaters {
-		if included[cheaters[i].A.Miner.Hash] {
-			return ErrEquivocatorIncluded
-		}
 	}
 	return nil
 }

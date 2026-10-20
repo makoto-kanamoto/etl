@@ -75,19 +75,28 @@ func checkStateless(m Message, p blockchain.Params) error {
 			return errInvalid
 		}
 		return v.Verify(p)
-	case MsgProposal:
-		b, err := blockchain.DecodeBlock(m.Payload, hrp)
+	case MsgRegistration:
+		reg, err := blockchain.DecodeRegistration(m.Payload, hrp)
 		if err != nil {
 			return errInvalid
 		}
-		h := b.Header.Hash()
-		return crypto.Verify(b.Header.Proposer, p.ChainID, crypto.PurposeBlockProposal, h[:], b.Signature)
+		return reg.VerifySignatures(p)
+	case MsgProposal:
+		pr, err := blockchain.DecodeProposal(m.Payload, hrp)
+		if err != nil {
+			return errInvalid
+		}
+		if err := pr.VerifySignature(p); err != nil {
+			return err
+		}
+		h := pr.Block.Header.Hash()
+		return crypto.Verify(pr.Block.Header.Proposer, p.ChainID, crypto.PurposeBlockProposal, h[:], pr.Block.Signature)
 	case MsgFinalized:
 		b, c, err := DecodeFinalized(m.Payload, hrp)
 		if err != nil {
 			return err
 		}
-		if c.Height != b.Header.Height || c.BlockHash != b.Header.Hash() {
+		if c.Type != blockchain.Precommit || c.Height != b.Header.Height || c.BlockHash != b.Header.Hash() {
 			return errInvalid
 		}
 		return nil

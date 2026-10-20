@@ -2,7 +2,6 @@ package blockchain
 
 import (
 	"testing"
-	"time"
 )
 
 func TestRoundStart(t *testing.T) {
@@ -30,7 +29,7 @@ func TestFallbackProposer(t *testing.T) {
 
 	b := n.build(t, 2, n.founders, func(b *Block) { atRound(1)(b); b.Txs = []Transaction{tx} })
 	absent, backup := b.Participants[0].Miner, b.Participants[1].Miner
-	cert := NewCertificate(&b.Header, votes(t, p, n.founders, &b.Header), p)
+	cert := certify(t, p, n.founders, &b.Header)
 	if err := VerifyCertificate(&cert, &b.Header, n.st, p); err != nil {
 		t.Fatal(err)
 	}
@@ -82,70 +81,6 @@ func TestRoundValidation(t *testing.T) {
 		b := n.build(t, 1, n.founders, atRound(r))
 		if err := ValidateBlock(&b, &n.tip, p, n.st.IsAdmitted); err != nil {
 			t.Errorf("tour %d valide refusé : %v", r, err)
-		}
-	}
-}
-
-// Un bloc ne peut pas devancer son tour : sinon le proposant suivant prendrait de vitesse le légitime.
-func TestRoundTooEarly(t *testing.T) {
-	p := testParams()
-	n := newNet(t, p)
-	ts := day(1)
-	var recv []Received
-	b1 := n.build(t, 1, n.founders, atRound(1))
-	for _, pt := range b1.Participants {
-		recv = append(recv, Received{Participation: pt, ReceivedAt: time.Unix(ts, 0).Add(time.Second)})
-	}
-	start1 := RoundStart(ts, 1, p)
-	for name, c := range map[string]struct {
-		now  time.Time
-		want error
-	}{
-		"23:01:00":                 {time.Unix(ts, 0).Add(time.Minute), ErrRoundTooEarly},
-		"juste avant la tolérance": {start1.Add(-p.ClockTolerance - time.Millisecond), ErrRoundTooEarly},
-		"début moins 5 s":          {start1.Add(-p.ClockTolerance), nil},
-		"pendant le tour 1":        {start1.Add(time.Minute), nil},
-		"bien après (tour 3)":      {RoundStart(ts, 3, p), nil},
-	} {
-		if err := CheckProposal(&b1, &n.tip, n.st, recv, c.now, p); err != c.want {
-			t.Errorf("%s : err = %v, attendu %v", name, err, c.want)
-		}
-	}
-	b0 := n.build(t, 1, n.founders, nil)
-	if err := CheckProposal(&b0, &n.tip, n.st, recv, time.Unix(ts, 0).Add(20*time.Second), p); err != ErrRoundTooEarly {
-		t.Fatalf("bloc du tour 0 pendant la fenêtre de participation : err = %v", err)
-	}
-}
-
-// Vote partagé : le tour 0 recueille 6 votes sur 10, le tour 1 ne peut en recueillir que 4.
-// Aucun bloc n'est finalisé, la journée est sautée — jamais deux blocs.
-// Atteindre le seuil au tour 1 exigerait que 3 votants du tour 0 votent deux fois : preuve et exclusion.
-func TestSplitVoteNeverTwoFinalized(t *testing.T) {
-	p := testParams()
-	n := newNet(t, p)
-	b0 := n.build(t, 1, n.founders, nil)
-	b1 := n.build(t, 1, n.founders, atRound(1))
-	if b0.Header.Hash() == b1.Header.Hash() {
-		t.Fatal("prémisse : deux blocs concurrents")
-	}
-	group0, group1 := n.founders[:6], n.founders[6:]
-
-	c0 := NewCertificate(&b0.Header, votes(t, p, group0, &b0.Header), p)
-	c1 := NewCertificate(&b1.Header, votes(t, p, group1, &b1.Header), p)
-	if VerifyCertificate(&c0, &b0.Header, n.st, p) != ErrQuorum || VerifyCertificate(&c1, &b1.Header, n.st, p) != ErrQuorum {
-		t.Fatal("un bloc a atteint le seuil malgré le partage")
-	}
-
-	// Les 3 voix manquantes au tour 1 ne peuvent venir que du groupe du tour 0 : double vote prouvable.
-	turncoats := group0[:3]
-	c1bis := NewCertificate(&b1.Header, votes(t, p, append(append([]wallet(nil), group1...), turncoats...), &b1.Header), p)
-	if err := VerifyCertificate(&c1bis, &b1.Header, n.st, p); err != nil {
-		t.Fatalf("prémisse : 7 votes valides : %v", err)
-	}
-	for _, w := range turncoats {
-		proof := NewVoteEquivocation(vote(t, p, w, &b0.Header), vote(t, p, w, &b1.Header))
-		if err := proof.verify(b0.Header.Height+1, p); err != nil {
-			t.Fatalf("le double vote doit être prouvable : %v", err)
 		}
 	}
 }

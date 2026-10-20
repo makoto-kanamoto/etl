@@ -97,8 +97,8 @@ func (r *Registration) SignSponsor(key *crypto.PrivateKey, chainID string) (err 
 	return err
 }
 
-// verifySignatures contrôle la signature du candidat et, hors réactivation, celle du parrain.
-func (r *Registration) verifySignatures(p Params) error {
+// VerifySignatures contrôle la signature du candidat et, hors réactivation, celle du parrain.
+func (r *Registration) VerifySignatures(p Params) error {
 	if r.Candidate.HRP != p.AddressHRP || crypto.Verify(r.Candidate, p.ChainID, crypto.PurposeRegistration, r.message(), r.CandidateSig) != nil {
 		return ErrRegistrationSig
 	}
@@ -247,7 +247,7 @@ func (r registry) applyRegistrations(regs []Registration, day int64, p Params) e
 		if day < reg.Day || day >= reg.Day+p.RegistrationDays {
 			return ErrRegistrationDay
 		}
-		if err := reg.verifySignatures(p); err != nil {
+		if err := reg.VerifySignatures(p); err != nil {
 			return err
 		}
 		cand := r[reg.Candidate.Hash]
@@ -301,8 +301,24 @@ func (r registry) applyObservations(obs []Participation, prevHash crypto.Hash, b
 	return nil
 }
 
-// applyParticipants met à jour la présence des nœuds admis ayant participé.
-func (r registry) applyParticipants(pts []Participation, day int64) error {
+// excludedBy renvoie les nœuds que le bloc exclut : exclusions votées, double participation, double vote.
+func excludedBy(b *Block) map[addrKey]bool {
+	out := map[addrKey]bool{}
+	for i := range b.Exclusions {
+		out[b.Exclusions[i].Target.Hash] = true
+	}
+	for i := range b.Equivocations {
+		out[b.Equivocations[i].A.Miner.Hash] = true
+	}
+	for i := range b.VoteEquivocations {
+		out[b.VoteEquivocations[i].A.Voter.Hash] = true
+	}
+	return out
+}
+
+// applyParticipants vérifie que les participants étaient admis avant le bloc et met à jour leur
+// présence (sauf pour ceux que ce bloc exclut). Un nœud déjà exclu ne peut pas participer.
+func (r registry) applyParticipants(pts []Participation, excludedNow map[addrKey]bool, day int64) error {
 	for i := range pts {
 		k := pts[i].Miner.Hash
 		node := r[k]
@@ -312,8 +328,10 @@ func (r registry) applyParticipants(pts []Participation, day int64) error {
 		if node.Status != StatusAdmitted {
 			return ErrNotAdmitted
 		}
-		node.LastParticipationDay = day
-		r[k] = node
+		if !excludedNow[k] {
+			node.LastParticipationDay = day
+			r[k] = node
+		}
 	}
 	return nil
 }
