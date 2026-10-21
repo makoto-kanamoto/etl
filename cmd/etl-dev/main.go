@@ -221,8 +221,9 @@ func (o *oracle) ReadNow(_ context.Context, now time.Time) (*blockchain.IPCRecor
 
 type network struct{}
 
-func (network) PeerCount() (int, int) { return 4, 5 }
-func (network) Halted() bool          { return false }
+func (network) PeerCount() (int, int)             { return 4, 5 }
+func (network) Halted() bool                      { return false }
+func (network) ClockOffset() (time.Duration, int) { return 0, 9 }
 
 func main() {
 	port := flag.Int("port", 3001, "port local")

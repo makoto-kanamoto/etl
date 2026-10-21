@@ -1,13 +1,21 @@
+# Configuration LOCALE d'un nœud Étalon (ETL).
+#
+# Les règles de consensus — identifiant du réseau, préfixe des adresses, récompense quotidienne,
+# difficulté, frais, taille des blocs, heure du bloc — ne se règlent PAS ici : elles viennent de la
+# définition du réseau dans le logiciel et du genesis, puis évoluent uniquement par vote on-chain
+# (plus de 2/3 des nœuds actifs, application 30 jours après). Un nœud qui les modifierait se
+# séparerait de la chaîne commune.
+
 [node]
-wallet  = ""
-port    = 3000
-datadir = "~/.etl/chain"
-pruning = true             # false = nœud archive (explorateur, bootstrap) : garde tout
-prune_keep_blocks = 90     # contenu des blocs conservé (~90 jours) ; en-têtes et genesis toujours gardés
+network = "ETL-FR"                 # réseau rejoint
+datadir = "~/.etl/chain"           # chaîne (base de données)
+wallet  = "~/.etl/wallet.key"      # clé du nœud (créée par « etl init ») ; "" : nœud passif
+genesis = "~/.etl/genesis.json"    # genesis publié avec la version (empreinte vérifiée par le logiciel)
+port    = 3000                     # port P2P ; 0 = pas de connexions entrantes
+pruning = true                     # false = nœud archive (explorateur, amorçage) : garde tout
+prune_keep_blocks = 90             # contenu des blocs conservé ; en-têtes et genesis toujours gardés
 
 [network]
-chain_id    = "ETL-FR"   # inclus dans toute signature — fixé au genesis
-address_hrp = "etl"      # préfixe des adresses bech32m (etl1…)
 bootstrap = [
   "etl1.etalon-etl.fr:3000",
 ]
@@ -15,27 +23,16 @@ max_outbound = 8          # connexions sortantes
 max_inbound  = 64         # connexions entrantes (0 si le nœud n'est pas joignable de l'extérieur)
 ban_hours    = 24         # bannissement d'un pair qui envoie des données invalides
 
-[block]
-time_utc  = "23:00"
-daily_reward = 10.0  # ETL/jour, partagés entre tous les participants — émission constante, pas de halving
-target_bits = 21   # difficulté PoW fixe (~2 s CPU) — gouvernable par vote 2/3
-
-[transaction]
-fee_bps = 10           # points de base : 10 = 0.1%
-fee_min = 0.0001       # frais minimum par transaction (ETL) — anti-spam
-max_block_txs = 100000 # transactions par bloc (= débit quotidien) — gouvernable
-# Pas de seuils de confirmation : un bloc finalisé (certificat > 2/3) est définitif.
-# Les valeurs gouvernables ci-dessus sont celles du genesis ; ensuite, elles changent par vote on-chain.
-
-[mempool]               # limites locales au nœud (pas des règles de consensus)
+[mempool]                 # limites locales au nœud
 max_per_account = 16
 max_total = 200000
 max_age_days = 7
 
-[oracle]
+[oracle]                  # lecture de l'IPC (nœud avec clé seulement) ; l'INSEE voit l'adresse IP du nœud
 ipc_url       = "https://api.insee.fr/series/BDM/V1/data/SERIES_BDM/011814630"
 ipc_country   = "FR"
 ipc_frequency = "quarterly"
 
-[dashboard]
-port = 3001
+[dashboard]               # tableau de bord : http://localhost:3001 (écoute sur 127.0.0.1 seulement)
+port  = 3001
+token = "~/.etl/dashboard.token"   # jeton opérateur, régénéré à chaque démarrage

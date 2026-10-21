@@ -1,7 +1,7 @@
 // Panneau opérateur (clé du nœud) : session à jeton (C3) et arbitrages (C1). Le nœud vérifie et
 // signe lui-même ; la clé ne quitte jamais le nœud.
 
-import { h, field, clear, put } from "../lib/dom.js";
+import { h, field, clear, put, addressInput } from "../lib/dom.js";
 import { actions, roleOf, signerRoles, NAME_OF } from "../lib/escrowui.js";
 import { formatETL, parseETL } from "../lib/amount.js";
 import { allowedRange, readRegistration, AMOUNT_PARAMS } from "../lib/governance.js";
@@ -244,7 +244,7 @@ function paramsCard(app, op, onError) {
 
 function exclusionCard(app, op, onError) {
   const { t } = app;
-  const target = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: "etl1q…" });
+  const target = addressInput(app);
   const out = h("div");
   const check = async () => {
     clear(out);
@@ -290,7 +290,7 @@ function exclusionCard(app, op, onError) {
 
 function prepareCard(app, op, onError) {
   const { t } = app;
-  const sponsor = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: "etl1q…" });
+  const sponsor = addressInput(app);
   const out = h("div");
   return h("section", { class: "card wide" },
     h("h2", {}, t("sponsor.prepare.title")),

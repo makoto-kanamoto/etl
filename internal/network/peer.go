@@ -22,6 +22,7 @@ type peer struct {
 	once     sync.Once
 	limiter  *tokenBucket
 	services uint8
+	offset   time.Duration // heure du pair moins heure locale, mesurée à la poignée de main
 
 	mu      sync.Mutex
 	pending map[uint64]chan Message // requêtes de synchronisation en attente de réponse

@@ -21,9 +21,13 @@ export function renderHome(app) {
   const nextLocal = next.toLocaleString(lang === "fr" ? "fr-FR" : "en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" });
   const ipc = st.ipc.value / 1000;
   const node = st.node.address ? `${st.node.address} — ${t(`status.${st.node.status}`)}` : t("home.passive");
+    const skew = st.clock_offset_ms ?? 0;
   return h(
     "div",
     { class: "grid" },
+    Math.abs(skew) > 2000
+      ? h("p", { class: "msg error wide-msg", role: "alert" }, t("home.clock", { s: (skew / 1000).toFixed(1) }))
+      : null,
     card(t("home.height"), String(st.height)),
     card(t("home.nextBlock"), nextLocal, t("home.in", { time: duration(st.next_block - Date.now() / 1000, lang) })),
     card(t("home.active"), String(st.active_nodes)),

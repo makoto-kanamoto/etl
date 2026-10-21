@@ -82,6 +82,9 @@ func (s *Server) status(w http.ResponseWriter, _ *http.Request) {
 		in, outPeers := s.cfg.Network.PeerCount()
 		out["peers"] = map[string]int{"in": in, "out": outPeers}
 		out["halted"] = s.cfg.Network.Halted()
+		if off, n := s.cfg.Network.ClockOffset(); n > 0 {
+			out["clock_offset_ms"] = off.Milliseconds() // le dashboard avertit au-delà de 2 s
+		}
 	}
 	reply(w, out)
 }

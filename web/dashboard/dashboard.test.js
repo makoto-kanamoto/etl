@@ -9,6 +9,7 @@ import { challenge, check, CHALLENGE_WORDS } from "./lib/phrase.js";
 import { Session, VAULT_KEY, AUTO_LOCK_MS } from "./lib/session.js";
 import { STRINGS, LANGS, t } from "./lib/strings.js";
 import { makeApi, ApiError } from "./lib/api.js";
+import { addressHint } from "./lib/dom.js";
 import { render } from "../tools/importmap.js";
 import { actions, roleOf, completes, escrowState, reputation, signerRoles } from "./lib/escrowui.js";
 import * as esc from "../wallet/escrow.js";
@@ -269,4 +270,10 @@ test("parrainage : lecture d'une candidature transmise", () => {
     REGISTRATION_PREFIX + Buffer.from(b.slice(0, 177)).toString("base64url"), REGISTRATION_PREFIX + "@@@", 42]) {
     assert.throws(() => readRegistration(bad, "etl"), RegistrationTextError, String(bad).slice(0, 30));
   }
+});
+
+test("exemple d'adresse : préfixe du réseau du nœud", () => {
+  assert.equal(addressHint("etl"), "etl1q…");
+  assert.equal(addressHint("etlt"), "etlt1q…");
+  assert.equal(addressHint(undefined), "etl1q…");
 });

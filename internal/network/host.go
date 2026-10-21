@@ -10,6 +10,7 @@ import (
 	"errors"
 	"math/big"
 	"net"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -64,6 +65,8 @@ type Config struct {
 	SyncBatch      int           // blocs par lot (100)
 	SyncBatchBytes int           // octets par lot (16 Mo)
 	MaxServing     int           // demandes de synchronisation servies en parallèle (4)
+
+	Now func() time.Time // horloge du nœud (heure annoncée aux pairs) ; nil : time.Now
 }
 
 // DefaultConfig renvoie la configuration par défaut.
@@ -112,6 +115,9 @@ type Host struct {
 
 // New crée un nœud réseau avec une identité TLS jetable (sans lien avec l'adresse ETL).
 func New(cfg Config, handler Handler) (*Host, error) {
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
 	cert, err := ephemeralCert()
 	if err != nil {
 		return nil, err
@@ -330,7 +336,8 @@ func (h *Host) setup(conn net.Conn, inbound bool, dialAddr string) error {
 	if h.listener != nil {
 		listenPort = uint16(h.listener.Addr().(*net.TCPAddr).Port)
 	}
-	mine := hello{Version: ProtocolVersion, ChainID: h.cfg.Params.ChainID, Genesis: h.cfg.GenesisHash, ListenPort: listenPort, Nonce: h.nonce}
+	mine := hello{Version: ProtocolVersion, ChainID: h.cfg.Params.ChainID, Genesis: h.cfg.GenesisHash, ListenPort: listenPort, Nonce: h.nonce,
+		Time: h.cfg.Now().UnixMilli()}
 	if h.cfg.Archive {
 		mine.Services |= ServiceArchive
 	}
@@ -359,6 +366,7 @@ func (h *Host) setup(conn net.Conn, inbound bool, dialAddr string) error {
 
 	p := newPeer(h, conn, inbound)
 	p.services = theirs.Services
+	p.offset = time.Duration(theirs.Time-h.cfg.Now().UnixMilli()) * time.Millisecond
 	h.mu.Lock()
 	if h.ctx.Err() != nil {
 		h.mu.Unlock()
@@ -499,4 +507,21 @@ func (h *Host) sweepLoop() {
 			h.mu.Unlock()
 		}
 	}
+}
+
+// ClockOffset renvoie l'écart médian entre l'heure des pairs et l'heure locale (positif : les pairs
+// sont en avance), et le nombre de pairs mesurés. Le consensus exige une heure exacte (NTP) :
+// un écart de plus de quelques secondes doit être signalé à l'opérateur.
+func (h *Host) ClockOffset() (time.Duration, int) {
+	h.mu.Lock()
+	offsets := make([]time.Duration, 0, len(h.peers))
+	for p := range h.peers {
+		offsets = append(offsets, p.offset)
+	}
+	h.mu.Unlock()
+	if len(offsets) == 0 {
+		return 0, 0
+	}
+	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
+	return offsets[len(offsets)/2], len(offsets)
 }

@@ -72,8 +72,11 @@ func TestRejects(t *testing.T) {
 	if o, _ := Open(p, pass, "etl"); o == nil || o.Address != w.Address {
 		t.Fatal("le coffre d'origine doit être intact")
 	}
-	if _, err := Open(p, pass, "etlde"); err != ErrFormat {
+	if _, err := Open(p, pass, "etlde"); err != ErrOtherNetwork {
 		t.Fatalf("coffre d'un autre réseau : err = %v", err)
+	}
+	if _, err := ReadAddress(p, "etlt"); err != ErrOtherNetwork {
+		t.Fatalf("adresse d'un coffre d'un autre réseau : err = %v", err)
 	}
 }
 

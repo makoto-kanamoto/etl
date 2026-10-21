@@ -1,7 +1,7 @@
 // Portefeuille : création (phrase, vérification de 3 mots, phrase de passe), restauration,
 // déverrouillage, solde, envoi, historique, affichage de la phrase, retrait du navigateur.
 
-import { h, field, clear, put } from "../lib/dom.js";
+import { h, field, clear, put, addressInput } from "../lib/dom.js";
 import { parseETL, formatETL, euroCents, formatEuro } from "../lib/amount.js";
 import { challenge, check } from "../lib/phrase.js";
 import * as keys from "../../wallet/keys.js";
@@ -248,7 +248,7 @@ function renderHistory(app, el, hist, address) {
 
 function sendCard(app, address, getAccount, refresh) {
   const { t, lang, api } = app;
-  const to = h("input", { type: "text", autocomplete: "off", spellcheck: "false", autocapitalize: "off", placeholder: "etl1q…" });
+  const to = addressInput(app);
   const amount = h("input", { type: "text", inputmode: "decimal", autocomplete: "off", placeholder: "0,00" });
   const out = h("div");
     const card = h("section", { class: "card span2" });

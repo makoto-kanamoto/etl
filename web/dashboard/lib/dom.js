@@ -39,3 +39,13 @@ export function clear(el) {
   el.replaceChildren();
   return el;
 }
+
+// addressHint : exemple d'adresse du réseau du nœud (« etl1q… » sur ETL-FR, « etlt1q… » en test).
+export function addressHint(hrp) {
+  return `${hrp || "etl"}1q…`;
+}
+
+// addressInput : champ de saisie d'une adresse, avec l'exemple du réseau du nœud.
+export function addressInput(app) {
+  return h("input", { type: "text", autocomplete: "off", spellcheck: "false", autocapitalize: "off", placeholder: addressHint(app.status?.hrp) });
+}

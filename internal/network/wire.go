@@ -126,6 +126,7 @@ type hello struct {
 	ListenPort uint16 // 0 : n'accepte pas de connexions entrantes
 	Nonce      uint64 // détecte une connexion à soi-même
 	Services   uint8  // ServiceArchive…
+	Time       int64  // heure du nœud (Unix, millisecondes) : détection d'une horloge décalée
 }
 
 func (h hello) encode() []byte {
@@ -135,7 +136,8 @@ func (h hello) encode() []byte {
 	b = append(b, h.Genesis[:]...)
 	b = binary.BigEndian.AppendUint16(b, h.ListenPort)
 	b = binary.BigEndian.AppendUint64(b, h.Nonce)
-	return append(b, h.Services)
+	b = append(b, h.Services)
+	return binary.BigEndian.AppendUint64(b, uint64(h.Time))
 }
 
 func decodeHello(b []byte) (hello, error) {
@@ -146,7 +148,7 @@ func decodeHello(b []byte) (hello, error) {
 	h.Version = binary.BigEndian.Uint16(b)
 	n := int(b[2])
 	b = b[3:]
-	if len(b) != n+crypto.HashSize+2+8+1 {
+	if len(b) != n+crypto.HashSize+2+8+1+8 {
 		return h, ErrHello
 	}
 	h.ChainID = string(b[:n])
@@ -155,6 +157,7 @@ func decodeHello(b []byte) (hello, error) {
 	h.ListenPort = binary.BigEndian.Uint16(b)
 	h.Nonce = binary.BigEndian.Uint64(b[2:])
 	h.Services = b[10]
+	h.Time = int64(binary.BigEndian.Uint64(b[11:]))
 	return h, nil
 }
 

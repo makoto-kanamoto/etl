@@ -211,3 +211,4 @@ input[type="number"] { font: inherit; color: inherit; background: var(--bg); bor
 form.inline { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
 form.inline input { flex: 1; }
 @media (max-width: 40rem) { .tallies li { grid-template-columns: 1fr; } }
+.wide-msg { grid-column: 1 / -1; margin: 0; }

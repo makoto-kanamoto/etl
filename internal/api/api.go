@@ -72,6 +72,7 @@ type Engine interface {
 type Network interface {
 	PeerCount() (in, out int)
 	Halted() bool
+	ClockOffset() (time.Duration, int) // écart médian avec l'heure des pairs, nombre de pairs mesurés
 }
 
 // Oracle : lecture de l'IPC (oracle.Oracle).

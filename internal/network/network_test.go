@@ -424,3 +424,23 @@ func TestNoEchoToSender(t *testing.T) {
 		}
 	}
 }
+
+// L'heure est échangée à la poignée de main : un nœud mesure l'écart de ses pairs (horloge décalée).
+func TestClockOffset(t *testing.T) {
+	f := newFixture(t)
+	skew := 5 * time.Second
+	node := f.host(t, newRecorder(Accept), nil)
+	if off, n := node.ClockOffset(); off != 0 || n != 0 {
+		t.Fatalf("sans pair : %v, %d", off, n)
+	}
+	for _, d := range []time.Duration{skew, skew + time.Second, -time.Minute} {
+		d := d
+		p := f.host(t, newRecorder(Accept), func(c *Config) { c.MaxOutbound = 0; c.Now = func() time.Time { return time.Now().Add(d) } })
+		connect(t, p, node)
+	}
+	eventually(t, "trois pairs", func() bool { _, n := node.ClockOffset(); return n == 3 })
+	off, _ := node.ClockOffset()
+	if off < skew-time.Second || off > skew+2*time.Second {
+		t.Fatalf("écart médian %v, attendu ~%v", off, skew+time.Second)
+	}
+}

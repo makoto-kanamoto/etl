@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
@@ -54,6 +55,7 @@ var (
 	ErrWrongPassphrase = errors.New("wallet: phrase de passe incorrecte ou coffre altéré")
 	ErrExists          = errors.New("wallet: un coffre existe déjà à cet emplacement (jamais écrasé)")
 	ErrFormat          = errors.New("wallet: coffre illisible ou paramètres refusés")
+	ErrOtherNetwork    = errors.New("wallet: coffre créé pour un autre réseau (préfixe d'adresse différent de la configuration)")
 )
 
 type kdfParams struct {
@@ -306,6 +308,9 @@ func readFile(path, hrp string) (*keyFile, error) {
 		return nil, ErrFormat
 	}
 	if _, err := crypto.ParseAddress(f.Address, hrp); err != nil {
+		if pre, _, ok := strings.Cut(f.Address, "1"); ok && pre != hrp && pre != "" {
+			return nil, ErrOtherNetwork
+		}
 		return nil, ErrFormat
 	}
 	return &f, nil

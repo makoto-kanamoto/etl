@@ -2,7 +2,7 @@
 // complément d'une opération reçue. Avant toute signature : résumé lisible et réputation de l'autre
 // partie (et de l'arbitre). Les opérations à plusieurs signatures passent par le texte « etl-escrow: ».
 
-import { h, field, clear, put } from "../lib/dom.js";
+import { h, field, clear, put, addressInput } from "../lib/dom.js";
 import { parseETL, formatETL, euroCents, formatEuro } from "../lib/amount.js";
 import { actions, roleOf, completes, escrowState, reputation, signerRoles, KIND_OF, NAME_OF } from "../lib/escrowui.js";
 import * as esc from "../../wallet/escrow.js";
@@ -152,8 +152,8 @@ async function confirmAction(app, e, role, a, out, reload) {
 
 function openCard(app, me) {
   const { t, lang } = app;
-  const buyer = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: "etl1q…" });
-  const arbiter = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: "etl1q…" });
+  const buyer = addressInput(app);
+  const arbiter = addressInput(app);
   const amount = h("input", { type: "text", inputmode: "decimal", autocomplete: "off", placeholder: "0,00" });
   const fee = h("input", { type: "text", inputmode: "decimal", autocomplete: "off", value: "0" });
   const days = h("input", { type: "number", min: "1", max: "30", step: "1", value: "3" });

@@ -158,8 +158,9 @@ func (e *engine) ArbiterAct(kind blockchain.EscrowKind, id crypto.Hash) (blockch
 
 type netStub struct{}
 
-func (netStub) PeerCount() (int, int) { return 3, 8 }
-func (netStub) Halted() bool          { return false }
+func (netStub) PeerCount() (int, int)             { return 3, 8 }
+func (netStub) Halted() bool                      { return false }
+func (netStub) ClockOffset() (time.Duration, int) { return 3500 * time.Millisecond, 4 }
 
 type oracleStub struct {
 	err  error
@@ -406,6 +407,9 @@ func TestStatus(t *testing.T) {
 	}
 	if st["next_block"].(float64) != float64(chaintest.Day(2)) {
 		t.Fatalf("prochain bloc : %v (bloc du jour 1 déjà finalisé)", st["next_block"])
+	}
+	if st["clock_offset_ms"].(float64) != 3500 {
+		t.Fatalf("écart d'horloge : %v", st["clock_offset_ms"])
 	}
 	if p := st["peers"].(map[string]any); p["in"].(float64) != 3 || p["out"].(float64) != 8 {
 		t.Fatalf("pairs : %v", p)
