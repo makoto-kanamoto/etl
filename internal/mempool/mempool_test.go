@@ -296,3 +296,26 @@ func TestSetParamsDropsStaleFees(t *testing.T) {
 		t.Fatalf("nouveaux frais : %v", err)
 	}
 }
+
+func TestNextNonce(t *testing.T) {
+	net, m := setup(t)
+	a, b := net.Founders[0], net.Founders[1]
+	if got := m.NextNonce(net.State, a.Addr); got != 0 {
+		t.Fatalf("compte sans attente : %d", got)
+	}
+	for n := uint64(0); n < 3; n++ {
+		if err := m.Add(tx(t, net, a, b.Addr, 1000, n), net.State, now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := m.NextNonce(net.State, a.Addr); got != 3 {
+		t.Fatalf("trois en attente : %d", got)
+	}
+	// Un trou (nonce 4 sans 3) ne compte pas : la suite s'arrête au premier manquant.
+	if err := m.Add(tx(t, net, a, b.Addr, 1000, 4), net.State, now()); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.NextNonce(net.State, a.Addr); got != 3 {
+		t.Fatalf("avec un trou : %d", got)
+	}
+}

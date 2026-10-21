@@ -216,11 +216,16 @@ func (s *Server) account(w http.ResponseWriter, r *http.Request) {
 	if escrows == nil {
 		escrows = []string{}
 	}
+	next := acc.Nonce
+	if s.cfg.Engine != nil {
+		next = s.cfg.Engine.NextNonce(a) // mempool compris : envois successifs avant le bloc
+	}
 	reply(w, map[string]any{
-		"address": s.addr(a),
-		"balance": units(acc.Balance),
-		"nonce":   units(acc.Nonce),
-		"node":    status,
+		"address":    s.addr(a),
+		"balance":    units(acc.Balance),
+		"nonce":      units(acc.Nonce),
+		"next_nonce": units(next),
+		"node":       status,
 		"reputation": map[string]string{
 			"completed":       units(rep.Completed),
 			"refunded":        units(rep.Refunded),

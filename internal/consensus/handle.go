@@ -622,3 +622,8 @@ func (e *Engine) ParamTallies() []ParamTally {
 
 // Address renvoie l'adresse du nœud (vide pour un nœud passif).
 func (e *Engine) Address() crypto.Address { return e.me }
+
+// NextNonce renvoie le nonce de la prochaine transaction de a, mempool compris (envois successifs).
+func (e *Engine) NextNonce(a crypto.Address) uint64 {
+	return e.pool.NextNonce(e.chain, a)
+}

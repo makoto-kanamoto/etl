@@ -272,3 +272,14 @@ func (h *heads) Pop() any {
 	*h = old[:len(old)-1]
 	return e
 }
+
+// NextNonce renvoie le nonce à utiliser pour une nouvelle transaction de a : celui du compte,
+// augmenté des transactions consécutives déjà en attente (envois successifs avant le bloc).
+func (m *Pool) NextNonce(st Accounts, a crypto.Address) uint64 {
+	n := st.Account(a).Nonce
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for queue := m.accounts[a.Hash]; queue[n] != nil; n++ {
+	}
+	return n
+}

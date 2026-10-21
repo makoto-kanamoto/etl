@@ -15,9 +15,12 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -53,6 +56,7 @@ type Engine interface {
 	IPCTallies() []consensus.IPCTally
 	ParamTallies() []consensus.ParamTally
 	Address() crypto.Address
+	NextNonce(crypto.Address) uint64
 }
 
 // Network : état du réseau (network.Host).
@@ -91,6 +95,34 @@ type Server struct {
 	token  string
 	mux    *http.ServeMux
 	events chan struct{} // jetons de clients SSE
+	csp    string
+}
+
+const cspBase = "default-src 'none'; script-src 'self'%s; style-src 'self'; img-src 'self' data:; " +
+	"connect-src 'self'; font-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+
+// importMapHash renvoie l'empreinte CSP (sha256) de l'import map de dashboard/index.html : seul
+// script en ligne autorisé, il porte l'empreinte SRI de chaque module. Vide sans import map.
+func importMapHash(static fs.FS) (string, error) {
+	if static == nil {
+		return "", nil
+	}
+	page, err := fs.ReadFile(static, "dashboard/index.html")
+	if err != nil {
+		return "", nil // API seule, ou interface absente
+	}
+	const open, end = `<script type="importmap">`, `</script>`
+	i := bytes.Index(page, []byte(open))
+	if i < 0 {
+		return "", nil
+	}
+	rest := page[i+len(open):]
+	j := bytes.Index(rest, []byte(end))
+	if j < 0 || bytes.Contains(rest[j+len(end):], []byte(open)) {
+		return "", errors.New("api: import map mal formée ou en double dans dashboard/index.html")
+	}
+	sum := sha256.Sum256(rest[:j])
+	return "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'", nil
 }
 
 const maxBody = 64 << 10
@@ -107,6 +139,14 @@ func New(cfg Config) (*Server, error) {
 		cfg.MaxEvents = 16
 	}
 	s := &Server{cfg: cfg, mux: http.NewServeMux(), events: make(chan struct{}, cfg.MaxEvents)}
+	h, err := importMapHash(cfg.Static)
+	if err != nil {
+		return nil, err
+	}
+	if h != "" {
+		h = " " + h
+	}
+	s.csp = fmt.Sprintf(cspBase, h)
 	if !cfg.ReadOnly {
 		tok, err := writeToken(cfg.TokenPath)
 		if err != nil {
@@ -168,8 +208,7 @@ func (s *Server) routes() {
 // ServeHTTP applique les protections communes puis route la requête.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
-	h.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "+
-		"connect-src 'self'; font-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+	h.Set("Content-Security-Policy", s.csp)
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Referrer-Policy", "no-referrer")
 	h.Set("X-Frame-Options", "DENY")

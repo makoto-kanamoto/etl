@@ -3,6 +3,8 @@ package api
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -108,6 +110,7 @@ func (e *engine) IPCTallies() []consensus.IPCTally {
 }
 func (e *engine) ParamTallies() []consensus.ParamTally { return e.params }
 func (e *engine) Address() crypto.Address              { return e.addr }
+func (e *engine) NextNonce(crypto.Address) uint64      { return 7 }
 
 type netStub struct{}
 
@@ -414,7 +417,7 @@ func TestBlocksAccountsHistory(t *testing.T) {
 		}
 	}
 	acc := b.get("/api/accounts/" + f[2].Addr.String())
-	if acc["balance"] == "" || acc["nonce"] != "0" || acc["node"] != "admitted" {
+	if acc["balance"] == "" || acc["nonce"] != "0" || acc["next_nonce"] != "7" || acc["node"] != "admitted" {
 		t.Fatalf("compte : %v", acc)
 	}
 	hist := b.get("/api/accounts/" + f[1].Addr.String() + "/history")
@@ -610,7 +613,7 @@ func TestStatic(t *testing.T) {
 		b.s.ServeHTTP(w, rq)
 		return w.Code, w.Header().Get("Content-Type"), w.Body.String()
 	}
-	if code, ct, body := get("/"); code != 200 || !strings.HasPrefix(ct, "text/html") || body != "<!doctype html>" {
+	if code, ct, body := get("/"); code != 200 || !strings.HasPrefix(ct, "text/html") || !strings.HasPrefix(body, "<!doctype html>") {
 		t.Fatalf("accueil : %d %s", code, ct)
 	}
 	if code, ct, _ := get("/wallet/keys.js"); code != 200 || !strings.HasPrefix(ct, "text/javascript") {
@@ -708,5 +711,28 @@ func TestExcludedArbiterAndParamsInForce(t *testing.T) {
 	}
 	if first := b.get("/api/params")["params"].([]any)[0].(map[string]any); first["value"] != "20" {
 		t.Fatalf("frais en vigueur : %v", first)
+	}
+}
+
+// L'import map de la page est le seul script en ligne autorisé, par son empreinte exacte.
+func TestImportMapHashInCSP(t *testing.T) {
+	importMap := `{"integrity":{"/wallet/keys.js":"sha384-x"}}`
+	page := "<!doctype html><script type=\"importmap\">" + importMap + "</script><script type=\"module\" src=\"/dashboard/app.js\"></script>"
+	b := newBench(t, func(c *Config) { c.Static = fstest.MapFS{"dashboard/index.html": {Data: []byte(page)}} })
+	_, _, h := b.do(req{path: "/"})
+	sum := sha256.Sum256([]byte(importMap))
+	want := "script-src 'self' 'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "';"
+	if !strings.Contains(h.Get("Content-Security-Policy"), want) {
+		t.Fatalf("CSP : %s", h.Get("Content-Security-Policy"))
+	}
+	// Une seconde import map (injectée) n'est jamais autorisée : refus au démarrage.
+	double := page + "<script type=\"importmap\">{}</script>"
+	if _, err := New(Config{Params: b.c.net.P, Port: port, TokenPath: filepath.Join(t.TempDir(), "t"),
+		Static: fstest.MapFS{"dashboard/index.html": {Data: []byte(double)}}}); err == nil {
+		t.Fatal("deux import maps acceptées")
+	}
+	if _, err := New(Config{Params: b.c.net.P, Port: port, TokenPath: filepath.Join(t.TempDir(), "t"),
+		Static: fstest.MapFS{"dashboard/index.html": {Data: []byte("<script type=\"importmap\">{}")}}}); err == nil {
+		t.Fatal("import map non fermée acceptée")
 	}
 }
