@@ -353,3 +353,12 @@ func TestSybilExclusionBansSponsor(t *testing.T) {
 		t.Errorf("double exclusion : err = %v", err)
 	}
 }
+
+func TestNodeStatusString(t *testing.T) {
+	for st, want := range map[NodeStatus]string{StatusUnknown: "unknown", StatusCandidate: "candidate", StatusAdmitted: "admitted",
+		StatusInactive: "inactive", StatusExcluded: "excluded", 99: "unknown"} {
+		if st.String() != want {
+			t.Errorf("%d : %q", st, st.String())
+		}
+	}
+}

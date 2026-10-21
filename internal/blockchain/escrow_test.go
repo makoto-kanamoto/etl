@@ -509,3 +509,33 @@ func TestEscrowNotInGenesis(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestEscrowsOfAndParamLookup(t *testing.T) {
+	n := newEscrowNet(t)
+	t1, t2 := n.terms(true, UnitsPerETL/4, 3), n.terms(false, UnitsPerETL/5, 3)
+	n.next(t, n.open(t, t1), n.open(t, t2))
+	if got := n.st.EscrowsOf(n.seller.addr); len(got) != 2 {
+		t.Fatalf("vendeur : %d échanges", len(got))
+	}
+	if got := n.st.EscrowsOf(n.arbiter.addr); len(got) != 1 || got[0] != t1.ID() {
+		t.Fatalf("arbitre : %v", got)
+	}
+	if got := n.st.EscrowsOf(n.founders[5].addr); len(got) != 0 {
+		t.Fatal("tiers : aucun échange attendu")
+	}
+	ids := GovernableParams()
+	if len(ids) != int(lastParamID) || ids[0] != ParamFeeBps {
+		t.Fatalf("%d paramètres", len(ids))
+	}
+	for _, id := range ids {
+		if got, ok := ParamByName(id.Name()); !ok || got != id {
+			t.Fatalf("%s introuvable", id.Name())
+		}
+	}
+	if _, ok := ParamByName("inconnu"); ok {
+		t.Fatal("nom inconnu accepté")
+	}
+	if lo, hi := ParamTargetBits.Bounds(); lo != 16 || hi != 28 {
+		t.Fatalf("bornes : %d–%d", lo, hi)
+	}
+}

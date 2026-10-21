@@ -54,3 +54,33 @@ func TestOracleEndToEnd(t *testing.T) {
 		t.Fatalf("%d votes IPC dans le bloc, attendu 7", len(b.IPCVotes))
 	}
 }
+
+// Décomptes des votes en attente (page IPC et panneau opérateur du dashboard).
+func TestTallies(t *testing.T) {
+	s := newSim(t)
+	s.at(time.Unix(chaintest.Day(1), 0).Add(-time.Hour))
+	a := blockchain.IPCRecord{Value: 104000, Period: "2026-Q4", SourceSHA256: [32]byte{1}}
+	b := blockchain.IPCRecord{Value: 104100, Period: "2026-Q4", SourceSHA256: [32]byte{2}}
+	for i, n := range s.nodes[:5] {
+		rec := a
+		if i >= 3 {
+			rec = b
+		}
+		_ = n.e.SubmitIPCVote(rec)
+		if i < 2 {
+			_ = n.e.SubmitParamVote(blockchain.ParamFeeBps, 20)
+		}
+	}
+	s.flush()
+	got := s.nodes[9].e.IPCTallies()
+	if len(got) != 2 || got[0].Record != a || got[0].Votes != 3 || got[1].Votes != 2 {
+		t.Fatalf("IPC : %+v", got)
+	}
+	pt := s.nodes[9].e.ParamTallies()
+	if len(pt) != 1 || pt[0].ID != blockchain.ParamFeeBps || pt[0].Value != 20 || pt[0].Votes != 2 {
+		t.Fatalf("paramètres : %+v", pt)
+	}
+	if s.nodes[3].e.Address() != s.nodes[3].wallet.Addr {
+		t.Fatal("adresse du nœud")
+	}
+}

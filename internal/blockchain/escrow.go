@@ -526,3 +526,17 @@ func cloneMap[K comparable, V any](m map[K]V) map[K]V {
 	}
 	return out
 }
+
+// EscrowsOf renvoie les échanges (encore dans l'état) où l'adresse est vendeur, acheteur ou arbitre,
+// triés par identifiant.
+func (s *State) EscrowsOf(a crypto.Address) []crypto.Hash {
+	var out []crypto.Hash
+	for _, id := range sortedHashes(s.escrows) {
+		e := s.escrows[id]
+		t := &e.Terms
+		if t.Seller.Hash == a.Hash || t.Buyer.Hash == a.Hash || (t.HasArbiter() && t.Arbiter.Hash == a.Hash) {
+			out = append(out, id)
+		}
+	}
+	return out
+}

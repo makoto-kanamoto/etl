@@ -26,6 +26,21 @@ const (
 	StatusExcluded                    // exclu définitivement
 )
 
+// String renvoie le nom du statut (API, journaux).
+func (s NodeStatus) String() string {
+	switch s {
+	case StatusCandidate:
+		return "candidate"
+	case StatusAdmitted:
+		return "admitted"
+	case StatusInactive:
+		return "inactive"
+	case StatusExcluded:
+		return "excluded"
+	}
+	return "unknown"
+}
+
 // Node est l'entrée d'un nœud dans le registre.
 type Node struct {
 	Status       NodeStatus

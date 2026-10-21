@@ -212,3 +212,48 @@ func TestDefaultsAndRunStops(t *testing.T) {
 		t.Fatal("Run ne s'arrête pas à l'annulation")
 	}
 }
+
+// Statut de la dernière lecture et lecture manuelle (dashboard), au plus une toutes les 5 minutes.
+func TestStatusAndReadNow(t *testing.T) {
+	r := newRig(t, "2026-Q2", readFixture(t))
+	if st := r.o.Status(); !st.LastAttempt.IsZero() || st.Read != nil {
+		t.Fatalf("avant toute lecture : %+v", st)
+	}
+	r.o.Tick(context.Background(), r.now) // minuit : planifie la lecture du jour sans lire
+	if st := r.o.Status(); st.NextRead.IsZero() || st.NextRead.Hour() < 20 {
+		t.Fatalf("prochaine lecture : %v", st.NextRead)
+	}
+	rec, err := r.o.ReadNow(context.Background(), r.now)
+	if err != nil || rec == nil || rec.Period != "2026-Q3" || len(r.voter.votes) != 1 {
+		t.Fatalf("lecture manuelle : %+v, %v", rec, err)
+	}
+	st := r.o.Status()
+	if st.Read == nil || *st.Read != *rec || !st.Voted || st.LastError != "" || !st.LastAttempt.Equal(r.now) {
+		t.Fatalf("statut : %+v", st)
+	}
+	if _, err := r.o.ReadNow(context.Background(), r.now.Add(MinManualInterval-time.Second)); err != ErrTooSoon {
+		t.Fatalf("trop tôt : %v", err)
+	}
+	if len(r.src.calls) != 1 {
+		t.Fatal("la source a été sollicitée malgré le refus")
+	}
+	// Échec de la source : noté dans le statut, sans effacer le dernier triplet lu.
+	r.src.err = errors.New("indisponible")
+	if _, err := r.o.ReadNow(context.Background(), r.now.Add(MinManualInterval)); err == nil {
+		t.Fatal("échec non signalé")
+	}
+	if st := r.o.Status(); st.LastError != "indisponible" || st.Read == nil {
+		t.Fatalf("après échec : %+v", st)
+	}
+	// La lecture manuelle ne consomme pas le calendrier quotidien.
+	r.src.err = nil
+	r.tickDay()
+	if len(r.src.calls) != 3 {
+		t.Fatalf("%d lectures : la lecture quotidienne doit avoir lieu", len(r.src.calls))
+	}
+	// Chaîne déjà à jour : lecture notée, pas de vote.
+	up := newRig(t, "2026-Q3", readFixture(t))
+	if rec, err := up.o.ReadNow(context.Background(), up.now); err != nil || rec != nil || up.o.Status().Voted || up.o.Status().Read == nil {
+		t.Fatalf("chaîne à jour : %+v %v", rec, err)
+	}
+}

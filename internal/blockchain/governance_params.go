@@ -371,3 +371,25 @@ func DecodeGov(b []byte) (map[ParamID]uint64, map[ParamID]PendingParam, error) {
 	}
 	return values, pending, nil
 }
+
+// GovernableParams renvoie les paramètres gouvernables, dans l'ordre de leurs identifiants.
+func GovernableParams() []ParamID {
+	out := make([]ParamID, 0, lastParamID)
+	for id := ParamFeeBps; id <= lastParamID; id++ {
+		out = append(out, id)
+	}
+	return out
+}
+
+// Bounds renvoie les bornes immuables d'un paramètre gouvernable.
+func (id ParamID) Bounds() (min, max uint64) { return paramRules[id].min, paramRules[id].max }
+
+// ParamByName retrouve un paramètre gouvernable par son nom (« fee_bps »…).
+func ParamByName(name string) (ParamID, bool) {
+	for id, r := range paramRules {
+		if r.name == name {
+			return id, true
+		}
+	}
+	return 0, false
+}

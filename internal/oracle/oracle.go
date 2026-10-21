@@ -57,7 +57,23 @@ type Oracle struct {
 	next     time.Time // prochaine tentative
 	attempts int
 	done     bool // lecture réussie aujourd'hui
+	status   Status
 }
+
+// Status décrit la dernière lecture (page IPC du dashboard).
+type Status struct {
+	LastAttempt time.Time             // zéro : jamais lu
+	LastError   string                // vide si la dernière lecture a réussi
+	Read        *blockchain.IPCRecord // dernier trimestre publié lu à la source (voté ou non)
+	Voted       bool                  // un vote a été émis pour Read
+	NextRead    time.Time             // prochaine lecture prévue (calendrier quotidien)
+}
+
+// MinManualInterval espace les lectures manuelles (courtoisie envers la source et sa limite de requêtes).
+const MinManualInterval = 5 * time.Minute
+
+// ErrTooSoon : lecture manuelle demandée moins de MinManualInterval après la précédente.
+var ErrTooSoon = errors.New("oracle: lecture trop rapprochée de la précédente (5 minutes minimum)")
 
 // New crée un oracle.
 func New(cfg Config) *Oracle {
@@ -97,9 +113,7 @@ func (o *Oracle) Tick(ctx context.Context, now time.Time) *blockchain.IPCRecord 
 		return nil
 	}
 	o.attempts++
-	fctx, cancel := context.WithTimeout(ctx, fetchTimeout)
-	defer cancel()
-	obs, err := o.cfg.Source.Fetch(fctx)
+	rec, err := o.read(ctx, now)
 	if err != nil {
 		if o.attempts < maxAttempts {
 			o.next = now.Add(backoff[o.attempts-1])
@@ -108,18 +122,59 @@ func (o *Oracle) Tick(ctx context.Context, now time.Time) *blockchain.IPCRecord 
 		return nil
 	}
 	o.done = true
+	return rec
+}
+
+// read (verrou tenu) lit la source, note le résultat dans le statut, et vote si un trimestre plus
+// récent que la chaîne est publié. Renvoie le triplet voté, ou nil.
+func (o *Oracle) read(ctx context.Context, now time.Time) (*blockchain.IPCRecord, error) {
+	o.status.LastAttempt = now
+	fctx, cancel := context.WithTimeout(ctx, fetchTimeout)
+	defer cancel()
+	obs, err := o.cfg.Source.Fetch(fctx)
+	if err != nil {
+		o.status.LastError = err.Error()
+		return nil, err
+	}
+	o.status.LastError, o.status.Read, o.status.Voted = "", nil, false
+	if latest, ok := Latest(obs, ""); ok {
+		o.status.Read = &latest
+	}
 	var current blockchain.IPCRecord
 	o.cfg.Chain.ReadState(func(st *blockchain.State) { current = st.IPC() })
 	rec, ok := Latest(obs, current.Period)
 	if !ok {
-		return nil // rien de plus récent que la chaîne : pas de vote
+		return nil, nil // rien de plus récent que la chaîne : pas de vote
 	}
 	if err := o.cfg.Voter.SubmitIPCVote(rec); err != nil {
 		o.cfg.Logf("oracle : vote IPC %s refusé : %v", rec.Period, err)
-		return nil
+		return nil, nil
 	}
+	o.status.Voted = true
 	o.cfg.Logf("oracle : vote IPC %s = %d", rec.Period, rec.Value)
-	return &rec
+	return &rec, nil
+}
+
+// ReadNow lit la source immédiatement (bouton « relire la source maintenant »), au plus une fois
+// toutes les MinManualInterval. N'altère pas le calendrier quotidien.
+func (o *Oracle) ReadNow(ctx context.Context, now time.Time) (*blockchain.IPCRecord, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if !o.status.LastAttempt.IsZero() && now.Sub(o.status.LastAttempt) < MinManualInterval {
+		return nil, ErrTooSoon
+	}
+	return o.read(ctx, now)
+}
+
+// Status renvoie l'état de la dernière lecture.
+func (o *Oracle) Status() Status {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	s := o.status
+	if !o.done && o.attempts < maxAttempts {
+		s.NextRead = o.next
+	}
+	return s
 }
 
 var errNoQuarter = errors.New("oracle: aucun trimestre publié")

@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/makoto-kanamoto/etl/internal/blockchain"
@@ -571,3 +572,53 @@ func (e *Engine) SubmitRegistration(r blockchain.Registration) error {
 	e.net.Broadcast(network.Message{Type: network.MsgRegistration, Payload: blockchain.EncodeRegistration(&r)})
 	return nil
 }
+
+// IPCTally : votes IPC en attente d'inclusion, par triplet.
+type IPCTally struct {
+	Record blockchain.IPCRecord
+	Votes  int
+}
+
+// IPCTallies renvoie les votes IPC en attente, du plus soutenu au moins soutenu (page IPC).
+func (e *Engine) IPCTallies() []IPCTally {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make([]IPCTally, 0, len(e.ipc))
+	for rec, votes := range e.ipc {
+		out = append(out, IPCTally{rec, len(votes)})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Votes != out[j].Votes {
+			return out[i].Votes > out[j].Votes
+		}
+		return out[i].Record.Period+string(out[i].Record.SourceSHA256[:]) < out[j].Record.Period+string(out[j].Record.SourceSHA256[:])
+	})
+	return out
+}
+
+// ParamTally : votes en attente pour une nouvelle valeur d'un paramètre gouvernable.
+type ParamTally struct {
+	ID    blockchain.ParamID
+	Value uint64
+	Votes int
+}
+
+// ParamTallies renvoie les votes de paramètres en attente, par paramètre puis valeur.
+func (e *Engine) ParamTallies() []ParamTally {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make([]ParamTally, 0, len(e.pv))
+	for k, votes := range e.pv {
+		out = append(out, ParamTally{k.id, k.value, len(votes)})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].ID != out[j].ID {
+			return out[i].ID < out[j].ID
+		}
+		return out[i].Value < out[j].Value
+	})
+	return out
+}
+
+// Address renvoie l'adresse du nœud (vide pour un nœud passif).
+func (e *Engine) Address() crypto.Address { return e.me }
