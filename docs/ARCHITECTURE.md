@@ -84,22 +84,51 @@ Exemple d'adresse : etl1qnwxsgqx9c4phyx8vjt6650fl5zgxzcaav8qcw0
 ### Logiciel
 - Langage : **Go**
 - Tests unitaires : obligatoires
+- **Un seul binaire, `etl`** : nœud, réseau, consensus, oracle IPC et dashboard (interface embarquée)
+- Mise en route pas à pas : [guide de l'opérateur](fr/GUIDE_OPERATEUR.md)
 
-### Configuration (.toml)
+| Commande | Rôle |
+|---|---|
+| `etl init` | crée `~/.etl/config.toml` et la clé du nœud ; affiche la phrase de récupération de 24 mots |
+| `etl restore` | recrée la clé du nœud à partir de sa phrase de récupération |
+| `etl run` | démarre le nœud (commande par défaut) |
+| `etl address` | affiche l'adresse du nœud |
+| `etl passphrase` | change la phrase de passe qui chiffre la clé du nœud |
+| `etl genesis` | prépare le `genesis.json` d'un réseau (cérémonie de lancement) |
+| `etl version` | affiche la version |
+
+**Phrase de passe de la clé du nœud** : saisie au clavier sans affichage, ou lue dans un fichier
+(`-passphrase-file`, permissions 0600 exigées) pour un serveur sans surveillance. **Jamais** en variable
+d'environnement ni en argument de commande (visibles par les autres processus et dans l'historique).
+
+### Configuration (.toml) — réglages locaux seulement
+
+Le fichier `~/.etl/config.toml` ne contient que ce qui ne regarde que l'opérateur : réseau rejoint,
+répertoires, ports, pruning, pairs d'amorçage, limites du mempool, source de l'IPC, dashboard.
 
 ```toml
 [node]
-wallet  = "ETL1xK9f3..."
-port    = 3000
+network = "ETL-FR"
 datadir = "~/.etl/chain"
+wallet  = "~/.etl/wallet.key"     # "" : nœud passif (ni vote, ni récompense)
+genesis = "~/.etl/genesis.json"
+port    = 3000
 pruning = true
 
 [network]
 bootstrap = [
   "etl1.etalon-etl.fr:3000",
-  "51.178.xx.xx:3000",
 ]
 ```
+
+**Les règles de consensus n'y figurent pas** — identifiant du réseau, préfixe des adresses, récompense,
+difficulté, frais, taille et heure du bloc. Elles viennent de la définition du réseau gravée dans le
+logiciel et du genesis, puis n'évoluent que par vote on-chain (plus de 2/3, application 30 jours après).
+Un fichier qui tente de les régler est **refusé au démarrage**, avec une explication : un opérateur ne
+peut pas se séparer de la chaîne commune par une simple modification de configuration.
+
+Toute clé inconnue est aussi refusée, avec son numéro de ligne : une configuration ambiguë n'est jamais
+lue « à peu près ».
 
 ### Réseau — transport et diffusion
 - **Bibliothèque standard Go uniquement** (TCP + TLS 1.3) : aucune dépendance réseau tierce à auditer.
@@ -144,6 +173,10 @@ fabriquer une histoire alternative complète depuis le genesis, avec des certifi
 ### Horloge
 - **Exigence opérateur : horloge synchronisée par NTP.** La fenêtre de participation (30 s), la tolérance
   d'inclusion (23:00:25) et les tours de proposition (tolérance ±5 s) supposent des horloges à l'heure
+- **Contrôle** : chaque nœud annonce son heure à la poignée de main. Le nœud calcule l'écart médian avec
+  ses pairs ; au-delà de **2 s** (avec au moins 2 pairs), il avertit l'opérateur dans son journal et sur
+  l'accueil du dashboard. Ce n'est qu'un avertissement : l'heure des pairs n'est jamais utilisée pour
+  corriger la sienne (un groupe de pairs malveillants pourrait sinon la déplacer)
 
 ### Bootstrap réseau
 - **IP + DNS** (les deux) pour les nœuds de bootstrap
@@ -175,6 +208,16 @@ Les jours sont des jours UTC (horodatage du bloc ÷ 86 400) : un jour sans bloc 
 - Les fondateurs sont admis dès le genesis et **peuvent parrainer immédiatement** (dispense d'ancienneté) ; le quota de 1 parrainage par 30 jours s'applique
 - Le genesis s'engage sur le `chain_id`, le message **et la liste des fondateurs** : les changer change toute la chaîne
 - **Aucune récompense tant que moins de 10 nœuds sont actifs** — personne ne peut accumuler d'ETL seul au démarrage
+- **Fichier `genesis.json`** publié avec chaque version : `chain_id`, message, horodatage (23:00 UTC du
+  jour de lancement), IPC de référence (valeur, période, empreinte de la source) et adresses des
+  fondateurs. Le nœud en reconstruit le bloc genesis et compare son empreinte à **celle gravée dans le
+  logiciel** : un fichier différent, même d'un seul octet, est refusé
+- **Avant le lancement**, aucune empreinte n'est gravée pour ETL-FR : le logiciel refuse de le rejoindre.
+  La cérémonie (date et liste des fondateurs : à décider) produit le fichier avec `etl genesis`, puis
+  l'empreinte est gravée dans la version publiée
+- **Réseau de test** (`network = "test"`) : identifiant `ETL-TEST`, adresses `etlt1q…`, 4 fondateurs
+  suffisent, preuve de travail allégée. Aucune adresse ni signature ne peut être confondue avec ETL-FR ;
+  il accepte n'importe quel genesis et ne sert qu'aux essais
 
 ### Dashboard
 - **localhost:3001** pour l'opérateur
@@ -430,7 +473,9 @@ Bloc #142 — 17 octobre 2026 à 23:00 UTC
 - IPC base 2025 — Ensemble des ménages — France — Coicop 00 « Ensemble » (panier complet, tabac inclus)
 - Lecture : **API SDMX de l'INSEE** — `https://api.insee.fr/series/BDM/V1/data/SERIES_BDM/011814630`
 - Page lisible par un humain : `https://www.insee.fr/fr/statistiques/serie/011814630`
-- **Configurable** dans `default.toml` (`ipc_url`, `ipc_country`) — jamais codée en dur
+- **Configurable** dans `config.toml` (`ipc_url`, `ipc_country`) — jamais codée en dur
+- Lecture **une fois par jour**, à une minute tirée au hasard entre 20:00 et 22:30 UTC (3 tentatives au
+  plus) : l'INSEE voit l'adresse IP du nœud ; `HTTPS_PROXY` est respecté (voir le guide de l'opérateur)
 - Pour un réseau donné, la source est fixée au genesis
 
 > L'ancienne série 001763852 (base 2015, hors tabac) est **arrêtée** depuis janvier 2026 (dernière valeur : 2025-12). Elle ne doit pas être utilisée.
@@ -658,7 +703,7 @@ Wallet etl1qxk9... — Réputation on-chain
 
 ## Prochaine étape
 
-Structure du dépôt GitHub + début du code Go.
+Cérémonie de lancement d'ETL-FR : date et liste des fondateurs (à décider).
 
 ---
 
