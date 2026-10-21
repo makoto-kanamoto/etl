@@ -298,7 +298,7 @@ function toBase64url(b) {
   return s;
 }
 
-function fromBase64url(s) {
+export function fromBase64url(s) {
     if (s.length % 4 === 1) throw errText(); // caractère hors alphabet : refusé par le contrôle canonique ci-dessous
   const out = [];
   for (let i = 0; i < s.length; i += 4) {

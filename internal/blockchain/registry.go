@@ -396,3 +396,10 @@ func (r registry) applySybilExclusion(addr addrKey, day int64, p Params) error {
 	}
 	return nil
 }
+
+// CheckRegistration indique si une candidature (ou réactivation) signée serait acceptée dans un
+// bloc daté blockTime : même code que l'application d'un bloc, sur une copie du registre.
+// p : paramètres de base ; ceux en vigueur ce jour-là sont recalculés depuis l'état.
+func (s *State) CheckRegistration(reg Registration, blockTime int64, p Params) error {
+	return s.nodes.clone().applyRegistrations([]Registration{reg}, dayOf(blockTime), s.ParamsAt(p, blockTime))
+}

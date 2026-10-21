@@ -6,6 +6,7 @@ import (
 
 	"github.com/makoto-kanamoto/etl/internal/blockchain"
 	"github.com/makoto-kanamoto/etl/internal/blockchain/chaintest"
+	"github.com/makoto-kanamoto/etl/internal/crypto"
 	"github.com/makoto-kanamoto/etl/internal/escrow"
 	"github.com/makoto-kanamoto/etl/internal/network"
 )
@@ -186,5 +187,59 @@ func TestArbiterMethods(t *testing.T) {
 	s.runDay(3)
 	if got := s.nodes[0].store.Account(buyer.Addr).Balance; got != terms.Amount {
 		t.Fatalf("acheteur : %d", got)
+	}
+}
+
+// Parrainage de bout en bout : le nœud candidat prépare et signe, le nœud parrain vérifie,
+// contresigne et soumet ; le bloc suivant inscrit le candidat. Refus attendus.
+func TestSponsorshipFlow(t *testing.T) {
+	s := newSim(t)
+	s.runDay(1)
+	cand := s.addNode(chaintest.NewWallet(t, s.p), true)
+	sponsor, other := s.nodes[0], s.nodes[1]
+	s.at(time.Unix(chaintest.Day(2), 0).Add(-2 * time.Hour))
+	if _, err := sponsor.e.PrepareRegistration(other.wallet.Addr); err != blockchain.ErrRegistrationStatus {
+		t.Fatalf("un nœud déjà admis ne se porte pas candidat : %v", err)
+	}
+	if _, err := cand.e.PrepareRegistration(cand.wallet.Addr); err != blockchain.ErrRegistrationStatus {
+		t.Fatalf("parrain = candidat : %v", err)
+	}
+	reg, err := cand.e.PrepareRegistration(sponsor.wallet.Addr)
+	if err != nil || reg.Candidate != cand.wallet.Addr || reg.SponsorSig != (crypto.Signature{}) {
+		t.Fatalf("préparation : %v %+v", err, reg)
+	}
+	wrong := reg
+	if err := other.e.SponsorRegistration(&wrong); err != blockchain.ErrSponsorNotEligible {
+		t.Fatalf("contreseing par un autre que le parrain désigné : %v", err)
+	}
+	if err := sponsor.e.SponsorRegistration(&reg); err != nil {
+		t.Fatalf("contreseing : %v", err)
+	}
+	if err := sponsor.e.SubmitRegistration(reg); err != nil {
+		t.Fatal(err)
+	}
+	s.flush()
+	s.runDay(2)
+	if st := s.nodes[0].store.Node(cand.wallet.Addr).Status; st != blockchain.StatusCandidate {
+		t.Fatalf("candidat non inscrit : %v", st)
+	}
+	// Le même parrain ne peut parrainer de nouveau avant 30 jours : refus avant signature soumise.
+	cand2 := s.addNode(chaintest.NewWallet(t, s.p), true)
+	reg2, _ := cand2.e.PrepareRegistration(sponsor.wallet.Addr)
+	if err := sponsor.e.SponsorRegistration(&reg2); err != blockchain.ErrSponsorNotEligible {
+		t.Fatalf("délai entre deux parrainages : %v", err)
+	}
+	if _, err := other.e.Reactivate(); err != blockchain.ErrRegistrationStatus {
+		t.Fatalf("réactivation d'un nœud actif : %v", err)
+	}
+	s.restart(2, false)
+	if _, err := s.nodes[2].e.PrepareRegistration(sponsor.wallet.Addr); err != ErrPassive {
+		t.Fatalf("passif : %v", err)
+	}
+	if err := s.nodes[2].e.SponsorRegistration(&reg2); err != ErrPassive {
+		t.Fatalf("passif : %v", err)
+	}
+	if _, err := s.nodes[2].e.Reactivate(); err != ErrPassive {
+		t.Fatalf("passif : %v", err)
 	}
 }

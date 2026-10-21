@@ -1,7 +1,7 @@
 // Portefeuille : création (phrase, vérification de 3 mots, phrase de passe), restauration,
 // déverrouillage, solde, envoi, historique, affichage de la phrase, retrait du navigateur.
 
-import { h, field, clear } from "../lib/dom.js";
+import { h, field, clear, put } from "../lib/dom.js";
 import { parseETL, formatETL, euroCents, formatEuro } from "../lib/amount.js";
 import { challenge, check } from "../lib/phrase.js";
 import * as keys from "../../wallet/keys.js";
@@ -30,7 +30,7 @@ function message(kind, text) {
 
 function noWallet(app, root) {
   const { t } = app;
-  root.append(
+  put(root, 
     h("section", { class: "card" },
       h("h2", {}, t("wallet.none.title")),
       h("p", {}, t("wallet.none.text")),
@@ -50,7 +50,7 @@ function createFlow(app, root, key = keys.generateKey()) {
   const noted = h("input", { type: "checkbox" });
   const next = h("button", { class: "primary", disabled: true, onClick: () => verifyFlow(app, clear(root), key, words) }, t("create.check.title"));
   noted.addEventListener("change", () => (next.disabled = !noted.checked));
-  root.append(
+  put(root, 
     h("section", { class: "card" },
       h("h2", {}, t("create.title")),
       h("p", {}, t("create.text")),
@@ -69,9 +69,9 @@ function verifyFlow(app, root, key, words) {
   const out = h("div");
   const submit = () => {
     if (check(words, positions, inputs.map((i) => i.value))) passphraseFlow(app, clear(root), key);
-    else clear(out).append(message("error", t("create.check.failed")));
+    else put(clear(out), message("error", t("create.check.failed")));
   };
-  root.append(
+  put(root, 
     h("section", { class: "card" },
       h("h2", {}, t("create.check.title")),
       h("p", {}, t("create.check.text")),
@@ -93,13 +93,13 @@ function passphraseFlow(app, root, key) {
   const p2 = h("input", { type: "password", autocomplete: "new-password" });
   const out = h("div");
   const save = async () => {
-    if ([...p1.value.normalize("NFC")].length < MIN_PASSPHRASE) return clear(out).append(message("error", t("pass.short")));
-    if (p1.value.normalize("NFC") !== p2.value.normalize("NFC")) return clear(out).append(message("error", t("pass.mismatch")));
+    if ([...p1.value.normalize("NFC")].length < MIN_PASSPHRASE) return put(clear(out), message("error", t("pass.short")));
+    if (p1.value.normalize("NFC") !== p2.value.normalize("NFC")) return put(clear(out), message("error", t("pass.mismatch")));
     await app.session.create(key, p1.value);
     keys.wipe(key);
     app.render();
   };
-  root.append(
+  put(root, 
     h("section", { class: "card" },
       h("h2", {}, t("pass.title")),
       h("p", {}, t("pass.text")),
@@ -125,10 +125,10 @@ function restoreFlow(app, root) {
       phrase.value = "";
       passphraseFlow(app, clear(root), key);
     } catch (e) {
-      clear(out).append(message("error", t(`restore.invalid.${e.code ?? "checksum"}`)));
+      put(clear(out), message("error", t(`restore.invalid.${e.code ?? "checksum"}`)));
     }
   };
-  root.append(
+  put(root, 
     h("section", { class: "card" },
       h("h2", {}, t("restore.title")),
       h("p", {}, t("restore.text")),
@@ -147,17 +147,17 @@ function locked(app, root) {
   const { t } = app;
   const pass = h("input", { type: "password", autocomplete: "current-password" });
   const out = h("div");
-  if (app.autoLocked) out.append(message("info", t("unlock.auto")));
+  if (app.autoLocked) put(out, message("info", t("unlock.auto")));
   const unlock = async () => {
     try {
       await app.session.unlock(pass.value);
       app.autoLocked = false;
       app.render();
     } catch (e) {
-      clear(out).append(message("error", e instanceof VaultError && e.code === "wrong" ? t("unlock.wrong") : e.message));
+      put(clear(out), message("error", e instanceof VaultError && e.code === "wrong" ? t("unlock.wrong") : e.message));
     }
   };
-  root.append(
+  put(root, 
     h("section", { class: "card narrow" },
       h("h2", {}, t("unlock.title")),
       h("p", { class: "mono small" }, app.session.address()),
@@ -202,7 +202,7 @@ function unlocked(app, root) {
   app.onBlock = refresh;
   refresh();
 
-  root.append(
+  put(root, 
     h("div", { class: "grid" },
       h("section", { class: "card wide" },
         h("h3", {}, t("main.address")),
@@ -222,21 +222,26 @@ function unlocked(app, root) {
   );
 }
 
-function renderHistory(app, el, list, address) {
+// renderHistory fusionne transferts et mouvements d'escrow, du plus récent au plus ancien.
+function renderHistory(app, el, hist, address) {
   const { t, lang } = app;
   clear(el);
-  if (!list.length) return el.append(h("p", { class: "muted" }, t("history.empty")));
-  el.append(
+  const rows = [
+    ...hist.transactions.map((tx) => {
+      const out = tx.from === address;
+      return { height: tx.height, out, label: out ? t("history.out") : t("history.in"), amount: tx.amount, peer: out ? tx.to : tx.from };
+    }),
+    ...hist.escrow.map((m) => ({ height: m.height, out: m.out, label: t(`history.escrow.${m.kind}`), amount: m.amount, peer: m.escrow.slice(0, 16) + "…" })),
+  ].sort((a, b) => b.height - a.height);
+  if (!rows.length) return put(el, h("p", { class: "muted" }, t("history.empty")));
+  put(el, 
     h("ul", {},
-      list.map((tx) => {
-        const out = tx.from === address;
-        return h("li", { class: out ? "out" : "in" },
-          h("span", { class: "dir" }, out ? t("history.out") : t("history.in")),
-          h("span", { class: "amount" }, `${out ? "−" : "+"}${formatETL(tx.amount, lang)} ETL`),
-          h("span", { class: "mono small peer" }, out ? tx.to : tx.from),
-          h("span", { class: "muted small" }, t("history.block", { n: tx.height })),
-        );
-      }),
+      rows.map((r) => h("li", { class: r.out ? "out" : "in" },
+        h("span", { class: "dir" }, r.label),
+        h("span", { class: "amount" }, `${r.out ? "−" : "+"}${formatETL(r.amount, lang)} ETL`),
+        h("span", { class: "mono small peer" }, r.peer),
+        h("span", { class: "muted small" }, t("history.block", { n: r.height })),
+      )),
     ),
   );
 }
@@ -255,20 +260,20 @@ function sendCard(app, address, getAccount, refresh) {
     try {
       keys.parseAddress(to.value.trim(), st.hrp);
     } catch {
-      return out.append(message("error", t("send.badAddress")));
+      return put(out, message("error", t("send.badAddress")));
     }
-    if (to.value.trim().toLowerCase() === address) return out.append(message("error", t("send.self")));
+    if (to.value.trim().toLowerCase() === address) return put(out, message("error", t("send.self")));
         try {
       units = parseETL(amount.value);
     } catch {
-      return out.append(message("error", t("send.badAmount")));
+      return put(out, message("error", t("send.badAmount")));
     }
-    if (units === 0n) return out.append(message("error", t("send.zero")));
+    if (units === 0n) return put(out, message("error", t("send.zero")));
     const p = await api.params();
     const params = { chainID: st.chain_id, hrp: st.hrp, feeBps: p.feeBps, minFee: p.minFee };
     const fee = txs.requiredFee(units, params);
     const account = getAccount() ?? (await api.account(address));
-    if (account.balance < units + fee) return out.append(message("error", t("send.insufficient")));
+    if (account.balance < units + fee) return put(out, message("error", t("send.insufficient")));
     const euro = (u) => formatEuro(euroCents(u, st.ipc.value, st.base_ipc.value), lang);
     const confirm = async () => {
       app.session.touch();
@@ -277,14 +282,14 @@ function sendCard(app, address, getAccount, refresh) {
       try {
         await api.submitTx(hex(txs.encodeTransaction(tx)));
         const when = new Date(st.next_block * 1000).toLocaleString(lang === "fr" ? "fr-FR" : "en-GB", { hour: "2-digit", minute: "2-digit", weekday: "short" });
-        clear(out).append(message("ok", t("send.sent", { time: when })), h("p", { class: "mono small" }, hex(tx.id)));
+        put(clear(out), message("ok", t("send.sent", { time: when })), h("p", { class: "mono small" }, hex(tx.id)));
         to.value = amount.value = "";
         refresh();
       } catch (e) {
-        clear(out).append(message("error", e.message));
+        put(clear(out), message("error", e.message));
       }
     };
-    out.append(
+    put(out, 
       h("div", { class: "summary" },
         h("h4", {}, t("send.summary")),
         h("dl", {},
@@ -301,7 +306,7 @@ function sendCard(app, address, getAccount, refresh) {
     );
   };
 
-  card.append(
+  put(card, 
     h("h3", {}, t("send.title")),
     h("form", { onSubmit: (e) => (e.preventDefault(), review()) },
       field(t("send.to"), to),
@@ -325,12 +330,12 @@ function phraseDialog(app, root) {
       pass.value = "";
       const words = mnemonic.encodePhrase(key, lang === "fr" ? mnemonic.FRENCH : mnemonic.ENGLISH);
       keys.wipe(key);
-      clear(out).append(h("p", { class: "msg warning" }, t("create.warning")), h("ol", { class: "phrase" }, words.map((w) => h("li", {}, w))));
+      put(clear(out), h("p", { class: "msg warning" }, t("create.warning")), h("ol", { class: "phrase" }, words.map((w) => h("li", {}, w))));
     } catch {
-      clear(out).append(message("error", t("unlock.wrong")));
+      put(clear(out), message("error", t("unlock.wrong")));
     }
   };
-  root.append(
+  put(root, 
     h("section", { class: "card" },
       h("h2", {}, t("phrase.title")),
       h("p", {}, t("phrase.text")),
@@ -349,7 +354,7 @@ function forgetDialog(app, root) {
   const input = h("input", { type: "text", autocomplete: "off" });
   const button = h("button", { class: "danger", disabled: true, onClick: () => (app.session.forget(), app.render()) }, t("forget.button"));
   input.addEventListener("input", () => (button.disabled = input.value.trim() !== word));
-  root.append(
+  put(root, 
     h("section", { class: "card" },
       h("h2", {}, t("forget.title")),
       h("p", { class: "msg warning" }, t("forget.text", { word })),

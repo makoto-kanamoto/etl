@@ -674,3 +674,54 @@ func (e *Engine) ArbiterAct(kind blockchain.EscrowKind, id crypto.Hash) (blockch
 	}
 	return escrow.Act(e.cfg.Key, kind, id, st.Seq, blockchain.SignerArbiter, e.cfg.Params)
 }
+
+// --- Parrainage et réactivation (clé du nœud) ---
+
+// PrepareRegistration prépare la candidature de ce nœud, signée par lui, à faire contresigner par
+// le parrain sponsor (texte « etl-registration: »).
+func (e *Engine) PrepareRegistration(sponsor crypto.Address) (blockchain.Registration, error) {
+	if e.cfg.Key == nil {
+		return blockchain.Registration{}, ErrPassive
+	}
+	var status blockchain.NodeStatus
+	e.chain.ReadState(func(st *blockchain.State) { status = st.Status(e.me) })
+	if status != blockchain.StatusUnknown || sponsor.Hash == e.me.Hash || sponsor.HRP != e.cfg.Params.AddressHRP {
+		return blockchain.Registration{}, blockchain.ErrRegistrationStatus
+	}
+	r := blockchain.Registration{Candidate: e.me, Sponsor: sponsor, Day: e.cfg.Now().Unix() / 86400}
+	return r, r.SignCandidate(e.cfg.Key, e.cfg.Params.ChainID)
+}
+
+// SponsorRegistration contresigne la candidature reçue (ce nœud est le parrain désigné), après avoir
+// vérifié qu'elle serait acceptée par le prochain bloc (éligibilité du parrain, statut du candidat).
+func (e *Engine) SponsorRegistration(r *blockchain.Registration) error {
+	if e.cfg.Key == nil {
+		return ErrPassive
+	}
+	if r.IsReactivation() || r.Sponsor.Hash != e.me.Hash {
+		return blockchain.ErrSponsorNotEligible
+	}
+	if err := r.SignSponsor(e.cfg.Key, e.cfg.Params.ChainID); err != nil {
+		return err
+	}
+	return e.checkRegistration(*r)
+}
+
+// Reactivate prépare la réactivation de ce nœud inactif (sans parrain), vérifiée pour le prochain bloc.
+func (e *Engine) Reactivate() (blockchain.Registration, error) {
+	if e.cfg.Key == nil {
+		return blockchain.Registration{}, ErrPassive
+	}
+	r := blockchain.Registration{Candidate: e.me, Sponsor: crypto.Address{HRP: e.cfg.Params.AddressHRP}, Day: e.cfg.Now().Unix() / 86400}
+	if err := r.SignCandidate(e.cfg.Key, e.cfg.Params.ChainID); err != nil {
+		return r, err
+	}
+	return r, e.checkRegistration(r)
+}
+
+func (e *Engine) checkRegistration(r blockchain.Registration) error {
+	next := e.nextBlockTime(e.cfg.Now()) // hors de ReadState : pas de verrou de lecture imbriqué
+	var err error
+	e.chain.ReadState(func(st *blockchain.State) { err = st.CheckRegistration(r, next, e.cfg.Params) })
+	return err
+}

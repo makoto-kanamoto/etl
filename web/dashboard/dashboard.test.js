@@ -12,6 +12,7 @@ import { makeApi, ApiError } from "./lib/api.js";
 import { render } from "../tools/importmap.js";
 import { actions, roleOf, completes, escrowState, reputation, signerRoles } from "./lib/escrowui.js";
 import * as esc from "../wallet/escrow.js";
+import { allowedRange, readRegistration, RegistrationTextError, REGISTRATION_PREFIX } from "./lib/governance.js";
 import * as keys from "../wallet/keys.js";
 import * as mnemonic from "../wallet/mnemonic.js";
 
@@ -138,11 +139,11 @@ test("api : JSON, montants en BigInt, erreurs du nœud et réseau injoignable", 
   const replies = {
     "/api/accounts/etl1qabc": { balance: "150000000", nonce: "2", next_nonce: "4" },
     "/api/params": { params: [{ name: "fee_bps", value: "10" }, { name: "min_fee", value: "10000" }] },
-    "/api/accounts/etl1qabc/history": { transactions: [{ amount: "5", fee: "10000" }] },
+        "/api/accounts/etl1qabc/history": { transactions: [{ amount: "5", fee: "10000" }], escrow_movements: [{ amount: "50051000", kind: "lock", out: true }] },
   };
   const fake = async (path, init) => {
     calls.push({ path, init });
-    if (path === "/api/tx") return { ok: false, status: 409, json: async () => ({ error: "nonce incorrect" }) };
+        if (path === "/api/tx") return { ok: false, status: 409, json: async () => ({ error: "mempool: nonce incorrect" }) };
     if (path === "/api/status") throw new TypeError("connexion refusée");
     return { ok: true, status: 200, json: async () => replies[path] };
   };
@@ -153,7 +154,9 @@ test("api : JSON, montants en BigInt, erreurs du nœud et réseau injoignable", 
   const p = await api.params();
   assert.equal(p.feeBps, 10n);
   assert.equal(p.minFee, 10_000n);
-  assert.equal((await api.history("etl1qabc"))[0].fee, 10_000n);
+    const hist = await api.history("etl1qabc");
+  assert.equal(hist.transactions[0].fee, 10_000n);
+  assert.equal(hist.escrow[0].amount, 50_051_000n);
   await assert.rejects(api.submitTx("00"), (e) => e instanceof ApiError && e.status === 409 && e.message === "nonce incorrect");
   const post = calls.find((c) => c.path === "/api/tx").init;
   assert.equal(post.method, "POST");
@@ -190,6 +193,7 @@ test("interface : imports relatifs seulement, jamais innerHTML ni eval", () => {
     const src = readFileSync(f, "utf8");
     for (const [, spec] of src.matchAll(/^import .* from "([^"]+)";$/gm)) assert.ok(spec.startsWith("."), `${f} : ${spec}`);
     assert.ok(!/\.innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function/.test(src), `${f} : construction de HTML interdite`);
+    if (f.includes("/views/")) assert.ok(!/\.append\(/.test(src), `${f} : utiliser put() (append écrirait « null » pour une section absente)`);
   }
 });
 
@@ -227,4 +231,42 @@ test("échanges : état converti pour la signature, sans arbitre = adresse nulle
   assert.deepEqual(st.terms.seller, keys.parseAddress(a, "etl"));
   assert.ok(st.terms.arbiter.every((x) => x === 0) && st.terms.arbiter.length === 20);
   assert.equal(st.seq, 4);
+});
+
+// Aide aux votes : mêmes règles que blockchain.CheckParamChange (le nœud reste juge).
+test("paramètres : valeurs permises pour un vote", () => {
+  assert.deepEqual(allowedRange("fee_bps", 10n, 0n, 100n), [5n, 20n], "×2 / ÷2");
+  assert.deepEqual(allowedRange("fee_bps", 80n, 0n, 100n), [40n, 100n], "borne haute");
+  assert.deepEqual(allowedRange("fee_bps", 0n, 0n, 100n), [0n, 1n], "depuis zéro : jusqu'à 1");
+  assert.deepEqual(allowedRange("min_fee", 3n, 0n, 1_000_000n), [1n, 6n], "÷2 arrondi vers le bas");
+  assert.deepEqual(allowedRange("max_block_txs", 100_000n, 10_000n, 1_000_000n), [50_000n, 200_000n]);
+  assert.deepEqual(allowedRange("target_bits", 21n, 16n, 28n), [19n, 23n], "±2 bits");
+  assert.deepEqual(allowedRange("target_bits", 17n, 16n, 28n), [16n, 19n], "borne basse");
+  assert.deepEqual(allowedRange("target_bits", 27n, 16n, 28n), [25n, 28n]);
+  assert.deepEqual(allowedRange("inactivity_days", 30n, 7n, 365n), [7n, 365n], "sans règle de variation : les bornes");
+});
+
+test("parrainage : lecture d'une candidature transmise", () => {
+  const cand = keys.generateKey();
+  const sponsor = keys.address(keys.generateKey(), "etl");
+  const b = new Uint8Array(178);
+  b.set(keys.addressHash(keys.publicKey(cand)), 0);
+  b.set(keys.parseAddress(sponsor, "etl"), 20);
+  new DataView(b.buffer).setBigInt64(40, 20383n);
+  b.fill(7, 48, 113); // signature du candidat
+  const text = REGISTRATION_PREFIX + Buffer.from(b).toString("base64url");
+  const r = readRegistration(" " + text + " ", "etl");
+  assert.equal(r.candidate, keys.address(cand, "etl"));
+  assert.equal(r.sponsor, sponsor);
+  assert.equal(r.day, 20383n);
+  assert.equal(r.sponsored, false);
+  b.fill(9, 113);
+  assert.equal(readRegistration(REGISTRATION_PREFIX + Buffer.from(b).toString("base64url"), "etl").sponsored, true);
+  const react = Uint8Array.from(b);
+  react.fill(0, 20, 40);
+  assert.equal(readRegistration(REGISTRATION_PREFIX + Buffer.from(react).toString("base64url"), "etl").sponsor, "", "réactivation : sans parrain");
+  for (const bad of [Buffer.from(b).toString("base64url"), "etl-escrow:" + Buffer.from(b).toString("base64url"),
+    REGISTRATION_PREFIX + Buffer.from(b.slice(0, 177)).toString("base64url"), REGISTRATION_PREFIX + "@@@", 42]) {
+    assert.throws(() => readRegistration(bad, "etl"), RegistrationTextError, String(bad).slice(0, 30));
+  }
 });

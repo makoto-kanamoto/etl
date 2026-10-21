@@ -8,11 +8,12 @@
 //
 // Au démarrage, la phrase d'un fondateur (clé jetable, propre à cette session) est affichée : la
 // restaurer dans le navigateur donne un portefeuille qui possède des ETL.
-// Transactions et escrow sont pris en charge (le nœud de développement peut être arbitre) ;
-// les votes de l'opérateur, pas encore.
+// Transactions, escrow (le nœud de développement peut être arbitre) et parrainage sont réels ;
+// votes de paramètres et d'exclusion acceptés sans effet ; oracle et vote IPC simulés.
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -21,6 +22,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -33,6 +35,7 @@ import (
 	"github.com/makoto-kanamoto/etl/internal/crypto"
 	"github.com/makoto-kanamoto/etl/internal/escrow"
 	"github.com/makoto-kanamoto/etl/internal/mempool"
+	ioracle "github.com/makoto-kanamoto/etl/internal/oracle"
 	"github.com/makoto-kanamoto/etl/internal/wallet"
 )
 
@@ -86,7 +89,15 @@ func (c *chain) next(e *engine) blockchain.Block {
 	e.pool.SetParams(c.net.State.ParamsAt(c.net.P, ts))
 	txs := e.pool.Select(c.net.State, ts, 1000)
 	ops := c.net.State.FilterEscrowOps(txs, e.ops, ts, 1000-len(txs), c.net.P)
-	b, _ := c.net.Next(tb{}, c.day, func(b *blockchain.Block) { b.Txs, b.EscrowOps = txs, ops })
+	var regs []blockchain.Registration
+	for _, r := range e.regs {
+		if c.net.State.CheckRegistration(r, ts, c.net.P) == nil {
+			regs = append(regs, r)
+		}
+	}
+	sort.Slice(regs, func(i, j int) bool { return bytes.Compare(regs[i].Candidate.Hash[:], regs[j].Candidate.Hash[:]) < 0 })
+	e.regs = nil
+	b, _ := c.net.Next(tb{}, c.day, func(b *blockchain.Block) { b.Txs, b.EscrowOps, b.Registrations = txs, ops, regs })
 	c.blocks[b.Header.Height] = b
 	e.pool.Update(c.net.State, time.Now())
 	var kept []blockchain.EscrowOp
@@ -104,7 +115,8 @@ type engine struct {
 	c    *chain
 	pool *mempool.Pool
 	ops  []blockchain.EscrowOp // sous le verrou de la chaîne
-	key  *crypto.PrivateKey    // clé du nœud de développement (fondateur jetable)
+	regs []blockchain.Registration
+	key  *crypto.PrivateKey // clé du nœud de développement (fondateur jetable)
 	me   crypto.Address
 }
 
@@ -149,15 +161,62 @@ func (e *engine) ArbiterAct(kind blockchain.EscrowKind, id crypto.Hash) (blockch
 	}
 	return escrow.Act(e.key, kind, id, st.Seq, blockchain.SignerArbiter, e.c.net.P)
 }
-func (e *engine) SubmitParamVote(blockchain.ParamID, uint64) error { return errDev }
-func (e *engine) SubmitExclusionVote(crypto.Address) error         { return errDev }
-func (e *engine) IPCTallies() []consensus.IPCTally                 { return nil }
-func (e *engine) ParamTallies() []consensus.ParamTally             { return nil }
-func (e *engine) Address() crypto.Address                          { return e.me }
+func (e *engine) SubmitParamVote(id blockchain.ParamID, v uint64) error {
+	e.c.mu.Lock()
+	cur := e.c.net.State.ParamsAt(e.c.net.P, chaintest.Day(e.c.day+1)).Get(id)
+	e.c.mu.Unlock()
+	return blockchain.CheckParamChange(id, cur, v) // sans effet : vérifié seulement
+}
+func (e *engine) SubmitExclusionVote(crypto.Address) error { return nil }
+func (e *engine) IPCTallies() []consensus.IPCTally {
+	return []consensus.IPCTally{{Record: blockchain.IPCRecord{Value: 104120, Period: "2026-Q4", SourceSHA256: [32]byte{0xed, 0xa2}}, Votes: 4}}
+}
+func (e *engine) PrepareRegistration(sponsor crypto.Address) (blockchain.Registration, error) {
+	return blockchain.Registration{}, blockchain.ErrRegistrationStatus // le nœud de développement est déjà admis
+}
+func (e *engine) SponsorRegistration(r *blockchain.Registration) error {
+	if r.IsReactivation() || r.Sponsor.Hash != e.me.Hash {
+		return blockchain.ErrSponsorNotEligible
+	}
+	if err := r.SignSponsor(e.key, e.c.net.P.ChainID); err != nil {
+		return err
+	}
+	e.c.mu.Lock()
+	defer e.c.mu.Unlock()
+	return e.c.net.State.CheckRegistration(*r, chaintest.Day(e.c.day+1), e.c.net.P)
+}
+func (e *engine) Reactivate() (blockchain.Registration, error) {
+	return blockchain.Registration{}, blockchain.ErrRegistrationStatus
+}
+func (e *engine) SubmitRegistration(r blockchain.Registration) error {
+	e.c.mu.Lock()
+	defer e.c.mu.Unlock()
+	e.regs = append(e.regs, r)
+	return nil
+}
+func (e *engine) ParamTallies() []consensus.ParamTally { return nil }
+func (e *engine) Address() crypto.Address              { return e.me }
 func (e *engine) NextNonce(a crypto.Address) uint64 {
 	e.c.mu.Lock()
 	defer e.c.mu.Unlock()
 	return e.pool.NextNonce(e.c.net.State, a)
+}
+
+// oracle simulé : une lecture réussie au démarrage, relecture immédiate.
+type oracle struct {
+	mu sync.Mutex
+	st ioracle.Status
+}
+
+func (o *oracle) Status() ioracle.Status { o.mu.Lock(); defer o.mu.Unlock(); return o.st }
+func (o *oracle) ReadNow(_ context.Context, now time.Time) (*blockchain.IPCRecord, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if now.Sub(o.st.LastAttempt) < ioracle.MinManualInterval {
+		return nil, ioracle.ErrTooSoon
+	}
+	o.st.LastAttempt = now
+	return o.st.Read, nil
 }
 
 type network struct{}
@@ -184,7 +243,9 @@ func main() {
 	defer os.RemoveAll(dir)
 	srv, err := api.New(api.Config{Params: p, Port: *port, TokenPath: filepath.Join(dir, "dashboard.token"), Version: "dev",
 		Static: os.DirFS(*static), Poll: 500 * time.Millisecond, Chain: c,
-		Engine: eng, Network: network{}})
+		Engine: eng, Network: network{}, Oracle: &oracle{st: ioracle.Status{LastAttempt: time.Now().Add(-time.Hour),
+			Read: &blockchain.IPCRecord{Value: 104120, Period: "2026-Q4", SourceSHA256: [32]byte{0xed, 0xa2}}, Voted: true,
+			NextRead: time.Now().Add(20 * time.Hour)}}})
 	if err != nil {
 		log.Fatal(err)
 	}

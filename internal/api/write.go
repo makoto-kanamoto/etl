@@ -1,11 +1,13 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/makoto-kanamoto/etl/internal/blockchain"
 	"github.com/makoto-kanamoto/etl/internal/crypto"
@@ -219,4 +221,95 @@ func (s *Server) arbiterAct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, map[string]string{"op": escrow.EncodeText(&op), "escrow": body.Escrow})
+}
+
+// --- registre : candidature, parrainage, réactivation (clé du nœud) ---
+
+// RegistrationPrefix précède une candidature transmise du candidat à son parrain (même forme que
+// les opérations d'escrow : encodage canonique en base64url sans remplissage).
+const RegistrationPrefix = "etl-registration:"
+
+func encodeRegistration(r *blockchain.Registration) string {
+	return RegistrationPrefix + base64.RawURLEncoding.EncodeToString(blockchain.EncodeRegistration(r))
+}
+
+func decodeRegistration(s, hrp string) (blockchain.Registration, error) {
+	raw, ok := strings.CutPrefix(strings.TrimSpace(s), RegistrationPrefix)
+	if !ok {
+		return blockchain.Registration{}, errRegistrationText
+	}
+	b, err := base64.RawURLEncoding.Strict().DecodeString(raw)
+	if err != nil {
+		return blockchain.Registration{}, errRegistrationText
+	}
+	r, err := blockchain.DecodeRegistration(b, hrp)
+	if err != nil {
+		return blockchain.Registration{}, errRegistrationText
+	}
+	return r, nil
+}
+
+var errRegistrationText = errors.New("api: texte de candidature invalide")
+
+// registrationRequest : {"sponsor": "etl1q…"} — candidature de ce nœud, signée, à transmettre au parrain.
+func (s *Server) registrationRequest(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Sponsor string `json:"sponsor"`
+	}
+	if !decode(w, r, &body) || !s.needEngine(w) {
+		return
+	}
+	sponsor, err := crypto.ParseAddress(body.Sponsor, s.cfg.Params.AddressHRP)
+	if err != nil {
+		fail(w, http.StatusBadRequest, "adresse invalide")
+		return
+	}
+	reg, err := s.cfg.Engine.PrepareRegistration(sponsor)
+	if err != nil {
+		fail(w, http.StatusConflict, err.Error())
+		return
+	}
+	reply(w, map[string]string{"registration": encodeRegistration(&reg)})
+}
+
+// registrationSponsor : {"registration": "etl-registration:…"} — contresignée par ce nœud parrain,
+// vérifiée pour le prochain bloc, puis soumise.
+func (s *Server) registrationSponsor(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Registration string `json:"registration"`
+	}
+	if !decode(w, r, &body) || !s.needEngine(w) {
+		return
+	}
+	reg, err := decodeRegistration(body.Registration, s.cfg.Params.AddressHRP)
+	if err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.cfg.Engine.SponsorRegistration(&reg); err != nil {
+		fail(w, http.StatusConflict, err.Error())
+		return
+	}
+	if err := s.cfg.Engine.SubmitRegistration(reg); err != nil {
+		fail(w, http.StatusConflict, err.Error())
+		return
+	}
+	reply(w, map[string]string{"candidate": s.addr(reg.Candidate)})
+}
+
+// registrationReactivate : {} — réactivation de ce nœud inactif, vérifiée puis soumise.
+func (s *Server) registrationReactivate(w http.ResponseWriter, r *http.Request) {
+	var body struct{}
+	if !decode(w, r, &body) || !s.needEngine(w) {
+		return
+	}
+	reg, err := s.cfg.Engine.Reactivate()
+	if err == nil {
+		err = s.cfg.Engine.SubmitRegistration(reg)
+	}
+	if err != nil {
+		fail(w, http.StatusConflict, err.Error())
+		return
+	}
+	reply(w, map[string]string{"candidate": s.addr(reg.Candidate)})
 }

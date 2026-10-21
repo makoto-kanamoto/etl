@@ -11,8 +11,9 @@ import { renderHome } from "./views/home.js";
 import { renderWallet } from "./views/wallet.js";
 import { renderEscrow } from "./views/escrow.js";
 import { renderOperator } from "./views/operator.js";
+import { renderIPC } from "./views/ipc.js";
 
-const VIEWS = { "": renderHome, wallet: renderWallet, escrow: renderEscrow, operator: renderOperator };
+const VIEWS = { "": renderHome, wallet: renderWallet, escrow: renderEscrow, ipc: renderIPC, operator: renderOperator };
 
 const LANG_KEY = "etl.lang";
 
@@ -51,7 +52,7 @@ function header() {
   const link = (route, key) => h("a", { href: `#/${route}`, "aria-current": currentRoute() === route ? "page" : null }, app.t(key));
   return h("header", {},
     h("div", { class: "brand" }, h("strong", {}, app.t("app.title")), h("span", { class: "muted" }, app.t("app.subtitle"))),
-        h("nav", {}, link("", "nav.home"), link("wallet", "nav.wallet"), link("escrow", "nav.escrow"), link("operator", "nav.operator")),
+        h("nav", {}, link("", "nav.home"), link("wallet", "nav.wallet"), link("escrow", "nav.escrow"), link("ipc", "nav.ipc"), link("operator", "nav.operator")),
     h("div", { class: "tools" }, nodeState, select),
   );
 }

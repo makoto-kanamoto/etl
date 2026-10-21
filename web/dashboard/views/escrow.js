@@ -2,7 +2,7 @@
 // complément d'une opération reçue. Avant toute signature : résumé lisible et réputation de l'autre
 // partie (et de l'arbitre). Les opérations à plusieurs signatures passent par le texte « etl-escrow: ».
 
-import { h, field, clear } from "../lib/dom.js";
+import { h, field, clear, put } from "../lib/dom.js";
 import { parseETL, formatETL, euroCents, formatEuro } from "../lib/amount.js";
 import { actions, roleOf, completes, escrowState, reputation, signerRoles, KIND_OF, NAME_OF } from "../lib/escrowui.js";
 import * as esc from "../../wallet/escrow.js";
@@ -75,7 +75,7 @@ function whoList(app, mask) {
 export function renderEscrow(app) {
   const root = h("div", { class: "escrow" });
   if (!app.session.isUnlocked()) {
-    root.append(h("section", { class: "card narrow" }, h("p", {}, app.t("escrow.locked")), h("a", { href: "#/wallet" }, app.t("nav.wallet"))));
+    put(root, h("section", { class: "card narrow" }, h("p", {}, app.t("escrow.locked")), h("a", { href: "#/wallet" }, app.t("nav.wallet"))));
     return root;
   }
   const me = app.session.address();
@@ -85,15 +85,15 @@ export function renderEscrow(app) {
       const account = await app.api.account(me);
       const items = await Promise.all(account.escrows.map((id) => app.api.escrow(id)));
       clear(list);
-      if (!items.length) list.append(h("p", { class: "muted" }, app.t("escrow.empty")));
-      for (const e of items.reverse()) list.append(escrowCard(app, e, me, load));
+      if (!items.length) put(list, h("p", { class: "muted" }, app.t("escrow.empty")));
+      for (const e of items.reverse()) put(list, escrowCard(app, e, me, load));
     } catch (e) {
-      clear(list).append(msg("error", errorText(app, e)));
+      put(clear(list), msg("error", errorText(app, e)));
     }
   };
   app.onBlock = load;
   load();
-  root.append(
+  put(root, 
     h("section", { class: "card wide" }, h("h2", {}, app.t("escrow.title")), list),
     openCard(app, me),
     receiveCard(app, me, load),
@@ -126,7 +126,7 @@ async function confirmAction(app, e, role, a, out, reload) {
   const { t } = app;
   const st = app.status;
   const params = { chainID: st.chain_id, hrp: st.hrp };
-  out.append(
+  put(out, 
     msg("warning", t("escrow.confirm", { action: t(`escrow.kind.${a.kind}`) })),
     e.arbiter ? await repLine(app, t("escrow.arbiter"), e.arbiter) : null,
     h("div", { class: "actions" },
@@ -135,14 +135,14 @@ async function confirmAction(app, e, role, a, out, reload) {
         const id = Uint8Array.from(e.id.match(/../g).map((x) => parseInt(x, 16)));
         const op = esc.act(app.session.key, KIND_OF[a.kind], id, e.seq, role, params);
         if (!a.alone) {
-          clear(out).append(textBox(app, esc.toText(op), "escrow.text.help", { who: whoList(app, a.with) }));
+          put(clear(out), textBox(app, esc.toText(op), "escrow.text.help", { who: whoList(app, a.with) }));
           return;
         }
         try {
           await app.api.submitEscrow(esc.toText(op));
-          clear(out).append(msg("ok", t("escrow.submitted")));
+          put(clear(out), msg("ok", t("escrow.submitted")));
         } catch (err) {
-          clear(out).append(msg("error", errorText(app, err)));
+          put(clear(out), msg("error", errorText(app, err)));
         }
       } }, t("escrow.sign")),
       h("button", { onClick: () => clear(out) }, t("send.cancel")),
@@ -169,24 +169,24 @@ function openCard(app, me) {
       try {
         keys.parseAddress(a, st.hrp);
       } catch {
-        return out.append(msg("error", t("send.badAddress")));
+        return put(out, msg("error", t("send.badAddress")));
       }
     }
     try {
       const arb = arbiter.value.trim() || null;
-      if (arb && (arb === me || arb === buyer.value.trim())) return out.append(msg("error", t("open.badArbiter")));
-      if (!/^\d+$/.test(days.value) || Number(days.value) < 1 || Number(days.value) > 30) return out.append(msg("error", t("open.badDays")));
+      if (arb && (arb === me || arb === buyer.value.trim())) return put(out, msg("error", t("open.badArbiter")));
+      if (!/^\d+$/.test(days.value) || Number(days.value) < 1 || Number(days.value) > 30) return put(out, msg("error", t("open.badDays")));
       terms = esc.newTerms({ seller: me, buyer: buyer.value.trim(), arbiter: arb, amount: parseETL(amount.value),
         arbiterFee: arb ? parseETL(fee.value || "0") : 0n, days: Number(days.value), timestamp: BigInt(Math.floor(Date.now() / 1000)) }, params);
         } catch {
-      return out.append(msg("error", t("send.badAmount")));
+      return put(out, msg("error", t("send.badAmount")));
     }
     const locked = terms.amount + terms.arbiterFee + terms.fee;
     const account = await app.api.account(me);
-    if (account.balance < locked) return out.append(msg("error", t("send.insufficient")));
+    if (account.balance < locked) return put(out, msg("error", t("send.insufficient")));
     const reps = await Promise.all([repLine(app, t("escrow.buyer"), buyer.value.trim()), terms.arbiter.some((b) => b) ? repLine(app, t("escrow.arbiter"), arbiter.value.trim()) : null]);
     const simple = !terms.arbiter.some((b) => b);
-    out.append(
+    put(out, 
       h("div", { class: "summary" },
         h("h4", {}, t("send.summary")),
         h("dl", {},
@@ -203,14 +203,14 @@ function openCard(app, me) {
             app.session.touch();
             const op = esc.open(app.session.key, terms, params);
             if (!simple) {
-              clear(out).append(textBox(app, esc.toText(op), "open.toArbiter", {}));
+              put(clear(out), textBox(app, esc.toText(op), "open.toArbiter", {}));
               return;
             }
             try {
               await app.api.submitEscrow(esc.toText(op));
-              clear(out).append(msg("ok", t("escrow.submitted")));
+              put(clear(out), msg("ok", t("escrow.submitted")));
             } catch (err) {
-              clear(out).append(msg("error", errorText(app, err)));
+              put(clear(out), msg("error", errorText(app, err)));
             }
           } }, t("escrow.sign")),
           h("button", { onClick: () => clear(out) }, t("send.cancel")),
@@ -245,13 +245,13 @@ function receiveCard(app, me, reload) {
       if (op.kind === esc.KIND.open) throw new Error();
       e = await app.api.escrow(esc.idHex(op.escrow));
     } catch {
-      return out.append(msg("error", t("receive.invalid")));
+      return put(out, msg("error", t("receive.invalid")));
     }
     const role = roleOf(e, me);
-    if (!role || !completes(e, op, role) || op.seq !== e.seq) return out.append(msg("error", t("receive.cannot")));
+    if (!role || !completes(e, op, role) || op.seq !== e.seq) return put(out, msg("error", t("receive.cannot")));
     const st = app.status;
     const params = { chainID: st.chain_id, hrp: st.hrp };
-    out.append(
+    put(out, 
       badges(app, e),
       details(app, e),
       h("p", {}, t("receive.signedBy", { who: whoList(app, op.signers) })),
@@ -263,10 +263,10 @@ function receiveCard(app, me, reload) {
           try {
             const full = esc.addSignature(app.session.key, op, role, op.escrow, escrowState(e, st.hrp), params);
             await app.api.submitEscrow(esc.toText(full));
-            clear(out).append(msg("ok", t("escrow.submitted")));
+            put(clear(out), msg("ok", t("escrow.submitted")));
             text.value = "";
           } catch (err) {
-            clear(out).append(msg("error", errorText(app, err)));
+            put(clear(out), msg("error", errorText(app, err)));
           }
         } }, t("escrow.sign")),
       ),

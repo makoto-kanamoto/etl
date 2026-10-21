@@ -2,9 +2,11 @@ package api
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -89,6 +91,7 @@ type engine struct {
 	params    []consensus.ParamTally
 	exclusion []crypto.Address
 	addr      crypto.Address
+	regs      []blockchain.Registration
 }
 
 func (e *engine) SubmitTransaction(tx blockchain.Transaction) error {
@@ -124,6 +127,27 @@ func (e *engine) ArbiterSign(op *blockchain.EscrowOp) error {
 		return e.err
 	}
 	return op.Sign(e.arbiter, blockchain.SignerArbiter, e.p)
+}
+func (e *engine) PrepareRegistration(sponsor crypto.Address) (blockchain.Registration, error) {
+	if e.err != nil {
+		return blockchain.Registration{}, e.err
+	}
+	r := blockchain.Registration{Candidate: e.arbiter.PublicKey().Address(e.p.AddressHRP), Sponsor: sponsor, Day: 20000}
+	return r, r.SignCandidate(e.arbiter, e.p.ChainID)
+}
+func (e *engine) SponsorRegistration(r *blockchain.Registration) error {
+	if e.err != nil {
+		return e.err
+	}
+	return r.SignSponsor(e.arbiter, e.p.ChainID)
+}
+func (e *engine) Reactivate() (blockchain.Registration, error) {
+	r := blockchain.Registration{Candidate: e.addr, Sponsor: crypto.Address{HRP: e.p.AddressHRP}, Day: 20000}
+	return r, e.err
+}
+func (e *engine) SubmitRegistration(r blockchain.Registration) error {
+	e.regs = append(e.regs, r)
+	return nil
 }
 func (e *engine) ArbiterAct(kind blockchain.EscrowKind, id crypto.Hash) (blockchain.EscrowOp, error) {
 	if e.err != nil {
@@ -310,12 +334,15 @@ func TestOperatorToken(t *testing.T) {
 		t.Fatalf("répertoire : %v", di.Mode().Perm())
 	}
 	for path, body := range map[string]string{
-		"/api/operator/param-vote":     `{"param":"fee_bps","value":"20"}`,
-		"/api/operator/exclusion-vote": `{"target":"` + b.c.net.Founders[4].Addr.String() + `"}`,
-		"/api/operator/ipc-read":       `{}`,
-		"/api/operator/escrow/cosign":  `{"op":"x"}`,
-		"/api/operator/escrow/sign":    `{"op":"x"}`,
-		"/api/operator/escrow/act":     `{"escrow":"x","kind":"release"}`,
+		"/api/operator/param-vote":              `{"param":"fee_bps","value":"20"}`,
+		"/api/operator/exclusion-vote":          `{"target":"` + b.c.net.Founders[4].Addr.String() + `"}`,
+		"/api/operator/ipc-read":                `{}`,
+		"/api/operator/escrow/cosign":           `{"op":"x"}`,
+		"/api/operator/escrow/sign":             `{"op":"x"}`,
+		"/api/operator/escrow/act":              `{"escrow":"x","kind":"release"}`,
+		"/api/operator/registration/request":    `{"sponsor":"x"}`,
+		"/api/operator/registration/sponsor":    `{"registration":"x"}`,
+		"/api/operator/registration/reactivate": `{}`,
 	} {
 		if code, _, _ := b.do(req{method: "POST", path: path, body: body}); code != http.StatusUnauthorized {
 			t.Errorf("%s sans jeton : %d", path, code)
@@ -821,5 +848,130 @@ func TestArbiterEndpoints(t *testing.T) {
 	p := newBench(t, func(c *Config) { c.Engine = nil })
 	if code, _, _ := p.do(req{method: "POST", path: "/api/operator/escrow/act", body: `{"escrow":"` + hexOf(terms.ID()) + `","kind":"release"}`, token: p.token}); code != http.StatusServiceUnavailable {
 		t.Fatalf("nœud passif : %d", code)
+	}
+}
+
+// Candidature préparée par le nœud candidat, contresignée et soumise par le nœud parrain ; réactivation.
+func TestRegistrationEndpoints(t *testing.T) {
+	b := newBench(t, nil)
+	f := b.c.net.Founders
+	tok := b.token
+	post := func(path, body string) (int, map[string]any) {
+		code, out, _ := b.do(req{method: "POST", path: path, body: body, token: tok})
+		return code, out
+	}
+	code, out := post("/api/operator/registration/request", `{"sponsor":"`+f[3].Addr.String()+`"}`)
+	text, _ := out["registration"].(string)
+	if code != 200 || !strings.HasPrefix(text, RegistrationPrefix) {
+		t.Fatalf("préparation : %d %v", code, out)
+	}
+	reg, err := decodeRegistration(text, b.c.net.P.AddressHRP)
+	if err != nil || reg.Sponsor != f[3].Addr || reg.Candidate != f[1].Addr {
+		t.Fatalf("candidature : %v %+v", err, reg)
+	}
+	if code, out := post("/api/operator/registration/sponsor", `{"registration":"`+text+`"}`); code != 200 || len(b.e.regs) != 1 || out["candidate"] != f[1].Addr.String() {
+		t.Fatalf("parrainage : %d %v", code, out)
+	}
+	if b.e.regs[0].SponsorSig == (crypto.Signature{}) {
+		t.Fatal("candidature soumise sans contreseing")
+	}
+	if code, _ := post("/api/operator/registration/reactivate", `{}`); code != 200 || len(b.e.regs) != 2 || !b.e.regs[1].IsReactivation() {
+		t.Fatalf("réactivation : %d", code)
+	}
+	for path, body := range map[string]string{
+		"/api/operator/registration/request": `{"sponsor":"x"}`,
+		"/api/operator/registration/sponsor": `{"registration":"etl-registration:@@"}`,
+	} {
+		if code, _ := post(path, body); code != 400 {
+			t.Errorf("%s : %d", path, code)
+		}
+	}
+	// Bits de remplissage non nuls (bit de poids faible du dernier caractère) : non canonique.
+	const b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	padded := text[:len(text)-1] + string(b64[strings.IndexByte(b64, text[len(text)-1])+1])
+	for _, bad := range []string{text[len(RegistrationPrefix):], "etl-escrow:" + text[len(RegistrationPrefix):], text + "=", text[:len(text)-3], padded} {
+		if _, err := decodeRegistration(bad, b.c.net.P.AddressHRP); err == nil {
+			t.Errorf("texte accepté : %q", bad)
+		}
+	}
+	b.e.err = blockchain.ErrSponsorNotEligible
+	n := len(b.e.regs)
+	for path, body := range map[string]string{
+		"/api/operator/registration/request":    `{"sponsor":"` + f[3].Addr.String() + `"}`,
+		"/api/operator/registration/sponsor":    `{"registration":"` + text + `"}`,
+		"/api/operator/registration/reactivate": `{}`,
+	} {
+		if code, out := post(path, body); code != http.StatusConflict || out["error"] != blockchain.ErrSponsorNotEligible.Error() {
+			t.Errorf("%s refusé : %d %v", path, code, out)
+		}
+	}
+	if len(b.e.regs) != n {
+		t.Fatal("candidature refusée mais soumise")
+	}
+}
+
+// Le compte indique le parrain et le statut de fondateur (confirmation d'une exclusion).
+func TestAccountSponsorInfo(t *testing.T) {
+	b := newBench(t, nil)
+	f := b.c.net.Founders
+	acc := b.get("/api/accounts/" + f[0].Addr.String())
+	if acc["founder"] != true || acc["sponsor"] != "" {
+		t.Fatalf("fondateur : %v", acc)
+	}
+	b.c.state = blockchain.NewStateFrom(nil,
+		map[[crypto.AddressHashSize]byte]blockchain.Node{f[5].Addr.Hash: {Status: blockchain.StatusAdmitted, Sponsor: f[2].Addr.Hash}},
+		blockchain.IPCRecord{}, blockchain.IPCRecord{}, nil, nil, blockchain.EscrowData{})
+	acc = b.get("/api/accounts/" + f[5].Addr.String())
+	if acc["founder"] != false || acc["sponsor"] != f[2].Addr.String() {
+		t.Fatalf("parrainé : %v", acc)
+	}
+}
+
+// L'historique montre les mouvements d'escrow : blocage, versement, rémunération de l'arbitre.
+func TestHistoryEscrowMovements(t *testing.T) {
+	b := newBench(t, nil)
+	f := b.c.net.Founders
+	seller, arbiter, buyer := f[0], f[1], chaintest.NewWallet(t, b.c.net.P)
+	terms, _ := escrow.NewTerms(seller.Addr, buyer.Addr, arbiter.Addr, blockchain.UnitsPerETL/2, 1000, 3, chaintest.Day(1), b.c.net.P)
+	open, _ := escrow.Open(seller.Key, terms, b.c.net.P)
+	_ = escrow.Cosign(arbiter.Key, &open, time.Unix(chaintest.Day(1), 0), b.c.net.P)
+	b.c.next(t, 2, func(blk *blockchain.Block) { blk.EscrowOps = []blockchain.EscrowOp{open} })
+	paid, _ := escrow.Act(buyer.Key, blockchain.EscrowPaid, terms.ID(), 0, blockchain.SignerBuyer, b.c.net.P)
+	b.c.next(t, 3, func(blk *blockchain.Block) { blk.EscrowOps = []blockchain.EscrowOp{paid} })
+	rel, _ := escrow.Act(buyer.Key, blockchain.EscrowRelease, terms.ID(), 1, blockchain.SignerBuyer, b.c.net.P)
+	_ = rel.Sign(arbiter.Key, blockchain.SignerArbiter, b.c.net.P)
+	b.c.next(t, 4, func(blk *blockchain.Block) { blk.EscrowOps = []blockchain.EscrowOp{rel} })
+	moves := func(a crypto.Address) string {
+		var parts []string
+		for _, m := range b.get("/api/accounts/" + a.String() + "/history")["escrow_movements"].([]any) {
+			mm := m.(map[string]any)
+			parts = append(parts, fmt.Sprintf("%v:%v:%v:%v", mm["height"], mm["kind"], mm["amount"], mm["out"]))
+		}
+		return strings.Join(parts, " ")
+	}
+	if got := moves(seller.Addr); got != "2:lock:50051000:true" { // montant + rémunération + frais 0,1 %
+		t.Fatalf("vendeur : %s", got)
+	}
+	if got := moves(buyer.Addr); got != "4:release:50000000:false" {
+		t.Fatalf("acheteur : %s", got)
+	}
+	if got := moves(arbiter.Addr); got != "4:fee:1000:false" {
+		t.Fatalf("arbitre : %s", got)
+	}
+	if got := moves(f[5].Addr); got != "" {
+		t.Fatalf("tiers : %s", got)
+	}
+}
+
+// Disposition du texte de candidature lue par le navigateur (web/dashboard/lib/governance.js) :
+// candidat (20) | parrain (20) | jour (8) | signature du candidat (65) | signature du parrain (65).
+func TestRegistrationTextLayout(t *testing.T) {
+	f := chaintest.New(t, chaintest.Params()).Founders
+	r := blockchain.Registration{Candidate: f[0].Addr, Sponsor: f[1].Addr, Day: 20383}
+	_ = r.SignCandidate(f[0].Key, "ETL-FR")
+	b := blockchain.EncodeRegistration(&r)
+	if len(b) != 178 || !bytes.Equal(b[:20], f[0].Addr.Hash[:]) || !bytes.Equal(b[20:40], f[1].Addr.Hash[:]) ||
+		binary.BigEndian.Uint64(b[40:48]) != 20383 || !bytes.Equal(b[48:113], r.CandidateSig[:]) || !bytes.Equal(b[113:], make([]byte, 65)) {
+		t.Fatalf("disposition : %x", b)
 	}
 }

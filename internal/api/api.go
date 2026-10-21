@@ -61,6 +61,11 @@ type Engine interface {
 	CosignEscrow(op *blockchain.EscrowOp) error
 	ArbiterSign(op *blockchain.EscrowOp) error
 	ArbiterAct(kind blockchain.EscrowKind, id crypto.Hash) (blockchain.EscrowOp, error)
+	// Registre (clé du nœud) :
+	PrepareRegistration(sponsor crypto.Address) (blockchain.Registration, error)
+	SponsorRegistration(r *blockchain.Registration) error
+	Reactivate() (blockchain.Registration, error)
+	SubmitRegistration(blockchain.Registration) error
 }
 
 // Network : état du réseau (network.Host).
@@ -205,6 +210,9 @@ func (s *Server) routes() {
 		m.HandleFunc("POST /api/operator/escrow/cosign", s.operator(s.arbiterCosign))
 		m.HandleFunc("POST /api/operator/escrow/sign", s.operator(s.arbiterSign))
 		m.HandleFunc("POST /api/operator/escrow/act", s.operator(s.arbiterAct))
+		m.HandleFunc("POST /api/operator/registration/request", s.operator(s.registrationRequest))
+		m.HandleFunc("POST /api/operator/registration/sponsor", s.operator(s.registrationSponsor))
+		m.HandleFunc("POST /api/operator/registration/reactivate", s.operator(s.registrationReactivate))
 	}
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, http.StatusNotFound, "point d'API inconnu") })
 	if s.cfg.Static != nil {

@@ -206,9 +206,10 @@ func (s *Server) account(w http.ResponseWriter, r *http.Request) {
 	var acc blockchain.Account
 	var rep blockchain.Reputation
 	var status string
+	var node blockchain.Node
 	var escrows []string
 	s.cfg.Chain.ReadState(func(st *blockchain.State) {
-		acc, rep, status = st.Account(a), st.Reputation(a), st.Status(a).String()
+		acc, rep, status, node = st.Account(a), st.Reputation(a), st.Status(a).String(), st.Node(a)
 		for _, id := range st.EscrowsOf(a) {
 			escrows = append(escrows, hexOf(id))
 		}
@@ -226,6 +227,8 @@ func (s *Server) account(w http.ResponseWriter, r *http.Request) {
 		"nonce":      units(acc.Nonce),
 		"next_nonce": units(next),
 		"node":       status,
+		"sponsor":    s.addr(crypto.Address{HRP: s.cfg.Params.AddressHRP, Hash: node.Sponsor}), // vide : fondateur ou réactivation
+		"founder":    node.Founder,
 		"reputation": map[string]string{
 			"completed":       units(rep.Completed),
 			"refunded":        units(rep.Refunded),
@@ -245,6 +248,7 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 	}
 	tip := s.cfg.Chain.Tip()
 	out := []txJSON{}
+	moves := []escrowMove{}
 	scanned := 0
 	for h := tip.Height; h > 0 && scanned < maxBlocks; h-- {
 		b, err := s.cfg.Chain.BlockAt(h)
@@ -257,8 +261,62 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 				out = append(out, s.txOf(&b.Txs[i], h))
 			}
 		}
+		for i := range b.EscrowOps {
+			moves = append(moves, s.escrowMoves(&b.EscrowOps[i], a, h)...)
+		}
 	}
-	reply(w, map[string]any{"transactions": out, "blocks_scanned": scanned})
+	reply(w, map[string]any{"transactions": out, "escrow_movements": moves, "blocks_scanned": scanned})
+}
+
+// escrowMove : effet d'une opération d'escrow sur le solde d'une adresse.
+type escrowMove struct {
+	Height uint64 `json:"height"`
+	Escrow string `json:"escrow"`
+	Kind   string `json:"kind"`   // lock (ouverture), release, refund, fee (rémunération d'arbitre), fee_back
+	Amount string `json:"amount"` // unités, toujours positif
+	Out    bool   `json:"out"`    // vrai : débit
+}
+
+// escrowMoves calcule les mouvements de solde de a dus à op (bloc height). Les conditions d'un
+// échange réglé viennent de l'état ; un échange élagué depuis n'apparaît plus.
+func (s *Server) escrowMoves(op *blockchain.EscrowOp, a crypto.Address, height uint64) []escrowMove {
+	var t blockchain.EscrowTerms
+	id := op.Escrow
+	if op.Kind == blockchain.EscrowOpen {
+		t, id = op.Terms, op.Terms.ID()
+	} else if op.Kind == blockchain.EscrowRelease || op.Kind == blockchain.EscrowRefund {
+		var e blockchain.Escrow
+		var ok bool
+		s.cfg.Chain.ReadState(func(st *blockchain.State) { e, ok = st.Escrow(op.Escrow) })
+		if !ok {
+			return nil
+		}
+		t = e.Terms
+	} else {
+		return nil // « payé », litige : aucun mouvement
+	}
+	var out []escrowMove
+	add := func(who crypto.Address, kind string, amount uint64, debit bool) {
+		if who.Hash == a.Hash && amount > 0 {
+			out = append(out, escrowMove{height, hexOf(id), kind, units(amount), debit})
+		}
+	}
+	switch op.Kind {
+	case blockchain.EscrowOpen:
+		add(t.Seller, "lock", t.Amount+t.ArbiterFee+t.Fee, true)
+	case blockchain.EscrowRelease, blockchain.EscrowRefund:
+		to, kind := t.Buyer, "release"
+		if op.Kind == blockchain.EscrowRefund {
+			to, kind = t.Seller, "refund"
+		}
+		add(to, kind, t.Amount, false)
+		if op.Signers&blockchain.SignerArbiter != 0 {
+			add(t.Arbiter, "fee", t.ArbiterFee, false)
+		} else {
+			add(t.Seller, "fee_back", t.ArbiterFee, false)
+		}
+	}
+	return out
 }
 
 func (s *Server) escrow(w http.ResponseWriter, r *http.Request) {

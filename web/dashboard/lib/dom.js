@@ -25,6 +25,16 @@ export function field(label, input, help) {
   return h("div", { class: "field" }, h("label", { for: id }, label), input, help ? h("p", { class: "help" }, help) : null);
 }
 
+// put ajoute des enfants en ignorant null, undefined et false (sections facultatives) : append
+// les écrirait en texte (« null »).
+export function put(el, ...children) {
+  for (const c of children.flat()) {
+    if (c === null || c === undefined || c === false) continue;
+    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return el;
+}
+
 export function clear(el) {
   el.replaceChildren();
   return el;
