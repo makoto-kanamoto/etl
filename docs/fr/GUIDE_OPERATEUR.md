@@ -3,6 +3,8 @@
 Ce guide explique comment installer, démarrer et surveiller un nœud. L'architecture d'ensemble est
 décrite dans [ARCHITECTURE.md](../ARCHITECTURE.md).
 
+*English version: [Node operator guide](../en/OPERATOR_GUIDE.md).*
+
 > **État actuel** : le réseau ETL-FR n'est pas encore lancé. Tant que l'empreinte de son genesis n'est
 > pas gravée dans le logiciel, `etl run` refuse de le rejoindre. Pour essayer, utilisez le
 > [réseau de test](#réseau-de-test).

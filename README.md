@@ -37,7 +37,7 @@ The code is public. Every transaction is verifiable. Every IPC update is verifia
 ## Architecture technique / Technical architecture
 
 - [Architecture](docs/ARCHITECTURE.md)
-- [Guide de l'opérateur de nœud](docs/fr/GUIDE_OPERATEUR.md) (français ; English to follow)
+- Guide de l'opérateur de nœud / Node operator guide : [Français](docs/fr/GUIDE_OPERATEUR.md) · [English](docs/en/OPERATOR_GUIDE.md)
 
 ---
 
