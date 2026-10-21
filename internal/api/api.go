@@ -57,6 +57,10 @@ type Engine interface {
 	ParamTallies() []consensus.ParamTally
 	Address() crypto.Address
 	NextNonce(crypto.Address) uint64
+	// Arbitrage (clé du nœud, arbitre désigné) :
+	CosignEscrow(op *blockchain.EscrowOp) error
+	ArbiterSign(op *blockchain.EscrowOp) error
+	ArbiterAct(kind blockchain.EscrowKind, id crypto.Hash) (blockchain.EscrowOp, error)
 }
 
 // Network : état du réseau (network.Host).
@@ -198,6 +202,9 @@ func (s *Server) routes() {
 		m.HandleFunc("POST /api/operator/param-vote", s.operator(s.paramVote))
 		m.HandleFunc("POST /api/operator/exclusion-vote", s.operator(s.exclusionVote))
 		m.HandleFunc("POST /api/operator/ipc-read", s.operator(s.ipcRead))
+		m.HandleFunc("POST /api/operator/escrow/cosign", s.operator(s.arbiterCosign))
+		m.HandleFunc("POST /api/operator/escrow/sign", s.operator(s.arbiterSign))
+		m.HandleFunc("POST /api/operator/escrow/act", s.operator(s.arbiterAct))
 	}
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, http.StatusNotFound, "point d'API inconnu") })
 	if s.cfg.Static != nil {

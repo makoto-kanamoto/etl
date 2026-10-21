@@ -6,6 +6,7 @@ import (
 
 	"github.com/makoto-kanamoto/etl/internal/blockchain"
 	"github.com/makoto-kanamoto/etl/internal/blockchain/chaintest"
+	"github.com/makoto-kanamoto/etl/internal/escrow"
 	"github.com/makoto-kanamoto/etl/internal/network"
 )
 
@@ -113,5 +114,77 @@ func TestEscrowEndToEnd(t *testing.T) {
 		if pending != 0 {
 			t.Fatalf("nœud %d : %d opérations encore en attente", i, pending)
 		}
+	}
+}
+
+// Le nœud arbitre signe avec sa propre clé : cosignature, complément, initiative. Un autre nœud,
+// ou un nœud passif, ne le peut pas.
+func TestArbiterMethods(t *testing.T) {
+	s := newSim(t)
+	s.runDay(1)
+	p := s.p
+	seller, arb, other := s.nodes[0], s.nodes[1], s.nodes[2]
+	buyer := chaintest.NewWallet(t, p)
+	terms, err := escrow.NewTerms(seller.wallet.Addr, buyer.Addr, arb.wallet.Addr, blockchain.UnitsPerETL/4, 100, 3, chaintest.Day(1)+60, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.at(time.Unix(chaintest.Day(1), 0).Add(time.Hour))
+	open, _ := escrow.Open(seller.wallet.Key, terms, p)
+	wrong := open
+	if err := other.e.CosignEscrow(&wrong); err != escrow.ErrRole {
+		t.Fatalf("cosignature par un autre nœud : %v", err)
+	}
+	if err := arb.e.CosignEscrow(&open); err != nil || open.Signers != 5 {
+		t.Fatalf("cosignature par l'arbitre : %v", err)
+	}
+	if err := arb.e.SubmitEscrowOp(open); err != nil {
+		t.Fatal(err)
+	}
+	s.flush()
+	s.runDay(2)
+	id := terms.ID()
+	rel, _ := escrow.Act(buyer.Key, blockchain.EscrowRelease, id, 0, blockchain.SignerBuyer, p)
+	other2 := rel
+	if err := other.e.ArbiterSign(&other2); err != escrow.ErrRole {
+		t.Fatalf("complément par un autre nœud : %v", err)
+	}
+	if err := arb.e.ArbiterSign(&rel); err != nil || rel.Signers != 6 {
+		t.Fatalf("complément par l'arbitre : %v", err)
+	}
+	unknown := rel
+	unknown.Escrow = [32]byte{1}
+	if err := arb.e.ArbiterSign(&unknown); err != blockchain.ErrEscrowUnknown {
+		t.Fatalf("échange inconnu : %v", err)
+	}
+	op, err := arb.e.ArbiterAct(blockchain.EscrowRefund, id)
+	if err != nil || op.Signers != 4 || op.Seq != 0 || op.Escrow != id {
+		t.Fatalf("initiative de l'arbitre : %v %+v", err, op)
+	}
+	if _, err := other.e.ArbiterAct(blockchain.EscrowRefund, id); err != escrow.ErrRole {
+		t.Fatalf("initiative par un autre nœud : %v", err)
+	}
+	if _, err := arb.e.ArbiterAct(blockchain.EscrowRefund, [32]byte{9}); err != blockchain.ErrEscrowUnknown {
+		t.Fatalf("initiative sur un échange inconnu : %v", err)
+	}
+	s.restart(3, false) // nœud passif
+	passive := s.nodes[3].e
+	if err := passive.CosignEscrow(&open); err != ErrPassive {
+		t.Fatalf("passif : %v", err)
+	}
+	if err := passive.ArbiterSign(&rel); err != ErrPassive {
+		t.Fatalf("passif : %v", err)
+	}
+	if _, err := passive.ArbiterAct(blockchain.EscrowRelease, id); err != ErrPassive {
+		t.Fatalf("passif : %v", err)
+	}
+	// La libération complétée par l'arbitre est appliquée.
+	if err := arb.e.SubmitEscrowOp(rel); err != nil {
+		t.Fatal(err)
+	}
+	s.flush()
+	s.runDay(3)
+	if got := s.nodes[0].store.Account(buyer.Addr).Balance; got != terms.Amount {
+		t.Fatalf("acheteur : %d", got)
 	}
 }

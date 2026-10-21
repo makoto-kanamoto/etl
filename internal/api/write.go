@@ -148,3 +148,75 @@ func (s *Server) ipcRead(w http.ResponseWriter, r *http.Request) {
 	}
 	reply(w, out)
 }
+
+// --- arbitrage : le nœud signe en tant qu'arbitre désigné ---
+
+var escrowKinds = map[string]blockchain.EscrowKind{"paid": blockchain.EscrowPaid, "dispute": blockchain.EscrowDispute,
+	"release": blockchain.EscrowRelease, "refund": blockchain.EscrowRefund}
+
+// arbiterOp lit {"op": "etl-escrow:…"}, fait signer le nœud par sign, soumet l'opération complète.
+func (s *Server) arbiterOp(w http.ResponseWriter, r *http.Request, sign func(*blockchain.EscrowOp) error) {
+	var body struct {
+		Op string `json:"op"`
+	}
+	if !decode(w, r, &body) || !s.needEngine(w) {
+		return
+	}
+	op, err := escrow.DecodeText(body.Op, s.cfg.Params.AddressHRP)
+	if err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := sign(&op); err != nil {
+		fail(w, http.StatusConflict, err.Error())
+		return
+	}
+	if err := s.cfg.Engine.SubmitEscrowOp(op); err != nil {
+		fail(w, http.StatusConflict, err.Error())
+		return
+	}
+	id := op.Escrow
+	if op.Kind == blockchain.EscrowOpen {
+		id = op.Terms.ID()
+	}
+	reply(w, map[string]string{"op": escrow.EncodeText(&op), "escrow": hexOf(id)})
+}
+
+// arbiterCosign : {"op": ouverture signée par le vendeur} — cosignée par le nœud arbitre puis soumise.
+func (s *Server) arbiterCosign(w http.ResponseWriter, r *http.Request) {
+	s.arbiterOp(w, r, func(op *blockchain.EscrowOp) error {
+		if op.Kind != blockchain.EscrowOpen {
+			return escrow.ErrNotOpen
+		}
+		return s.cfg.Engine.CosignEscrow(op)
+	})
+}
+
+// arbiterSign : {"op": règlement signé par une partie} — complété par le nœud arbitre puis soumis.
+func (s *Server) arbiterSign(w http.ResponseWriter, r *http.Request) {
+	s.arbiterOp(w, r, func(op *blockchain.EscrowOp) error { return s.cfg.Engine.ArbiterSign(op) })
+}
+
+// arbiterAct : {"escrow": hex, "kind": "release"|"refund"} — opération signée par le nœud arbitre,
+// à transmettre à la partie qui la complétera.
+func (s *Server) arbiterAct(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Escrow string `json:"escrow"`
+		Kind   string `json:"kind"`
+	}
+	if !decode(w, r, &body) || !s.needEngine(w) {
+		return
+	}
+	raw, err := hex.DecodeString(body.Escrow)
+	kind, ok := escrowKinds[body.Kind]
+	if err != nil || len(raw) != crypto.HashSize || !ok || (kind != blockchain.EscrowRelease && kind != blockchain.EscrowRefund) {
+		fail(w, http.StatusBadRequest, "échange ou type d'opération invalide (release ou refund)")
+		return
+	}
+	op, err := s.cfg.Engine.ArbiterAct(kind, crypto.Hash(raw))
+	if err != nil {
+		fail(w, http.StatusConflict, err.Error())
+		return
+	}
+	reply(w, map[string]string{"op": escrow.EncodeText(&op), "escrow": body.Escrow})
+}

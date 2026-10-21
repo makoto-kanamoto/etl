@@ -81,6 +81,8 @@ func (c *chain) next(t *testing.T, d int, edit func(*blockchain.Block)) blockcha
 }
 
 type engine struct {
+	arbiter   *crypto.PrivateKey // clé du nœud arbitre (doublure)
+	p         blockchain.Params
 	err       error
 	txs       []blockchain.Transaction
 	ops       []blockchain.EscrowOp
@@ -111,6 +113,24 @@ func (e *engine) IPCTallies() []consensus.IPCTally {
 func (e *engine) ParamTallies() []consensus.ParamTally { return e.params }
 func (e *engine) Address() crypto.Address              { return e.addr }
 func (e *engine) NextNonce(crypto.Address) uint64      { return 7 }
+func (e *engine) CosignEscrow(op *blockchain.EscrowOp) error {
+	if e.err != nil {
+		return e.err
+	}
+	return op.Sign(e.arbiter, blockchain.SignerArbiter, e.p)
+}
+func (e *engine) ArbiterSign(op *blockchain.EscrowOp) error {
+	if e.err != nil {
+		return e.err
+	}
+	return op.Sign(e.arbiter, blockchain.SignerArbiter, e.p)
+}
+func (e *engine) ArbiterAct(kind blockchain.EscrowKind, id crypto.Hash) (blockchain.EscrowOp, error) {
+	if e.err != nil {
+		return blockchain.EscrowOp{}, e.err
+	}
+	return escrow.Act(e.arbiter, kind, id, 0, blockchain.SignerArbiter, e.p)
+}
 
 type netStub struct{}
 
@@ -148,7 +168,7 @@ func newBench(t *testing.T, mod func(*Config)) *bench {
 	net := chaintest.New(t, chaintest.Params())
 	c := &chain{net: net, blocks: map[uint64]blockchain.Block{}, pruned: map[uint64]bool{}}
 	c.next(t, 1, nil) // chaque fondateur : 1 ETL
-	b := &bench{t: t, c: c, e: &engine{addr: net.Founders[0].Addr}, o: &oracleStub{}, dir: t.TempDir()}
+	b := &bench{t: t, c: c, e: &engine{addr: net.Founders[0].Addr, arbiter: net.Founders[1].Key, p: net.P}, o: &oracleStub{}, dir: t.TempDir()}
 	cfg := Config{Params: net.P, Port: port, TokenPath: filepath.Join(b.dir, "etl", "dashboard.token"), Version: "test",
 		Now: func() time.Time { return time.Unix(chaintest.Day(1)+3600, 0) }, Poll: 10 * time.Millisecond, MaxEvents: 2,
 		Chain: c, Engine: b.e, Network: netStub{}, Oracle: b.o,
@@ -293,6 +313,9 @@ func TestOperatorToken(t *testing.T) {
 		"/api/operator/param-vote":     `{"param":"fee_bps","value":"20"}`,
 		"/api/operator/exclusion-vote": `{"target":"` + b.c.net.Founders[4].Addr.String() + `"}`,
 		"/api/operator/ipc-read":       `{}`,
+		"/api/operator/escrow/cosign":  `{"op":"x"}`,
+		"/api/operator/escrow/sign":    `{"op":"x"}`,
+		"/api/operator/escrow/act":     `{"escrow":"x","kind":"release"}`,
 	} {
 		if code, _, _ := b.do(req{method: "POST", path: path, body: body}); code != http.StatusUnauthorized {
 			t.Errorf("%s sans jeton : %d", path, code)
@@ -734,5 +757,69 @@ func TestImportMapHashInCSP(t *testing.T) {
 	if _, err := New(Config{Params: b.c.net.P, Port: port, TokenPath: filepath.Join(t.TempDir(), "t"),
 		Static: fstest.MapFS{"dashboard/index.html": {Data: []byte("<script type=\"importmap\">{}")}}}); err == nil {
 		t.Fatal("import map non fermée acceptée")
+	}
+}
+
+// Arbitrage par le nœud (jeton requis) : cosigner une ouverture, compléter ou initier un règlement.
+func TestArbiterEndpoints(t *testing.T) {
+	b := newBench(t, nil)
+	f := b.c.net.Founders
+	tok := b.token
+	terms, _ := escrow.NewTerms(f[0].Addr, f[2].Addr, f[1].Addr, 1000, 10, 3, chaintest.Day(1), b.c.net.P)
+	open, _ := escrow.Open(f[0].Key, terms, b.c.net.P)
+	post := func(path, body string) (int, map[string]any) {
+		code, out, _ := b.do(req{method: "POST", path: path, body: body, token: tok})
+		return code, out
+	}
+	code, out := post("/api/operator/escrow/cosign", `{"op":"`+escrow.EncodeText(&open)+`"}`)
+	if code != 200 || out["escrow"] != hexOf(terms.ID()) || len(b.e.ops) != 1 || b.e.ops[0].Signers != blockchain.SignerSeller|blockchain.SignerArbiter {
+		t.Fatalf("cosignature : %d %v", code, out)
+	}
+	got, err := escrow.DecodeText(out["op"].(string), b.c.net.P.AddressHRP)
+	if err != nil || got.Signers != 5 {
+		t.Fatalf("texte renvoyé : %v %+v", err, got)
+	}
+	rel, _ := escrow.Act(f[2].Key, blockchain.EscrowRelease, terms.ID(), 0, blockchain.SignerBuyer, b.c.net.P)
+	if code, _ := post("/api/operator/escrow/cosign", `{"op":"`+escrow.EncodeText(&rel)+`"}`); code != http.StatusConflict {
+		t.Fatalf("cosignature d'un règlement : %d", code)
+	}
+	if code, out := post("/api/operator/escrow/sign", `{"op":"`+escrow.EncodeText(&rel)+`"}`); code != 200 || len(b.e.ops) != 2 || b.e.ops[1].Signers != 6 {
+		t.Fatalf("complément : %d %v", code, out)
+	}
+	code, out = post("/api/operator/escrow/act", `{"escrow":"`+hexOf(terms.ID())+`","kind":"refund"}`)
+	if code != 200 {
+		t.Fatalf("initiative : %d %v", code, out)
+	}
+	if op, err := escrow.DecodeText(out["op"].(string), b.c.net.P.AddressHRP); err != nil || op.Kind != blockchain.EscrowRefund || op.Signers != 4 {
+		t.Fatalf("opération préparée : %v %+v", err, op)
+	}
+	for body, want := range map[string]int{
+		`{"escrow":"` + hexOf(terms.ID()) + `","kind":"paid"}`: 400,
+		`{"escrow":"` + hexOf(terms.ID()) + `","kind":"x"}`:    400,
+		`{"escrow":"abcd","kind":"release"}`:                   400,
+	} {
+		if code, _ := post("/api/operator/escrow/act", body); code != want {
+			t.Errorf("%s : %d", body, code)
+		}
+	}
+	if code, _ := post("/api/operator/escrow/sign", `{"op":"etl-escrow:@@"}`); code != 400 {
+		t.Fatalf("texte invalide : %d", code)
+	}
+	b.e.err = escrow.ErrRole
+	for _, path := range []string{"/api/operator/escrow/cosign", "/api/operator/escrow/sign"} {
+		if code, out := post(path, `{"op":"`+escrow.EncodeText(&open)+`"}`); code != http.StatusConflict || out["error"] != escrow.ErrRole.Error() {
+			t.Errorf("%s refusé par le moteur : %d %v", path, code, out)
+		}
+	}
+	if code, _ := post("/api/operator/escrow/act", `{"escrow":"`+hexOf(terms.ID())+`","kind":"release"}`); code != http.StatusConflict {
+		t.Fatalf("initiative refusée : %d", code)
+	}
+	n := len(b.e.ops)
+	if n != 2 {
+		t.Fatalf("une opération refusée a été soumise (%d)", n)
+	}
+	p := newBench(t, func(c *Config) { c.Engine = nil })
+	if code, _, _ := p.do(req{method: "POST", path: "/api/operator/escrow/act", body: `{"escrow":"` + hexOf(terms.ID()) + `","kind":"release"}`, token: p.token}); code != http.StatusServiceUnavailable {
+		t.Fatalf("nœud passif : %d", code)
 	}
 }

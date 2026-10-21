@@ -10,6 +10,8 @@ import { Session, VAULT_KEY, AUTO_LOCK_MS } from "./lib/session.js";
 import { STRINGS, LANGS, t } from "./lib/strings.js";
 import { makeApi, ApiError } from "./lib/api.js";
 import { render } from "../tools/importmap.js";
+import { actions, roleOf, completes, escrowState, reputation, signerRoles } from "./lib/escrowui.js";
+import * as esc from "../wallet/escrow.js";
 import * as keys from "../wallet/keys.js";
 import * as mnemonic from "../wallet/mnemonic.js";
 
@@ -189,4 +191,40 @@ test("interface : imports relatifs seulement, jamais innerHTML ni eval", () => {
     for (const [, spec] of src.matchAll(/^import .* from "([^"]+)";$/gm)) assert.ok(spec.startsWith("."), `${f} : ${spec}`);
     assert.ok(!/\.innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function/.test(src), `${f} : construction de HTML interdite`);
   }
+});
+
+test("échanges : rôle, actions possibles, complément d'une opération reçue", () => {
+  const e = { seller: "etl1qs", buyer: "etl1qb", arbiter: "etl1qa", outcome: "pending", seq: 2,
+    required: { paid: [2], dispute: [1, 2], release: [1, 6], refund: [2, 5] } };
+  assert.equal(roleOf(e, "etl1qs"), esc.ROLE.seller);
+  assert.equal(roleOf(e, "etl1qb"), esc.ROLE.buyer);
+  assert.equal(roleOf(e, "etl1qa"), esc.ROLE.arbiter);
+  assert.equal(roleOf(e, "etl1qx"), 0);
+  assert.equal(roleOf({ ...e, arbiter: "" }, ""), 0, "pas d'arbitre : adresse vide jamais reconnue");
+  assert.deepEqual(actions(e, esc.ROLE.seller), [
+    { kind: "dispute", alone: true }, { kind: "release", alone: true }, { kind: "refund", alone: false, with: esc.ROLE.arbiter }]);
+  assert.deepEqual(actions(e, esc.ROLE.buyer), [
+    { kind: "paid", alone: true }, { kind: "dispute", alone: true }, { kind: "release", alone: false, with: esc.ROLE.arbiter }, { kind: "refund", alone: true }]);
+  assert.deepEqual(actions(e, esc.ROLE.arbiter), [
+    { kind: "release", alone: false, with: esc.ROLE.buyer }, { kind: "refund", alone: false, with: esc.ROLE.seller }]);
+  assert.deepEqual(actions({ ...e, outcome: "released" }, esc.ROLE.seller), [], "échange réglé : plus rien");
+  assert.deepEqual(actions(e, 0), []);
+  // Une libération signée par l'acheteur : l'arbitre la complète, le vendeur non (2 sur 3 = acheteur + arbitre).
+  const rel = { kind: esc.KIND.release, signers: esc.ROLE.buyer };
+  assert.ok(completes(e, rel, esc.ROLE.arbiter));
+  assert.ok(!completes(e, rel, esc.ROLE.seller));
+  assert.ok(!completes(e, rel, esc.ROLE.buyer), "déjà signée par ce rôle");
+  assert.ok(completes(e, { kind: esc.KIND.refund, signers: esc.ROLE.arbiter }, esc.ROLE.seller));
+  assert.deepEqual(signerRoles(6), ["buyer", "arbiter"]);
+  assert.deepEqual(reputation({ reputation: { completed: "3", refunded: "1", disputes_opened: "0", disputes_lost: "2" } }), { completed: 3, refunded: 1, opened: 0, lost: 2 });
+  assert.deepEqual(reputation(null), { completed: 0, refunded: 0, opened: 0, lost: 0 });
+});
+
+test("échanges : état converti pour la signature, sans arbitre = adresse nulle", () => {
+  const a = keys.address(keys.generateKey(), "etl");
+  const b = keys.address(keys.generateKey(), "etl");
+  const st = escrowState({ seller: a, buyer: b, arbiter: "", seq: 4 }, "etl");
+  assert.deepEqual(st.terms.seller, keys.parseAddress(a, "etl"));
+  assert.ok(st.terms.arbiter.every((x) => x === 0) && st.terms.arbiter.length === 20);
+  assert.equal(st.seq, 4);
 });

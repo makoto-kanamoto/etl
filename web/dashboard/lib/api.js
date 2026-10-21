@@ -9,8 +9,9 @@ export class ApiError extends Error {
 
 // makeApi : fetchImpl injecté pour les tests (fetch du navigateur par défaut).
 export function makeApi(fetchImpl = (...a) => fetch(...a)) {
-  async function call(method, path, body) {
+    async function call(method, path, body, token) {
     const init = { method, headers: {}, credentials: "same-origin", cache: "no-store" };
+    if (token) init.headers.Authorization = `Bearer ${token}`;
     if (body !== undefined) {
       init.headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);
@@ -46,6 +47,17 @@ export function makeApi(fetchImpl = (...a) => fetch(...a)) {
       const h = await call("GET", `/api/accounts/${encodeURIComponent(address)}/history`);
       return h.transactions.map((tx) => ({ ...tx, amount: BigInt(tx.amount), fee: BigInt(tx.fee) }));
     },
-    submitTx: (hex) => call("POST", "/api/tx", { tx: hex }),
+        submitTx: (hex) => call("POST", "/api/tx", { tx: hex }),
+    escrow: async (id) => {
+      const e = await call("GET", `/api/escrows/${encodeURIComponent(id)}`);
+      return { ...e, amount: BigInt(e.amount), arbiterFee: BigInt(e.arbiter_fee), fee: BigInt(e.fee) };
+    },
+    submitEscrow: (text) => call("POST", "/api/escrow", { op: text }),
+    // Actions de l'opérateur : jeton du fichier ~/.etl/dashboard.token.
+    operator: (token) => ({
+      cosign: (text) => call("POST", "/api/operator/escrow/cosign", { op: text }, token),
+      sign: (text) => call("POST", "/api/operator/escrow/sign", { op: text }, token),
+      act: (escrow, kind) => call("POST", "/api/operator/escrow/act", { escrow, kind }, token),
+    }),
   };
 }

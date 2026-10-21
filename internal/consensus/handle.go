@@ -7,6 +7,7 @@ import (
 
 	"github.com/makoto-kanamoto/etl/internal/blockchain"
 	"github.com/makoto-kanamoto/etl/internal/crypto"
+	"github.com/makoto-kanamoto/etl/internal/escrow"
 	"github.com/makoto-kanamoto/etl/internal/network"
 )
 
@@ -626,4 +627,50 @@ func (e *Engine) Address() crypto.Address { return e.me }
 // NextNonce renvoie le nonce de la prochaine transaction de a, mempool compris (envois successifs).
 func (e *Engine) NextNonce(a crypto.Address) uint64 {
 	return e.pool.NextNonce(e.chain, a)
+}
+
+// --- Arbitrage d'escrow : l'arbitre est un nœud admis, il signe avec la clé du nœud ---
+
+// CosignEscrow cosigne une ouverture dont ce nœud est l'arbitre désigné, après les vérifications
+// d'escrow.Cosign (conditions aux frais en vigueur pour le prochain bloc, signature du vendeur,
+// validité pour le prochain bloc).
+func (e *Engine) CosignEscrow(op *blockchain.EscrowOp) error {
+	if e.cfg.Key == nil {
+		return ErrPassive
+	}
+	now := e.cfg.Now()
+	return escrow.Cosign(e.cfg.Key, op, now, e.paramsAt(e.nextBlockTime(now)))
+}
+
+// ArbiterSign ajoute la signature de ce nœud, arbitre, à une opération reçue d'une partie (règlement
+// 2 sur 3), après vérification contre l'état de l'échange.
+func (e *Engine) ArbiterSign(op *blockchain.EscrowOp) error {
+	if e.cfg.Key == nil {
+		return ErrPassive
+	}
+	var st blockchain.Escrow
+	var ok bool
+	e.chain.ReadState(func(s *blockchain.State) { st, ok = s.Escrow(op.Escrow) })
+	if !ok {
+		return blockchain.ErrEscrowUnknown
+	}
+	return escrow.AddSignature(e.cfg.Key, op, blockchain.SignerArbiter, op.Escrow, st, e.cfg.Params)
+}
+
+// ArbiterAct prépare, signée par ce nœud arbitre, une opération à faire compléter par une partie
+// (par exemple une libération que l'acheteur cosignera).
+func (e *Engine) ArbiterAct(kind blockchain.EscrowKind, id crypto.Hash) (blockchain.EscrowOp, error) {
+	if e.cfg.Key == nil {
+		return blockchain.EscrowOp{}, ErrPassive
+	}
+	var st blockchain.Escrow
+	var ok bool
+	e.chain.ReadState(func(s *blockchain.State) { st, ok = s.Escrow(id) })
+	if !ok {
+		return blockchain.EscrowOp{}, blockchain.ErrEscrowUnknown
+	}
+	if !st.Terms.HasArbiter() || st.Terms.Arbiter.Hash != e.me.Hash {
+		return blockchain.EscrowOp{}, escrow.ErrRole
+	}
+	return escrow.Act(e.cfg.Key, kind, id, st.Seq, blockchain.SignerArbiter, e.cfg.Params)
 }

@@ -43,7 +43,7 @@ body {
   font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
 }
 
-header {
+body > header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -171,8 +171,29 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .toast { background: var(--text); color: var(--bg); padding: 0.7rem 1rem; border-radius: 8px; box-shadow: var(--shadow); }
 
 @media (max-width: 40rem) {
-  header { padding: 0.8rem 1rem; }
+    body > header { padding: 0.8rem 1rem; }
   main { padding: 1rem; }
   .history li { grid-template-columns: 1fr auto; }
   .history .peer, .history li > :last-child { grid-column: 1 / -1; }
 }
+
+/* Échanges et panneau opérateur */
+.escrow-list, .escrow .card > div { display: flex; flex-direction: column; gap: 0.8rem; }
+.escrow-item { border: 1px solid var(--line); border-radius: 10px; padding: 0.9rem 1rem; background: var(--bg); }
+.escrow-item header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-bottom: 0.4rem; }
+.escrow-item p { margin: 0.25rem 0; }
+.badges { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; margin: 0; }
+.badge { font-size: 0.8rem; padding: 0.1rem 0.55rem; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+.badge.released { color: var(--ok); border-color: var(--ok); }
+.badge.refunded { color: var(--muted); }
+.badge.alert { color: var(--danger); border-color: var(--danger); }
+.terms { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; margin: 0.4rem 0; }
+.terms dt { color: var(--muted); }
+.terms dd { margin: 0; }
+.rep { color: var(--muted); margin: 0.3rem 0; }
+.textbox { margin-top: 0.8rem; padding: 0.9rem; background: var(--bg); border-radius: 8px; border: 1px dashed var(--accent); }
+.textbox h4 { margin: 0 0 0.3rem; }
+.textbox textarea { margin: 0.5rem 0; }
+form.cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 0 1rem; }
+form.cols .actions { grid-column: 1 / -1; }
+input[type="number"] { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 0.55rem 0.7rem; width: 100%; }
