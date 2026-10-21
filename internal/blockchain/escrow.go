@@ -156,6 +156,19 @@ func (op *EscrowOp) signerAddrs(p Params) (map[uint8]crypto.Address, error) {
 	return out, nil
 }
 
+// SignerAddress renvoie l'adresse qui a signé pour le rôle role (signature récupérable).
+func (op *EscrowOp) SignerAddress(role uint8, p Params) (crypto.Address, error) {
+	signers, err := op.signerAddrs(p)
+	if err != nil {
+		return crypto.Address{}, err
+	}
+	a, ok := signers[role]
+	if !ok {
+		return crypto.Address{}, ErrEscrowSigners
+	}
+	return a, nil
+}
+
 // VerifySignatures contrôle ce qui ne dépend pas de l'état : type, forme, signatures récupérables
 // et, pour une ouverture, signataires conformes aux conditions.
 func (op *EscrowOp) VerifySignatures(p Params) error {

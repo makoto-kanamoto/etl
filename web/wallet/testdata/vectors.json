@@ -91,6 +91,12 @@
       "purpose": "param-vote",
       "message": "",
       "signature": "20cff19f88f6af9108c2c45403aeb5dd2b4f83a0be8274bd720829e8dd2328c8203402add8b50874492d9fe244b204f0feebc8cae9fdab506e29311172f4a81aa5"
+    },
+    {
+      "key": 2,
+      "purpose": "escrow",
+      "message": "0a0a0a",
+      "signature": "20c0737fca1ffd296bcfe3fde1874e9d799d5cf59606bb0c5eeb77ec4462a0a96c79eec8d74f3cde6467a4de755f147a0471291fad61f06c6c24340a572043cc34"
     }
   ],
   "transactions": [
@@ -190,5 +196,3263 @@
       "key": 3,
       "vault": "{\"address\":\"etl1qqg850vphtjul66melv309rauvsjygsjjeagccp\",\"cipher\":{\"name\":\"aes-256-gcm\",\"nonce\":\"ISEhISEhISEhISEh\"},\"ciphertext\":\"AIGGPaT6vUnVYr1ha0BoUPAgHCK3F4t8go2YXRTe8z33Py90oLgDRaa7YYDLwqCF\",\"kdf\":{\"iterations\":600000,\"name\":\"pbkdf2-sha256\",\"salt\":\"EREREREREREREREREREREQ==\"},\"version\":1}"
     }
-  ]
+  ],
+  "escrow": {
+    "terms": [
+      {
+        "seller": 0,
+        "buyer": 1,
+        "arbiter": 2,
+        "amount": "150000000",
+        "arbiter_fee": "25000",
+        "fee": "150000",
+        "days": 3,
+        "timestamp": "1800000000",
+        "id": "55b43d02fb8d3cd7c4a1138d9bddca75b27980d63478877327f5d61b7e0c387f",
+        "encoded": "9b8d0400c5c5437218ec92f5aa3d3fa0906163bdafea16c68ace5fdaf7af96f369fac200b86c980a9efc322f6bf316de9501bf19d061b747b19b11b50000000008f0d18000000000000061a800000000000249f003000000006b49d200",
+        "open": "etl-escrow:AZuNBADFxUNyGOyS9ao9P6CQYWO9r-oWxorOX9r3r5bzafrCALhsmAqe_DIva_MW3pUBvxnQYbdHsZsRtQAAAAAI8NGAAAAAAAAAYagAAAAAAAJJ8AMAAAAAa0nSAAUgjdD2fMdgJ3AbB8b7Evl0ZXBuPkPtx41NrFo4uGmSQ8IElomQLagavpGzhLGLZazzz3bsz2rpyACNzYl7jeE-ZiBZD5pgF3HmRhCAoRmGrB_Jky5IOBowbKVr6wCJOzJWyRSGROA5DKOBlWSTPb1fe8ZUCHsBg_FkSnNsqE8WYJMK"
+      },
+      {
+        "seller": 0,
+        "buyer": 1,
+        "arbiter": -1,
+        "amount": "7000000",
+        "arbiter_fee": "0",
+        "fee": "10000",
+        "days": 30,
+        "timestamp": "1800000001",
+        "id": "c7f7c5e2bb6e262568c186f614539fb630da9886df239d750dfd17ab1e0b083c",
+        "encoded": "9b8d0400c5c5437218ec92f5aa3d3fa0906163bdafea16c68ace5fdaf7af96f369fac200b86c980a000000000000000000000000000000000000000000000000006acfc0000000000000000000000000000027101e000000006b49d201",
+        "open": "etl-escrow:AZuNBADFxUNyGOyS9ao9P6CQYWO9r-oWxorOX9r3r5bzafrCALhsmAoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAas_AAAAAAAAAAAAAAAAAAAAnEB4AAAAAa0nSAQEgE2zwT01RN5iB9ZpbipIddXW1vc1DnZax62Z7VuhJjnZ-8IY-AQwT358INcVi0b8dlvHbuZ9FMIJP9Yro8XKSSw"
+      }
+    ],
+    "ops": [
+      {
+        "terms": 0,
+        "kind": 2,
+        "seq": 0,
+        "signers": 2,
+        "text": "etl-escrow:AlW0PQL7jTzXxKETjZvdynWyeYDWNHiHcyf11ht-DDh_AAAAAAIfP0Jz88wpeUzALD20VcrvUMkCVtPR4rtihqD4V8BNXn9JqTjTNVdxF5FmkEGhcebewVhKYCRNzLa15kSqjLY5tg"
+      },
+      {
+        "terms": 0,
+        "kind": 3,
+        "seq": 1000,
+        "signers": 1,
+        "text": "etl-escrow:A1W0PQL7jTzXxKETjZvdynWyeYDWNHiHcyf11ht-DDh_AAAD6AEfMpI6mvcTjQfdaSIxdk2rM-iX0CBWfXfx-x6IGgMK5vlnsSydbTv4QGDhaB5SUUGaF8Rf_ZFsl9cWqmKAnOh-mg"
+      },
+      {
+        "terms": 0,
+        "kind": 3,
+        "seq": 2000,
+        "signers": 2,
+        "text": "etl-escrow:A1W0PQL7jTzXxKETjZvdynWyeYDWNHiHcyf11ht-DDh_AAAH0AIfvZuu9Z7d7CpLBpjyeo70om1ztwbuxM4OvDil5u-pzUZ2trU5RiDLmA3-vlX2wmajFPl__H8ThaqsCQ6lRyo1Kw"
+      },
+      {
+        "terms": 0,
+        "kind": 4,
+        "seq": 3000,
+        "signers": 1,
+        "text": "etl-escrow:BFW0PQL7jTzXxKETjZvdynWyeYDWNHiHcyf11ht-DDh_AAALuAEgrKJN7R_zcpZSf17TSofhxjtwRqg7pQVkGF-oK-BfbetA6giGuOXivn0r2vw6FS_bXu2xnRZ82bnRctRTyX2b4Q"
+      },
+      {
+        "terms": 0,
+        "kind": 4,
+        "seq": 4000,
+        "signers": 6,
+        "text": "etl-escrow:BFW0PQL7jTzXxKETjZvdynWyeYDWNHiHcyf11ht-DDh_AAAPoAYfUL74ZpC6r6sbJ7UOo19MT-04qDrggobQ7j7jrHIFNPdHgARHqFhbTGXxn_x_rWAczzysDlUWkc9RoMxaJkaTEx_H97avu5geK8ypA7z74uBP1qd01t3pVC7Xytx7qWh_zkMtXHkdDsGNdrVcdV27-QokHALN15MVnLaJTO3xZLt1"
+      },
+      {
+        "terms": 0,
+        "kind": 5,
+        "seq": 5000,
+        "signers": 2,
+        "text": "etl-escrow:BVW0PQL7jTzXxKETjZvdynWyeYDWNHiHcyf11ht-DDh_AAATiAIg9KozG-hysK6UAzts4OhykYTtzP15QLPh1__kbiWHGKkGk9imlOnQK9EUZQo8U6AEaSNWGQfU05-MNjHTBWVekQ"
+      },
+      {
+        "terms": 0,
+        "kind": 5,
+        "seq": 6000,
+        "signers": 5,
+        "text": "etl-escrow:BVW0PQL7jTzXxKETjZvdynWyeYDWNHiHcyf11ht-DDh_AAAXcAUfA1b47vmqkzZM12xL8aKBR2WURxvTu-wcsaAf7MEkdQNu58_QMORHtyk8PW4re8eFWUo_XgZM5z748LtHUkhyyR_QH66i2jtPDURAg-gGDb8icve8cpTZoZZRfBLk8KtsKyWTJiMsCrh4mRlOo8rx3GSyuxHbWpLrMbsasPXj4kSo"
+      },
+      {
+        "terms": 0,
+        "kind": 5,
+        "seq": 7000,
+        "signers": 1,
+        "text": "etl-escrow:BVW0PQL7jTzXxKETjZvdynWyeYDWNHiHcyf11ht-DDh_AAAbWAEf9xvKOkoAQbObvC3-Xvsjg_qrt6WKfzA9d8Dz6H0hIj4OFpjSY5mGcO1F7lQVTiV19C4YElL_ZBFe9iNRVFOlnw"
+      },
+      {
+        "terms": 1,
+        "kind": 2,
+        "seq": 0,
+        "signers": 2,
+        "text": "etl-escrow:Asf3xeK7biYlaMGG9hRTn7Yw2piG3yOddQ39F6seCwg8AAAAAAIfvdNlEXUL3rap1qymFSRH6gLQSoIeO2IoQ6UIeIuGoj8ucLpGe74isGcReD1Y_q-BppeoVCtEjDl7EzS2ttpZFg"
+      },
+      {
+        "terms": 1,
+        "kind": 3,
+        "seq": 1000,
+        "signers": 1,
+        "text": "etl-escrow:A8f3xeK7biYlaMGG9hRTn7Yw2piG3yOddQ39F6seCwg8AAAD6AEf2f_cHySB56uv96pTYWBzbIplrV3LhWOcjxUAgwijRodG2FFQXU-NgAiZCRBbgwh-Y8UZLWLNbIXxEQW_FUyu-Q"
+      },
+      {
+        "terms": 1,
+        "kind": 3,
+        "seq": 2000,
+        "signers": 2,
+        "text": "etl-escrow:A8f3xeK7biYlaMGG9hRTn7Yw2piG3yOddQ39F6seCwg8AAAH0AIfgge6YBug8bOt95_wuRO8WIrUBPbyVY6RwuwuAcEjFg4Qdz_VZL58w0catun9QS3hd5ejMT_Ebqerx74Sjm1shg"
+      },
+      {
+        "terms": 1,
+        "kind": 4,
+        "seq": 3000,
+        "signers": 1,
+        "text": "etl-escrow:BMf3xeK7biYlaMGG9hRTn7Yw2piG3yOddQ39F6seCwg8AAALuAEgxKNJTo5o_tvENX-wn-mOG8R6LYxKp29ItQ6jXvNi6kFJU6kgncz1QupSQUcJBeQajz_LSOTdTe2ctVaUTm2AWA"
+      },
+      {
+        "terms": 1,
+        "kind": 5,
+        "seq": 5000,
+        "signers": 2,
+        "text": "etl-escrow:Bcf3xeK7biYlaMGG9hRTn7Yw2piG3yOddQ39F6seCwg8AAATiAIgI_WmIw8GC0xzH_1zPQ6weQG3LCmbjJ308SqvgvIIyp5lziZ6iwHBQhUEaYG-UMyDzfVaR_P51P_sHX0TxjDcLA"
+      },
+      {
+        "terms": 1,
+        "kind": 5,
+        "seq": 7000,
+        "signers": 1,
+        "text": "etl-escrow:Bcf3xeK7biYlaMGG9hRTn7Yw2piG3yOddQ39F6seCwg8AAAbWAEgaEYPiF3SAnBla6xXaJawi0p1GAJihrgEHdziY8B8ltpAbIgm4r4_zSv5jeNW5Lkqn9e7rmesIXvShcl2du2APw"
+      }
+    ],
+    "required": [
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": false,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1,
+          6
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          5,
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1,
+          6
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          5,
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1,
+          6
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          5
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1,
+          6
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          5,
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1,
+          6
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          5,
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1,
+          6
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          5
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1,
+          6
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          5
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1,
+          6
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          5
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1,
+          6
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          5
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1,
+          6
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          5
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1,
+          6
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          5
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1,
+          6
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          5
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": true,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2,
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": false,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": [
+          1,
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": false,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": -1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 0,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 4,
+        "masks": [
+          1
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 0,
+        "kind": 5,
+        "masks": [
+          2
+        ]
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 2,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 3,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 4,
+        "masks": []
+      },
+      {
+        "arbiter": true,
+        "arbiter_active": false,
+        "paid": true,
+        "disputed": true,
+        "deadline_offset": 1,
+        "outcome": 2,
+        "kind": 5,
+        "masks": []
+      }
+    ]
+  }
 }

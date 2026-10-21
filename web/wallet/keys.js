@@ -21,6 +21,7 @@ secp.hashes.hmacSha256 = (key, msg) => hmac(sha256, key, msg);
 export const CONTEXT_TX = "etalon-etl 2026-10 transaction v1";
 export const CONTEXT_ADDRESS = "etalon-etl 2026-10 address v1";
 export const CONTEXT_SIGNATURE = "etalon-etl 2026-10 signature v1";
+export const CONTEXT_ESCROW = "etalon-etl 2026-10 escrow v1";
 
 // Usages de signature (internal/crypto/sign.go) : une signature ne vaut que pour son usage.
 export const PURPOSES = Object.freeze({
@@ -33,7 +34,8 @@ export const PURPOSES = Object.freeze({
   blockVote: "block-vote",
   ipcVote: "ipc-vote",
   exclusionVote: "exclusion-vote",
-  paramVote: "param-vote",
+    paramVote: "param-vote",
+  escrow: "escrow",
 });
 
 export const PRIVATE_KEY_SIZE = 32;

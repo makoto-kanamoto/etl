@@ -20,6 +20,7 @@ import (
 
 	"github.com/makoto-kanamoto/etl/internal/blockchain"
 	"github.com/makoto-kanamoto/etl/internal/crypto"
+	"github.com/makoto-kanamoto/etl/internal/escrow"
 )
 
 // Vecteurs croisés Go/JavaScript : le wallet du navigateur (web/wallet) doit reproduire chacun à
@@ -69,6 +70,46 @@ type vaultVector struct {
 	Vault      string `json:"vault"`
 }
 
+type escrowTermsVector struct {
+	Seller     int    `json:"seller"`
+	Buyer      int    `json:"buyer"`
+	Arbiter    int    `json:"arbiter"` // -1 : sans arbitre
+	Amount     string `json:"amount"`
+	ArbiterFee string `json:"arbiter_fee"`
+	Fee        string `json:"fee"`
+	Days       uint8  `json:"days"`
+	Timestamp  string `json:"timestamp"`
+	ID         string `json:"id"`
+	Encoded    string `json:"encoded"` // conditions seules
+	Open       string `json:"open"`    // ouverture signée (et cosignée), forme texte
+}
+
+type escrowOpVector struct {
+	Terms   int    `json:"terms"`
+	Kind    uint8  `json:"kind"`
+	Seq     uint32 `json:"seq"`
+	Signers uint8  `json:"signers"`
+	Text    string `json:"text"`
+}
+
+// requiredVector : signataires possibles (escrow.Required, conforme au consensus) pour un état donné.
+type requiredVector struct {
+	Arbiter        bool  `json:"arbiter"`
+	ArbiterActive  bool  `json:"arbiter_active"`
+	Paid           bool  `json:"paid"`
+	Disputed       bool  `json:"disputed"`
+	DeadlineOffset int64 `json:"deadline_offset"` // échéance - jour
+	Outcome        uint8 `json:"outcome"`
+	Kind           uint8 `json:"kind"`
+	Masks          []int `json:"masks"` // []int : un []uint8 serait encodé en base64 par encoding/json
+}
+
+type escrowVectors struct {
+	Terms    []escrowTermsVector `json:"terms"`
+	Ops      []escrowOpVector    `json:"ops"`
+	Required []requiredVector    `json:"required"`
+}
+
 type vectors struct {
 	ChainID      string        `json:"chain_id"`
 	HRP          string        `json:"hrp"`
@@ -76,6 +117,7 @@ type vectors struct {
 	Signatures   []sigVector   `json:"signatures"`
 	Transactions []txVector    `json:"transactions"`
 	Vaults       []vaultVector `json:"vaults"`
+	Escrow       escrowVectors `json:"escrow"`
 }
 
 // browserVault reproduit, indépendamment du JavaScript, le coffre du navigateur (web/wallet/vault.js) :
@@ -145,7 +187,7 @@ func buildVectors(t *testing.T) vectors {
 	// Une signature par usage, réparties sur les clés ; messages vide, court et long.
 	purposes := []crypto.Purpose{crypto.PurposeTx, crypto.PurposeParticipation, crypto.PurposeBlockProposal,
 		crypto.PurposeProposal, crypto.PurposeRegistration, crypto.PurposeSponsorship, crypto.PurposeBlockVote,
-		crypto.PurposeIPCVote, crypto.PurposeExclusionVote, crypto.PurposeParamVote}
+		crypto.PurposeIPCVote, crypto.PurposeExclusionVote, crypto.PurposeParamVote, crypto.PurposeEscrow}
 	for i, purpose := range purposes {
 		msg := bytes.Repeat([]byte{byte(i)}, []int{0, 3, 200}[i%3])
 		k := i % len(priv)
@@ -195,6 +237,86 @@ func buildVectors(t *testing.T) vectors {
 			Body: hex.EncodeToString(tx.Body()), Signature: hex.EncodeToString(tx.Signature[:]),
 			ID: hex.EncodeToString(tx.ID[:]), Encoded: hex.EncodeToString(blockchain.EncodeTransaction(&tx)),
 		})
+	}
+
+	// Escrow : conditions avec et sans arbitre, puis chaque opération pour chaque ensemble de
+	// signataires autorisé (vendeur = clé 0, acheteur = clé 1, arbitre = clé 2).
+	roleKey := map[uint8]int{blockchain.SignerSeller: 0, blockchain.SignerBuyer: 1, blockchain.SignerArbiter: 2}
+	for i, arb := range []int{2, -1} {
+		arbAddr, arbFee := crypto.Address{}, uint64(0)
+		if arb >= 0 {
+			arbAddr, arbFee = priv[arb].PublicKey().Address(p.AddressHRP), 25_000
+		}
+		amount := []uint64{blockchain.UnitsPerETL * 3 / 2, 7_000_000}[i]
+		terms, err := escrow.NewTerms(priv[0].PublicKey().Address(p.AddressHRP), priv[1].PublicKey().Address(p.AddressHRP),
+			arbAddr, amount, arbFee, []uint8{3, 30}[i], 1_800_000_000+int64(i), p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		open := blockchain.EscrowOp{Kind: blockchain.EscrowOpen, Terms: terms}
+		_ = open.Sign(priv[0], blockchain.SignerSeller, p)
+		if arb >= 0 {
+			_ = open.Sign(priv[arb], blockchain.SignerArbiter, p)
+		}
+		id := terms.ID()
+		u := func(x uint64) string { return strconv.FormatUint(x, 10) }
+		v.Escrow.Terms = append(v.Escrow.Terms, escrowTermsVector{Seller: 0, Buyer: 1, Arbiter: arb,
+			Amount: u(terms.Amount), ArbiterFee: u(terms.ArbiterFee), Fee: u(terms.Fee), Days: terms.Days,
+			Timestamp: strconv.FormatInt(terms.Timestamp, 10), ID: hex.EncodeToString(id[:]),
+			Encoded: hex.EncodeToString(blockchain.EncodeEscrowOp(&blockchain.EscrowOp{Kind: blockchain.EscrowOpen, Terms: terms})[1:][:3*20+3*8+1+8]),
+			Open:    escrow.EncodeText(&open)})
+		allowed := []struct {
+			kind    blockchain.EscrowKind
+			signers uint8
+		}{
+			{blockchain.EscrowPaid, blockchain.SignerBuyer},
+			{blockchain.EscrowDispute, blockchain.SignerSeller},
+			{blockchain.EscrowDispute, blockchain.SignerBuyer},
+			{blockchain.EscrowRelease, blockchain.SignerSeller},
+			{blockchain.EscrowRelease, blockchain.SignerBuyer | blockchain.SignerArbiter},
+			{blockchain.EscrowRefund, blockchain.SignerBuyer},
+			{blockchain.EscrowRefund, blockchain.SignerSeller | blockchain.SignerArbiter},
+			{blockchain.EscrowRefund, blockchain.SignerSeller},
+		}
+		for j, a := range allowed {
+			if arb < 0 && a.signers&blockchain.SignerArbiter != 0 {
+				continue
+			}
+			op := blockchain.EscrowOp{Kind: a.kind, Escrow: id, Seq: uint32(j * 1000)}
+			for _, r := range []uint8{blockchain.SignerArbiter, blockchain.SignerBuyer, blockchain.SignerSeller} { // ordre inverse : le tri est canonique
+				if a.signers&r != 0 {
+					_ = op.Sign(priv[roleKey[r]], r, p)
+				}
+			}
+			v.Escrow.Ops = append(v.Escrow.Ops, escrowOpVector{Terms: i, Kind: uint8(a.kind), Seq: op.Seq, Signers: a.signers, Text: escrow.EncodeText(&op)})
+		}
+	}
+
+	for _, arb := range []bool{false, true} {
+		for _, active := range []bool{true, false} {
+			if !arb && !active {
+				continue
+			}
+			for _, paid := range []bool{false, true} {
+				for _, disputed := range []bool{false, true} {
+					for _, off := range []int64{-1, 0, 1} {
+						for _, outcome := range []blockchain.EscrowOutcome{blockchain.EscrowPending, blockchain.EscrowRefunded} {
+							e := blockchain.Escrow{Paid: paid, Disputed: disputed, Deadline: 100 + off, Outcome: outcome}
+							if arb {
+								e.Terms.Arbiter = priv[2].PublicKey().Address(p.AddressHRP)
+							}
+							for kind := blockchain.EscrowPaid; kind <= blockchain.EscrowRefund; kind++ {
+								masks := []int{}
+								for _, m := range escrow.Required(e, kind, 100, active) {
+									masks = append(masks, int(m))
+								}
+								v.Escrow.Required = append(v.Escrow.Required, requiredVector{arb, active, paid, disputed, off, uint8(outcome), uint8(kind), masks})
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	// Coffres du navigateur, produits par Go : phrase de passe ASCII, et accentuée fournie en NFD
