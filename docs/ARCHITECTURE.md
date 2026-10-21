@@ -178,9 +178,27 @@ Les jours sont des jours UTC (horodatage du bloc ÷ 86 400) : un jour sans bloc 
 
 ### Dashboard
 - **localhost:3001** pour l'opérateur
-- **etalon-etl.fr** pour les utilisateurs web
+- **etalon-etl.fr** pour les utilisateurs web (plus tard : même interface, API en lecture seule)
 - Un seul codebase — deux contextes de déploiement
 - UX moderne, interactive
+- Servi par le nœud lui-même : interface embarquée dans le binaire, API JSON locale
+- La clé personnelle de l'utilisateur reste dans son navigateur (coffre chiffré) ; la clé du nœud ne quitte jamais le nœud
+- Interface en français et en anglais ; japonais et chinois après relecture par des locuteurs natifs
+
+#### Sécurité de l'API locale
+
+Le navigateur de l'opérateur visite aussi d'autres sites : n'importe quelle page peut tenter d'envoyer des requêtes à `localhost:3001`. L'API s'en protège ainsi :
+
+| Menace | Parade |
+|---|---|
+| Accès depuis le réseau | écoute sur `127.0.0.1` uniquement |
+| Rebond DNS (un domaine hostile qui pointe vers 127.0.0.1) | en-tête `Host` limité à `localhost:3001` et `127.0.0.1:3001` |
+| Requête forgée depuis un autre site (CSRF) | `Origin` vérifié et corps JSON obligatoire pour toute modification ; aucun en-tête CORS |
+| Action de l'opérateur déclenchée à son insu | jeton aléatoire régénéré à chaque démarrage, dans `~/.etl/dashboard.token` (lisible par l'opérateur seul), exigé pour voter (paramètres, exclusions) ou relire la source IPC |
+| Script injecté ou ressource externe | politique de sécurité du contenu stricte : scripts, styles et connexions vers le nœud seulement ; aucune intégration dans une autre page |
+
+- Les transactions et opérations d'escrow sont **signées dans le navigateur** : l'API ne fait que les transmettre au réseau.
+- Format JSON : montants en chaînes décimales d'unités (jamais de nombre à virgule), adresses `etl1q…`, identifiants en hexadécimal.
 
 ---
 
@@ -378,7 +396,7 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
   pas de confirmations supplémentaires à attendre, quel que soit le montant (règle immuable n°4)
 
 ### Notifications
-- **WebSocket** — notification temps réel dans le dashboard
+- **Server-Sent Events (SSE)** — notification temps réel dans le dashboard : le nœud pousse un événement par bloc finalisé, le navigateur garde ce qui le concerne (protocole HTTP standard, sans dépendance, reconnexion automatique)
 - À 23:00 UTC : l'expéditeur et le destinataire reçoivent la confirmation
 
 ```
@@ -502,8 +520,12 @@ Section "IPC en cours"
 ├── Valeur actuelle : 102.85 — 2026-Q2 (validée le 01/07/2026)
 ├── Nouvelle proposition : 103.07 — 2026-Q3 (source INSEE, publiée le 16/10/2026)
 ├── Votes : 4/7 nœuds ont voté ✅ (2/3 requis = 5/7)
-└── [Voter] ← bouton pour l'opérateur de nœud
+├── Dernière lecture de ce nœud : 20/10/2026 21:14 UTC — vote émis
+└── [Relire la source maintenant] ← bouton pour l'opérateur de nœud
 ```
+
+- Le vote est **automatique** : chaque nœud lit lui-même la source chaque jour (voir ci-dessus).
+- Le bouton ne fait que déclencher une lecture immédiate (au plus une toutes les 5 minutes). **Aucune valeur ne peut être saisie à la main** : un nœud ne vote que ce qu'il a lu à la source.
 
 ---
 
