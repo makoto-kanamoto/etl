@@ -280,6 +280,12 @@ explication.
 | Nœud | pas arrêté par un conflit de finalité | intervention humaine (journal du nœud) |
 | Dernier bloc | il y a moins de 25 heures | le nœud n'est peut-être plus synchronisé |
 
+**Panneau opérateur** (session à jeton) : quatre onglets — paramètres, parrainage, arbitrages,
+exclusion. Chaque paramètre gouvernable se lit sur une règle graduée : bornes immuables, plage permise
+pour un vote, valeur actuelle, changement en attente et proposition, choisie au curseur sans pouvoir
+sortir de la plage permise ; les votes en cours s'affichent avec le seuil des 2/3. Les paramètres sont
+regroupés par thème (économie, blocs, admission des nœuds, parrainage).
+
 **Mise en page vérifiée** avant chaque modification de l'interface : `web/tools/layoutcheck.mjs` ouvre
 chaque page dans Chrome à six largeurs (1440 à 360 px), en thème clair et sombre, et signale tout
 débordement, texte coupé, barre de défilement interne ou erreur de la console.
@@ -720,6 +726,23 @@ L'escrow bloque donc les ETL du vendeur dans l'état, et le règlement exige l'a
 - Une ouverture signée n'est valable que **7 jours** (anti-rejeu, comme les candidatures).
 - Les opérations forment une section du bloc (`EscrowOps`, racine `EscrowRoot` dans l'en-tête) et comptent dans la taille maximale du bloc ; échanges et réputation sont couverts par le **StateRoot**.
 - Un échange réglé est élagué **90 jours** après son règlement ; la réputation, elle, reste.
+
+**Dans le dashboard**
+- **Suivi fidèle au protocole** : Ouvert → Euros payés → Réglé (ETL libérés à l'acheteur, ou rendus au
+  vendeur) ; un litige s'affiche en rouge. Il n'y a pas d'étape « livré » : la chaîne ne connaît que le
+  paiement déclaré et le règlement
+- **Échéance** affichée telle qu'elle s'applique : l'acheteur doit déclarer le paiement avant la date ;
+  passée sans « payé », le vendeur peut récupérer ses ETL seul
+- **Prochaine action** indiquée selon le rôle (« À vous : libérer les ETL », « En attente du paiement de
+  l'acheteur »…) ; chaque signature est précédée de ce qu'elle produit (« 50 ETL iront à l'acheteur.
+  C'est définitif. »)
+- **Réputation en chiffres** (terminés, remboursés, litiges ouverts, litiges perdus), jamais en étoiles :
+  la chaîne ne connaît aucune note
+- **Libellé local** (« vélo », « cours de guitare ») : la chaîne ne connaît aucun titre ; l'utilisateur
+  peut nommer un échange dans son navigateur, chiffré comme ses contacts (clé distincte)
+- **Arbitrage** depuis le panneau opérateur du nœud arbitre : libérer à l'acheteur **ou** rembourser le
+  vendeur, rien entre les deux (le protocole ne prévoit pas de répartition). La partie concernée
+  contresigne avec le texte transmis
 
 > L'ouverture du tableau d'annonces fera l'objet d'une vérification réglementaire préalable (règlement européen MiCA sur les services sur crypto-actifs).
 
