@@ -77,6 +77,32 @@ Exemple d'adresse : etl1qnwxsgqx9c4phyx8vjt6650fl5zgxzcaav8qcw0
                     (clé privée = 1 — vecteur de référence, ne jamais utiliser)
 ```
 
+### Portefeuille du navigateur — parcours et protections
+
+- **Création en 3 étapes** : phrase de 24 mots, vérification de 3 mots tirés au hasard, phrase de
+  passe (12 caractères au moins). Le coffre est chiffré dans le navigateur ; sauvegarde = les 24 mots
+- **Phrase de passe oubliée** : elle ne se récupère pas. L'écran verrouillé propose **« Utiliser mes
+  24 mots »**, qui remplace le coffre de ce navigateur par un nouveau. Si les mots donnent une **autre
+  adresse** que le portefeuille présent, les deux adresses sont affichées côte à côte et il faut taper
+  REMPLACER : l'ancien portefeuille ne se retrouvera qu'avec ses propres 24 mots
+- **Envoi en 3 étapes** : saisir (frais et solde après l'envoi calculés pendant la saisie), vérifier
+  (adresse complète par groupes de 4 caractères, avertissement au premier envoi vers une adresse),
+  envoyé (inscription au bloc de 23:00 UTC). Le solde affiché après l'envoi n'est jamais négatif
+- **Recevoir** : QR code de l'adresse, en **majuscules** (mode alphanumérique du QR : code plus petit,
+  plus facile à lire ; les adresses tout en majuscules sont acceptées, jamais la casse mixte). Il ne
+  contient que l'adresse ; un montant intégré au QR serait une décision de format, pas encore prise.
+  Bibliothèque : uqr 0.1.3 (MIT, dérivée du générateur de Project Nayuki), vendorisée avec SRI
+- **Contacts** : un nom choisi pour une adresse, **dans ce navigateur seulement**, chiffré en
+  AES-256-GCM avec une clé dérivée de la clé privée du portefeuille (HKDF-SHA256) et lié à son adresse.
+  Lisibles seulement portefeuille déverrouillé ; retirés avec le portefeuille. Ils ne font pas partie
+  des 24 mots : effacer les données du navigateur les perd
+- **Motif visuel** : chaque adresse a un petit dessin (grille 5 × 5 symétrique, 12 teintes) tiré de son
+  empreinte BLAKE3. Il aide à reconnaître un correspondant ; il **ne prouve rien** (une adresse au motif
+  voisin se fabrique sans grand effort) : l'adresse complète reste affichée avant toute signature
+- **Pseudonymes publics inscrits dans la chaîne** (« @nom » visible de tous) : non retenus à ce stade.
+  Ce serait un changement de consensus (attribution, accaparement des noms, coût, anonymat), à décider
+  séparément
+
 ---
 
 ## Step 3 — Lancement du nœud
