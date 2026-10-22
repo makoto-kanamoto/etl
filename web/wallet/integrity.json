@@ -8,6 +8,11 @@
     "@noble/hashes@2.4.0": {
       "dir": "vendor/noble-hashes-2.4.0",
       "npm_integrity": "sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA=="
+    },
+    "uqr@0.1.3": {
+      "dir": "vendor/uqr-0.1.3",
+      "npm_integrity": "sha512-0rjE8iEJe4YmT9TOhwsZtqCMRLc5DXZUI2UEYUUg63ikBkqqE5EYWaI0etFe/5KUcmcYwLih2RND1kq+hrUJXA==",
+      "source": "dist/index.mjs, renommé index.js"
     }
   },
   "files": {
@@ -19,6 +24,7 @@
     "vendor/noble-hashes-2.4.0/blake3.js": "sha384-E9R7rvWrC4i2O9K2foVuNJa//Zbv7TWHL15HosAw5Msg1mMvbfMlPEv9DzUxoq9t",
     "vendor/noble-hashes-2.4.0/hmac.js": "sha384-T+vGWnGryWubEFH8lQdk8LN00eOX+mpsmHwdXuC6L6KIIn46POY/2hauzVrdjZNH",
     "vendor/noble-hashes-2.4.0/sha2.js": "sha384-YXgpTrphhgj/WMtfF9PcPZQOE57vqATkv4wTjdFflOBTMR5ro2T6S/MkCc9vVH5q",
-    "vendor/noble-hashes-2.4.0/utils.js": "sha384-YFMR8BWPimRHARZs0bAtgjKOWPQL0ND/lZk6QwHVzhzx71FWSqzQb1ToPgVtqapB"
+    "vendor/noble-hashes-2.4.0/utils.js": "sha384-YFMR8BWPimRHARZs0bAtgjKOWPQL0ND/lZk6QwHVzhzx71FWSqzQb1ToPgVtqapB",
+    "vendor/uqr-0.1.3/index.js": "sha384-0GVAtl+iA2r3B2mdNlgxAt/LMh3KaxfFhVMhb+HqVPKEqf08G1Wd00KvFFpNFdAJ"
   }
 }

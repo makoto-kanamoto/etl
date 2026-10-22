@@ -11,6 +11,10 @@ import { STRINGS, LANGS, t } from "./lib/strings.js";
 import { makeApi, ApiError } from "./lib/api.js";
 import { addressHint, put, h, svg } from "./lib/dom.js";
 import { createHash } from "node:crypto";
+import { identicon, HUES } from "./lib/identicon.js";
+import { qrMatrix } from "./lib/qr.js";
+import { Contacts, ContactsError, CONTACTS_KEY, normalizeName, MAX_NAME } from "./lib/contacts.js";
+import { lockedInEscrows, timesPaid, short, group, afterBalance, paidText } from "./views/wallet.js";
 import { priceChange, simulation, countdown, countdownText, rulePosition, SIM_RATE, SIM_YEARS } from "./views/home.js";
 import { render } from "../tools/importmap.js";
 import { actions, roleOf, completes, escrowState, reputation, signerRoles } from "./lib/escrowui.js";
@@ -123,6 +127,20 @@ test("session : création, verrouillage manuel et automatique, clé effacée, re
   assert.ok(!s.hasVault() && storage.size() === 0);
   const broken = new Session({ getItem: () => { throw new Error("stockage bloqué"); } }, "etl");
   assert.equal(broken.hasVault(), false, "stockage inaccessible : pas de portefeuille");
+});
+
+test("textes : aucune clé définie deux fois (la seconde écraserait la première sans erreur)", () => {
+  const src = readFileSync(join(DIR, "lib", "strings.js"), "utf8");
+  for (const lang of LANGS) {
+    const start = src.indexOf(`  ${lang}: {`);
+    const end = src.indexOf("\n  },", start);
+    const seen = new Set();
+    for (const [, k] of src.slice(start, end).matchAll(/^\s*"([^"]+)":/gm)) {
+      assert.ok(!seen.has(k), `${lang} : « ${k} » défini deux fois`);
+      seen.add(k);
+    }
+    assert.equal(seen.size, Object.keys(STRINGS[lang]).length);
+  }
 });
 
 test("textes : mêmes clés en français et en anglais, variables cohérentes", () => {
@@ -385,4 +403,142 @@ test("logo : icône SVG et PNG 180 px référencées par la page", () => {
   assert.equal(png.subarray(1, 4).toString(), "PNG");
   assert.equal(png.readUInt32BE(16), 180);
   assert.equal(png.readUInt32BE(20), 180);
+});
+
+const addrOf = (seed, hrp = "etl") => keys.address(new Uint8Array(32).fill(seed), hrp);
+
+test("motif visuel : déterministe, insensible à la casse, varié, jamais vide", () => {
+  const a = addrOf(7);
+  const m = identicon(a);
+  assert.deepEqual(identicon(a.toUpperCase()), m);
+  assert.equal(m.cells.length, 15);
+  assert.ok(m.hue >= 0 && m.hue < HUES);
+  const hues = new Set();
+  const shapes = new Set();
+  let on = 0;
+  for (let i = 1; i <= 200; i++) {
+    const x = identicon(addrOf(i));
+    hues.add(x.hue);
+    shapes.add(x.cells.map(Number).join(""));
+    on += x.cells.filter(Boolean).length;
+    assert.ok(x.cells.some(Boolean), "jamais de motif vide");
+  }
+  assert.equal(hues.size, HUES, "toutes les teintes apparaissent");
+  assert.ok(shapes.size > 190, `${shapes.size} motifs distincts sur 200`);
+  assert.ok(on / 200 > 6 && on / 200 < 9, "environ la moitié des cases remplies");
+  // Adresse trouvée par recherche (environ 1 sur 32 768) dont les 15 bits du motif sont nuls.
+  const blank = identicon("etl1qqqq8vsgqqqqqqqqqqqqqqqqqqqqqqqqq2ynwfu");
+  assert.deepEqual(blank.cells.map(Number).join(""), "000000000000100", "motif nul : case centrale allumée");
+});
+
+test("QR code : adresse en majuscules (mode alphanumérique), matrice stable", () => {
+  const a = addrOf(7);
+  const m = qrMatrix(a);
+  assert.deepEqual(qrMatrix(a.toUpperCase()), m);
+  assert.equal(m.length, 29, "version 3 (niveau de correction M) pour une adresse etl1q…");
+  // Repères de position aux trois coins : carré noir 7 × 7, anneau blanc, centre 3 × 3 noir.
+  for (const [ox, oy] of [[0, 0], [22, 0], [0, 22]]) {
+    assert.ok(m[oy][ox] && m[oy + 6][ox + 6] && !m[oy + 1][ox + 1] && m[oy + 3][ox + 3]);
+  }
+  const fp = createHash("sha256").update(m.map((r) => r.map((x) => (x ? 1 : 0)).join("")).join("\n")).digest("hex");
+  assert.equal(fp, "f2ef64474f5507084a03aa1adad7e6dc8d23718c5394de114d78137c7b48ad33", "matrice de référence (régression)");
+});
+
+test("contacts : chiffrés, liés au portefeuille, altération détectée", async () => {
+  const st = memoryStorage();
+  const key = new Uint8Array(32).fill(3);
+  const owner = keys.address(key, "etl");
+  const leo = addrOf(4);
+  const c = await Contacts.open(st, key, owner, "etl");
+  assert.deepEqual(c.list(), []);
+  await c.set(leo.toUpperCase(), "  Léo   (vélo)  ");
+  assert.equal(c.name(leo), "Léo (vélo)", "adresse en minuscules, espaces réduits");
+  await c.set(addrOf(5), "Boulangerie");
+  assert.deepEqual(c.list().map((x) => x.name), ["Boulangerie", "Léo (vélo)"]);
+  const raw = st.getItem(CONTACTS_KEY);
+  assert.ok(!raw.includes("Boulangerie") && !raw.includes(leo), "ni nom ni adresse en clair");
+  assert.equal(JSON.parse(raw).owner, owner);
+
+  const again = await Contacts.open(st, key, owner, "etl");
+  assert.equal(again.name(leo), "Léo (vélo)");
+  await again.remove(leo);
+  assert.equal((await Contacts.open(st, key, owner, "etl")).name(leo), null);
+
+  // Autre portefeuille : ne voit rien. Mauvaise clé ou texte altéré : illisible, remplacé au prochain ajout.
+  const otherKey = new Uint8Array(32).fill(9);
+  const stranger = await Contacts.open(st, otherKey, keys.address(otherKey, "etl"), "etl");
+  assert.deepEqual(stranger.list(), []);
+  assert.equal(stranger.unreadable, false, "contacts d'un autre portefeuille : ignorés, pas signalés comme altérés");
+  const forged = await Contacts.open(st, otherKey, owner, "etl");
+  assert.ok(forged.unreadable && forged.list().length === 0, "clé d'un autre portefeuille");
+  const o = JSON.parse(st.getItem(CONTACTS_KEY));
+  o.ciphertext = btoa(String.fromCharCode(...Uint8Array.from(atob(o.ciphertext), (ch) => ch.charCodeAt(0)).map((b, i) => (i === 0 ? b ^ 1 : b))));
+  st.setItem(CONTACTS_KEY, JSON.stringify(o));
+  const tampered = await Contacts.open(st, key, owner, "etl");
+  assert.ok(tampered.unreadable);
+  await tampered.set(leo, "Léo");
+  assert.ok(!tampered.unreadable && (await Contacts.open(st, key, owner, "etl")).name(leo) === "Léo");
+
+  for (const [addr, name, code] of [[owner, "Moi", "self"], ["etl1qfaux", "X", "address"], [addrOf(4, "etlt"), "X", "address"], [leo, " ", "empty"], [leo, "a".repeat(MAX_NAME + 1), "long"], [leo, "a\u200bb", "control"]]) {
+    await assert.rejects(tampered.set(addr, name), (e) => e instanceof ContactsError && e.code === code, code);
+  }
+  assert.equal(normalizeName("e\u0301té"), "été", "NFC");
+});
+
+test("session : contacts lisibles déverrouillé seulement, effacés avec le portefeuille", async () => {
+  const st = memoryStorage();
+  const s = new Session(st, "etl");
+  await s.create(new Uint8Array(32).fill(3), "phrase de passe assez longue");
+  const book = await s.contacts();
+  await book.set(addrOf(4), "Léo");
+  assert.equal(await s.contacts(), book, "déchiffrés une fois par session");
+  s.lock();
+  assert.equal(s.book, null);
+  await assert.rejects(s.contacts(), /verrouillé/);
+  await s.unlock("phrase de passe assez longue");
+  assert.equal((await s.contacts()).name(addrOf(4)), "Léo");
+  // « Utiliser mes 24 mots » avec une autre clé : coffre et contacts remplacés.
+  const other = new Uint8Array(32).fill(8);
+  await s.replace(other, "autre phrase de passe longue");
+  assert.equal(s.address(), keys.address(other, "etl"));
+  assert.equal(st.getItem(CONTACTS_KEY), null);
+  assert.deepEqual((await s.contacts()).list(), []);
+  s.forget();
+  assert.equal(st.size(), 0, "rien ne reste dans le navigateur");
+});
+
+test("portefeuille : montant bloqué, envois déjà faits, adresses abrégées et groupées", () => {
+  const me = addrOf(1);
+  const e = (seller, outcome, amount, arbiterFee) => ({ seller, outcome, amount, arbiterFee, fee: 999n });
+  assert.equal(lockedInEscrows([e(me, "pending", 50n, 5n), e(me, "released", 70n, 0n), e(addrOf(2), "pending", 80n, 0n), e(me, "pending", 10n, 0n)], me), 65n,
+    "échanges en cours où je vends ; frais déjà payés non comptés");
+  const hist = { transactions: [{ from: me, to: addrOf(2) }, { from: me, to: addrOf(2) }, { from: addrOf(2), to: me }, { from: me, to: addrOf(3) }, { from: addrOf(5), to: addrOf(2) }] };
+  assert.equal(timesPaid(hist, me, addrOf(2)), 2);
+  assert.equal(timesPaid(hist, me, addrOf(4)), 0);
+  assert.equal(timesPaid(null, me, addrOf(2)), 0);
+  assert.equal(short("etl1qn3wvn2vj4vrxz7r9qndymx99h3rswprgl0p84g"), "etl1qn3w…p84g");
+  assert.equal(group("etl1qn3wvn2v"), "etl1 qn3w vn2v");
+});
+
+test("portefeuille : envois déjà faits, au singulier et au pluriel", () => {
+  const fr = (k, v) => t("fr", k, v);
+  assert.match(paidText(fr, 0), /aucun envoi/);
+  assert.match(paidText(fr, 1), /1 envoi vers/);
+  assert.match(paidText(fr, 3), /3 envois vers/);
+});
+
+test("portefeuille : solde après l'envoi jamais négatif", () => {
+  const saved = { Node: globalThis.Node, document: globalThis.document };
+  globalThis.Node = class {};
+  globalThis.document = { createElement: () => ({ setAttribute() {}, append(c) { this.kids = [...(this.kids ?? []), c]; } }), createTextNode: (s) => ({ text: s }) };
+  try {
+    const app = { lang: "fr", t: (k, v) => t("fr", k, v) };
+    assert.equal(afterBalance(app, 300_000_000n, 150_150_000n).kids[0].text, "1,4985 ETL");
+    assert.equal(afterBalance(app, 100n, 100n).kids[0].text, "0 ETL");
+    const short = afterBalance(app, 149_850_000n, 150_150_000n);
+    assert.equal(short.kids[0].text, t("fr", "send.insufficient"));
+    assert.equal(short.className, "short");
+  } finally {
+    Object.assign(globalThis, saved);
+  }
 });

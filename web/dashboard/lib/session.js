@@ -3,6 +3,7 @@
 
 import { createVault, openVault, readAddress } from "../../wallet/vault.js";
 import { wipe } from "../../wallet/keys.js";
+import { Contacts, CONTACTS_KEY } from "./contacts.js";
 
 export const VAULT_KEY = "etl.vault";
 export const AUTO_LOCK_MS = 15 * 60 * 1000;
@@ -15,6 +16,7 @@ export class Session {
     this.now = now;
     this.key = null;
     this.lastActivity = 0;
+    this.book = null; // contacts déchiffrés (portefeuille déverrouillé seulement)
   }
 
   hasVault() {
@@ -49,6 +51,20 @@ export class Session {
     return openVault(this.storage.getItem(VAULT_KEY), passphrase, this.hrp);
   }
 
+  // replace remplace le coffre de ce navigateur par celui d'une autre clé (« Utiliser mes 24 mots ») :
+  // l'ancien coffre et ses contacts sont retirés.
+  async replace(key, passphrase) {
+    this.forget();
+    await this.create(key, passphrase);
+  }
+
+  // contacts renvoie les contacts du portefeuille déverrouillé (déchiffrés une fois par session).
+  async contacts() {
+    if (!this.key) throw new Error("portefeuille verrouillé");
+    this.book ??= await Contacts.open(this.storage, this.key, this.address(), this.hrp);
+    return this.book;
+  }
+
   isUnlocked() {
     return this.key !== null;
   }
@@ -69,11 +85,13 @@ export class Session {
   lock() {
     if (this.key) wipe(this.key);
     this.key = null;
+    this.book = null;
   }
 
   // forget supprime le coffre de ce navigateur (la phrase de récupération reste le seul moyen de retour).
   forget() {
     this.lock();
     this.storage.removeItem(VAULT_KEY);
+    this.storage.removeItem(CONTACTS_KEY);
   }
 }

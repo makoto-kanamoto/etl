@@ -57,7 +57,15 @@ export function addressHint(hrp) {
   return `${hrp || "etl"}1q…`;
 }
 
-// addressInput : champ de saisie d'une adresse, avec l'exemple du réseau du nœud.
+// addressInput : saisie d'une adresse sur deux lignes (l'adresse entière reste visible), avec l'exemple
+// du réseau du nœud ; Entrée valide le formulaire au lieu d'aller à la ligne.
 export function addressInput(app) {
-  return h("input", { type: "text", autocomplete: "off", spellcheck: "false", autocapitalize: "off", placeholder: addressHint(app.status?.hrp) });
+  const el = h("textarea", { class: "addr-input", rows: 2, autocomplete: "off", spellcheck: "false", autocapitalize: "off", placeholder: addressHint(app.status?.hrp) });
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      el.form?.requestSubmit();
+    }
+  });
+  return el;
 }
