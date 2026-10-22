@@ -228,6 +228,36 @@ Les jours sont des jours UTC (horodatage du bloc ÷ 86 400) : un jour sans bloc 
 - La clé personnelle de l'utilisateur reste dans son navigateur (coffre chiffré) ; la clé du nœud ne quitte jamais le nœud
 - Interface en français et en anglais ; japonais et chinois après relecture par des locuteurs natifs
 
+#### Identité visuelle et accueil
+
+- **Logo « E gradué »** : un E dont les branches sont les traits d'une règle graduée, la lettre du nom et
+  l'idée de mesure de référence en un seul signe. Icône d'onglet en SVG, icône 180 px en PNG (Safari)
+- **Polices embarquées dans le binaire** : Gloock (titres et grands chiffres), Public Sans (texte),
+  IBM Plex Mono (adresses), licence libre OFL, jeu latin (≈ 80 Ko). Aucun CDN : la politique de sécurité
+  du contenu n'autorise que le nœud lui-même. Leurs empreintes sont listées dans
+  `web/dashboard/fonts/integrity.json` et vérifiées par les tests
+- **Accueil** : la valeur de 1 ETL en euros et la variation des prix depuis le lancement ; le prochain
+  bloc sur une règle de 24 h (fenêtre de lecture de l'IPC, bloc de 23:00 UTC) ; l'état du nœud et du
+  réseau
+- **Graphique pédagogique** (100 € contre 100 ETL sur 10 ans) : c'est une **simulation**, pas une donnée
+  historique. Il porte en gros « Simulation — inflation à 2 %/an » et « SIMULATION » en filigrane, pour
+  qu'aucune capture ne puisse le faire passer pour un chiffre réel
+
+**« Réseau en bonne santé »** : le nœud le calcule et le transmet au dashboard (`/api/status`, champ
+`health`). Les quatre critères doivent être remplis ; chaque critère manquant s'affiche avec son
+explication.
+
+| Critère | Seuil | Si non rempli |
+|---|---|---|
+| Pairs connectés | au moins 2 | vérifier la connexion Internet et le port P2P |
+| Horloge | à moins de 2 s de celle des pairs | synchroniser l'heure du système (NTP) |
+| Nœud | pas arrêté par un conflit de finalité | intervention humaine (journal du nœud) |
+| Dernier bloc | il y a moins de 25 heures | le nœud n'est peut-être plus synchronisé |
+
+**Mise en page vérifiée** avant chaque modification de l'interface : `web/tools/layoutcheck.mjs` ouvre
+chaque page dans Chrome à six largeurs (1440 à 360 px), en thème clair et sombre, et signale tout
+débordement, texte coupé, barre de défilement interne ou erreur de la console.
+
 #### Sécurité de l'API locale
 
 Le navigateur de l'opérateur visite aussi d'autres sites : n'importe quelle page peut tenter d'envoyer des requêtes à `localhost:3001`. L'API s'en protège ainsi :
