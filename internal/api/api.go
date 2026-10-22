@@ -45,6 +45,7 @@ type Chain interface {
 	HeaderAt(height uint64) (blockchain.Header, error)
 	BlockAt(height uint64) (blockchain.Block, error)
 	ReadState(func(*blockchain.State))
+	RewardAt(height uint64) (uint64, bool) // part de récompense par participant du bloc (affichage)
 }
 
 // Engine : soumissions et état du consensus (consensus.Engine).
@@ -91,6 +92,7 @@ type Config struct {
 	Version   string // version du logiciel, affichée
 	Now       func() time.Time
 	NextBlock func() time.Time // serveur de développement seulement (blocs simulés) ; nil : règle du réseau
+	IPCSource string           // URL lue par l'oracle de ce nœud (config.toml, ipc_url), affichée pour vérification
 	Poll      time.Duration    // fréquence de surveillance des nouveaux blocs (SSE) ; défaut 1 s
 	MaxEvents int              // clients SSE simultanés au plus ; défaut 16
 
@@ -106,6 +108,7 @@ type Server struct {
 	token  string
 	mux    *http.ServeMux
 	events chan struct{} // jetons de clients SSE
+	dv     derived       // données recalculées une fois par bloc
 	csp    string
 }
 

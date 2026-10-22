@@ -129,7 +129,7 @@ main { max-width: 1080px; margin: 0 auto; padding: 28px clamp(16px, 4vw, 48px) 6
 }
 .sim { width: fit-content; padding: 6px 12px; border-radius: 8px; background: var(--warn-soft); color: var(--warn); font-weight: 700; }
 .chart { width: 100%; height: auto; display: block; }
-.chart text { fill: var(--muted); font: 11px var(--f-body); }
+.chart text { fill: var(--muted); font-family: var(--f-body); font-size: var(--fs, 11px); }
 .chart .grid { stroke: var(--line); }
 .chart .area-loss { fill: var(--bad-soft); opacity: 0.7; }
 .chart .line-eur { fill: none; stroke: var(--bad); stroke-width: 2.5; }
@@ -138,7 +138,7 @@ main { max-width: 1080px; margin: 0 auto; padding: 28px clamp(16px, 4vw, 48px) 6
 .chart .dot-eur { fill: var(--bad); }
 .chart .lbl-etl { fill: var(--accent); font-weight: 700; }
 .chart .lbl-eur { fill: var(--bad); font-weight: 700; }
-.chart .watermark { fill: var(--warn); opacity: 0.22; font-size: 22px; font-weight: 700; letter-spacing: 4px; }
+.chart .watermark { fill: var(--warn); opacity: 0.22; font-size: calc(var(--fs, 11px) * 2); font-weight: 700; letter-spacing: 4px; }
 .legend, .key { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--t-sm); color: var(--muted); }
 .legend i, .key i { display: inline-block; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
 .legend i { width: 18px; height: 3px; }
@@ -157,11 +157,11 @@ main { max-width: 1080px; margin: 0 auto; padding: 28px clamp(16px, 4vw, 48px) 6
 .dayrule .now { stroke: var(--accent); stroke-width: 2; }
 .dayrule .blk { fill: var(--brass); }
 .dayrule .win { fill: var(--brass-soft); }
-.dayrule text { fill: var(--muted); font: 13px var(--f-body); }
+.dayrule text { fill: var(--muted); font-family: var(--f-body); font-size: var(--fs, 11px); }
 .dayrule .blk-label { fill: var(--brass); font-weight: 700; }
 .issues { margin: 0; padding: 12px 14px 12px 32px; border-radius: 10px; background: var(--warn-soft); display: grid; gap: 4px; font-size: var(--t-sm); }
 
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
 .stat { display: grid; gap: 4px; padding: 18px 20px; box-shadow: -1px 0 0 var(--line), 0 -1px 0 var(--line); }
 .stat .v { font: 400 var(--t-xl)/1.1 var(--f-display); font-variant-numeric: tabular-nums; }
 .stat .s { font-size: var(--t-sm); color: var(--muted); }
@@ -317,8 +317,36 @@ details.group > summary > span:first-child { flex: 1; }
 .key-prop { background: var(--brass); width: 9px !important; height: 9px !important; transform: rotate(45deg); }
 .vote-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .vote-bars li { display: grid; gap: 4px; font-size: var(--t-sm); }
-.vote-bars .bar { position: relative; height: 8px; overflow: visible; }
+.vote-bars .bar { display: block; position: relative; height: 8px; border-radius: 999px; background: var(--sunken); }
+.vote-bars .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--accent); }
 .vote-bars .need { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--brass); }
+
+/* --- page IPC --- */
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 20px; }
+.panel.stat { gap: 4px; }
+.split.even { grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); }
+.chart .area { fill: var(--accent-soft); opacity: 0.8; }
+.chart .line { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+.chart .dot { fill: var(--accent); }
+.chart .launch { stroke: var(--brass); stroke-dasharray: 3 3; }
+.chart .launch-label { fill: var(--brass); font-weight: 700; }
+.chart .last-label { fill: var(--ink); font-weight: 700; }
+.vote-value { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.vote-value .big { font: 400 var(--t-xl)/1.1 var(--f-display); font-variant-numeric: tabular-nums; }
+.gauge { position: relative; height: 14px; border-radius: 999px; background: var(--sunken); margin-top: 6px; }
+.gauge .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--accent); }
+.gauge .need { position: absolute; top: -5px; bottom: -5px; width: 2px; background: var(--brass); }
+a.button { display: inline-flex; align-items: center; padding: 10px 18px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-weight: 600; text-decoration: none; }
+a.button:hover { background: var(--sunken); }
+
+/* --- éligibilité au parrainage --- */
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--t-sm); }
+.checks li { display: flex; gap: 8px; align-items: baseline; }
+.checks .mark { font-weight: 700; }
+.checks .ok .mark { color: var(--good); }
+.checks .ko .mark { color: var(--bad); }
+.eligibility { display: grid; gap: 10px; }
+.ico.reward { background: var(--brass-soft); color: var(--brass); }
 
 /* --- formulaires et boutons (toutes les pages) --- */
 .field { display: flex; flex-direction: column; gap: 6px; margin: 0.8rem 0; }
@@ -388,10 +416,6 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .textbox textarea { margin: 0.5rem 0; }
 form.cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); gap: 0 1rem; }
 form.cols .actions { grid-column: 1 / -1; }
-.tallies { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
-.tallies li { display: grid; grid-template-columns: 12rem minmax(0, 1fr) auto auto; gap: 0.8rem; align-items: center; }
-.bar { display: block; height: 0.5rem; border-radius: 999px; background: var(--sunken); overflow: hidden; }
-.bar .fill { display: block; height: 100%; background: var(--accent); width: 0; }
 form.inline { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
 form.inline input { flex: 1; min-width: 0; }
 
@@ -424,7 +448,6 @@ form.inline input { flex: 1; min-width: 0; }
   .card.span2 { grid-column: 1 / -1; }
   .history li { grid-template-columns: minmax(0, 1fr) auto; }
   .history .peer, .history li > :last-child { grid-column: 1 / -1; }
-  .tallies li { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: no-preference) {
   main > * { animation: rise 0.3s ease both; }

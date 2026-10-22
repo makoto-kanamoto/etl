@@ -357,6 +357,26 @@ function preparePanel(app, op, onError) {
     out);
 }
 
+// eligibility : les trois conditions du consensus (Node.CanSponsor), vues par le nœud au prochain bloc.
+function eligibility(app) {
+  const { t, lang } = app;
+  const box = h("div", { class: "eligibility" }, h("p", { class: "muted" }, "…"));
+  const date = (s) => new Date(s * 1000).toLocaleDateString(locale(lang), { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  app.api.account(app.status.node.address).then((a) => {
+    const s = a.sponsorship;
+    if (!s) return put(clear(box), message("info", t("sponsor.notAdmitted")));
+    const line = (ok, text) => h("li", { class: ok ? "ok" : "ko" }, h("span", { class: "mark", "aria-hidden": "true" }, ok ? "✓" : "✗"), text);
+    const banned = s.ban_until > 0 && Date.now() / 1000 < s.ban_until;
+    put(clear(box),
+      h("ul", { class: "checks" },
+        line(s.founder || s.seniority_days >= s.seniority_needed, s.founder ? t("sponsor.check.founder") : t("sponsor.check.seniority", { days: s.seniority_days, needed: s.seniority_needed })),
+        line(!s.has_sponsored || s.days_since_last >= s.cooldown_days, s.has_sponsored ? t("sponsor.check.cooldown", { days: s.days_since_last, needed: s.cooldown_days }) : t("sponsor.check.never")),
+        line(!banned, banned ? t("sponsor.check.banned", { date: date(s.ban_until) }) : t("sponsor.check.noBan"))),
+      s.eligible ? message("ok", t("sponsor.eligible")) : message("warning", t("sponsor.notYet", { date: date(s.from) })));
+  }, () => put(clear(box), message("error", t("error.network"))));
+  return box;
+}
+
 function sponsorPanel(app, op, onError) {
   const { t, lang } = app;
   const text = h("textarea", { rows: 3, autocomplete: "off", spellcheck: "false", class: "mono small" });
@@ -392,6 +412,7 @@ function sponsorPanel(app, op, onError) {
   };
   return h("section", { class: "panel" },
     h("h2", {}, t("sponsor.sign.title")),
+    eligibility(app),
     note,
     h("form", { onSubmit: (e) => (e.preventDefault(), read()) },
       field(t("sponsor.label"), text),

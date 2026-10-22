@@ -281,10 +281,7 @@ func (r registry) applyRegistrations(regs []Registration, day int64, p Params) e
 			return ErrRegistrationStatus
 		}
 		sponsor := r[reg.Sponsor.Hash]
-		if sponsor.Status != StatusAdmitted ||
-			(!sponsor.Founder && day-sponsor.AdmittedDay < p.SponsorSeniorityDays) ||
-			(sponsor.HasSponsored && day-sponsor.LastSponsorDay < p.SponsorCooldownDays) ||
-			day < sponsor.SponsorBanUntil {
+		if !sponsor.CanSponsor(day, p) {
 			return ErrSponsorNotEligible
 		}
 		sponsor.HasSponsored, sponsor.LastSponsorDay = true, day
@@ -317,6 +314,42 @@ func (r registry) applyObservations(obs []Participation, prevHash crypto.Hash, b
 }
 
 // excludedBy renvoie les nœuds que le bloc exclut : exclusions votées, double participation, double vote.
+// CanSponsor indique si n peut parrainer un candidat le jour day : nœud admis, ancienneté atteinte
+// (fondateurs dispensés), délai depuis son dernier parrainage écoulé, aucune interdiction en cours.
+// Règle de consensus, utilisée aussi par l'API pour l'afficher à l'opérateur.
+func (n Node) CanSponsor(day int64, p Params) bool {
+	return n.Status == StatusAdmitted &&
+		(n.Founder || day-n.AdmittedDay >= p.SponsorSeniorityDays) &&
+		(!n.HasSponsored || day-n.LastSponsorDay >= p.SponsorCooldownDays) &&
+		day >= n.SponsorBanUntil
+}
+
+// SponsorFrom renvoie le premier jour où n (admis) remplit les conditions de CanSponsor, à paramètres
+// constants.
+func (n Node) SponsorFrom(p Params) int64 {
+	from := n.SponsorBanUntil
+	if !n.Founder && n.AdmittedDay+p.SponsorSeniorityDays > from {
+		from = n.AdmittedDay + p.SponsorSeniorityDays
+	}
+	if n.HasSponsored && n.LastSponsorDay+p.SponsorCooldownDays > from {
+		from = n.LastSponsorDay + p.SponsorCooldownDays
+	}
+	return from
+}
+
+// Rewarded indique si a a touché la récompense du bloc b : participant, et non exclu par ce bloc.
+func (b *Block) Rewarded(a crypto.Address) bool {
+	if excludedBy(b)[a.Hash] {
+		return false
+	}
+	for i := range b.Participants {
+		if b.Participants[i].Miner.Hash == a.Hash {
+			return true
+		}
+	}
+	return false
+}
+
 func excludedBy(b *Block) map[addrKey]bool {
 	out := map[addrKey]bool{}
 	for i := range b.Exclusions {

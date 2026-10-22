@@ -129,7 +129,7 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 
 	// Dashboard (127.0.0.1 seulement).
 	n.API, err = api.New(api.Config{Params: p, Port: c.Dashboard.Port, TokenPath: c.Dashboard.Token, Static: o.Static,
-		Version: o.Version, Now: o.Now, Chain: n.Store, Engine: n.Engine, Network: n.Host, Oracle: orc})
+		Version: o.Version, Now: o.Now, Chain: n.Store, Engine: n.Engine, Network: n.Host, Oracle: orc, IPCSource: c.Oracle.IPCURL})
 	if err != nil {
 		n.stopEarly()
 		return nil, err

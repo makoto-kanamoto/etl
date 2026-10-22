@@ -695,3 +695,32 @@ func open2(t *testing.T, path string, p blockchain.Params) *Store {
 	t.Cleanup(func() { s.Close() })
 	return s
 }
+
+// Part de récompense de chaque bloc : écrite à l'application, gardée malgré l'élagage, relue après
+// réouverture ; sa somme sur les participants égale exactement les ETL émis.
+func TestRewardsKeptAndExact(t *testing.T) {
+	s, net, path := newChain(t, Options{Pruning: true, KeepBlocks: 2})
+	grow(t, s, net, 1, 6)
+	s.Close()
+	s = open(t, path, net.P, Options{Pruning: true, KeepBlocks: 2})
+	defer s.Close()
+	if r, ok := s.RewardAt(0); !ok || r != 0 {
+		t.Fatalf("genesis : %d %v", r, ok)
+	}
+	if _, ok := s.RewardAt(7); ok {
+		t.Fatal("bloc inconnu")
+	}
+	var issued uint64
+	for h := uint64(1); h <= 6; h++ {
+		r, ok := s.RewardAt(h)
+		if !ok || r == 0 {
+			t.Fatalf("bloc %d : %d %v (élagué ou non : la part reste)", h, r, ok)
+		}
+		issued += r * uint64(len(net.Founders)) // tous les fondateurs participent à chaque bloc
+	}
+	var supply uint64
+	s.ReadState(func(st *blockchain.State) { supply = st.Supply() })
+	if issued != supply {
+		t.Fatalf("parts × participants = %d, ETL en circulation = %d", issued, supply)
+	}
+}

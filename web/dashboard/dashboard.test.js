@@ -11,6 +11,7 @@ import { STRINGS, LANGS, t } from "./lib/strings.js";
 import { makeApi, ApiError } from "./lib/api.js";
 import { addressHint, put, h, svg } from "./lib/dom.js";
 import { capitalize } from "./lib/ui.js";
+import { inseePage, missingVotes, chartScale } from "./views/ipc.js";
 import { createHash } from "node:crypto";
 import { identicon, HUES } from "./lib/identicon.js";
 import { qrMatrix } from "./lib/qr.js";
@@ -161,7 +162,7 @@ test("api : JSON, montants en BigInt, erreurs du nœud et réseau injoignable", 
   const replies = {
     "/api/accounts/etl1qabc": { balance: "150000000", nonce: "2", next_nonce: "4" },
     "/api/params": { params: [{ name: "fee_bps", value: "10" }, { name: "min_fee", value: "10000" }] },
-        "/api/accounts/etl1qabc/history": { transactions: [{ amount: "5", fee: "10000" }], escrow_movements: [{ amount: "50051000", kind: "lock", out: true }] },
+        "/api/accounts/etl1qabc/history": { transactions: [{ amount: "5", fee: "10000" }], escrow_movements: [{ amount: "50051000", kind: "lock", out: true }], rewards: [{ height: 7, amount: "100000000" }] },
   };
   const fake = async (path, init) => {
     calls.push({ path, init });
@@ -179,6 +180,7 @@ test("api : JSON, montants en BigInt, erreurs du nœud et réseau injoignable", 
     const hist = await api.history("etl1qabc");
   assert.equal(hist.transactions[0].fee, 10_000n);
   assert.equal(hist.escrow[0].amount, 50_051_000n);
+  assert.equal(hist.rewards[0].amount, 100_000_000n);
   await assert.rejects(api.submitTx("00"), (e) => e instanceof ApiError && e.status === 409 && e.message === "nonce incorrect");
   const post = calls.find((c) => c.path === "/api/tx").init;
   assert.equal(post.method, "POST");
@@ -631,4 +633,16 @@ test("libellés d'échanges : chiffrés, liés au portefeuille, identifiant vér
   await assert.rejects(s.labels(), /verrouillé/);
   s.forget();
   assert.equal(s.storage.size(), 0, "libellés retirés avec le portefeuille");
+});
+
+test("IPC : page INSEE de la série lue, voix manquantes, échelle de la courbe", () => {
+  assert.equal(inseePage("https://api.insee.fr/series/BDM/V1/data/SERIES_BDM/011814630"), "https://www.insee.fr/fr/statistiques/serie/011814630");
+  assert.equal(inseePage("https://exemple.org/ipc"), null, "autre source : pas de lien inventé");
+  assert.equal(inseePage("https://api.insee.fr/series/BDM/V1/data/SERIES_BDM/011814630?x=1"), null);
+  assert.equal(inseePage(undefined), null);
+  assert.equal(missingVotes(26, 29), 3);
+  assert.equal(missingVotes(30, 29), 0);
+  assert.deepEqual(chartScale([103070]), [102000, 104000], "une seule valeur : axe d'au moins un point de part et d'autre");
+  const [lo, hi] = chartScale([100300, 105660]);
+  assert.ok(lo <= 100300 - 500 && hi >= 105660 + 500 && lo % 1000 === 0 && hi % 1000 === 0);
 });

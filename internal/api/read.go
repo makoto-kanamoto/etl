@@ -82,6 +82,15 @@ func (s *Server) status(w http.ResponseWriter, _ *http.Request) {
 			"status":  nodeStatus,
 		},
 	}
+	dv := s.derivedNow()
+	out["supply"] = units(dv.supply)
+	if node != "" {
+		nodeOut := out["node"].(map[string]any)
+		nodeOut["participated"], nodeOut["examined"] = dv.participated, dv.examined
+		if dv.lastRewardKnown {
+			nodeOut["last_reward"] = units(dv.lastReward)
+		}
+	}
 	var issues []string
 	if s.cfg.Network != nil {
 		in, outPeers := s.cfg.Network.PeerCount()
@@ -245,7 +254,10 @@ func (s *Server) account(w http.ResponseWriter, r *http.Request) {
 	var status string
 	var node blockchain.Node
 	var escrows []string
+	next := s.nextBlockTime(s.cfg.Chain.Tip())
+	var p blockchain.Params
 	s.cfg.Chain.ReadState(func(st *blockchain.State) {
+		p = st.ParamsAt(s.cfg.Params, next)
 		acc, rep, status, node = st.Account(a), st.Reputation(a), st.Status(a).String(), st.Node(a)
 		for _, id := range st.EscrowsOf(a) {
 			escrows = append(escrows, hexOf(id))
@@ -254,15 +266,15 @@ func (s *Server) account(w http.ResponseWriter, r *http.Request) {
 	if escrows == nil {
 		escrows = []string{}
 	}
-	next := acc.Nonce
+	nonce := acc.Nonce
 	if s.cfg.Engine != nil {
-		next = s.cfg.Engine.NextNonce(a) // mempool compris : envois successifs avant le bloc
+		nonce = s.cfg.Engine.NextNonce(a) // mempool compris : envois successifs avant le bloc
 	}
-	reply(w, map[string]any{
+	out := map[string]any{
 		"address":    s.addr(a),
 		"balance":    units(acc.Balance),
 		"nonce":      units(acc.Nonce),
-		"next_nonce": units(next),
+		"next_nonce": units(nonce),
 		"node":       status,
 		"sponsor":    s.addr(crypto.Address{HRP: s.cfg.Params.AddressHRP, Hash: node.Sponsor}), // vide : fondateur ou réactivation
 		"founder":    node.Founder,
@@ -273,7 +285,30 @@ func (s *Server) account(w http.ResponseWriter, r *http.Request) {
 			"disputes_lost":   units(rep.DisputesLost),
 		},
 		"escrows": escrows,
-	})
+	}
+	if node.Status == blockchain.StatusAdmitted {
+		out["sponsorship"] = sponsorshipOf(node, next/86400, p)
+	}
+	reply(w, out)
+}
+
+// sponsorshipOf : peut-il parrainer au prochain bloc (règle du consensus, Node.CanSponsor), et sinon
+// à partir de quand ; détail des trois conditions (ancienneté, délai, interdiction).
+func sponsorshipOf(n blockchain.Node, day int64, p blockchain.Params) map[string]any {
+	out := map[string]any{
+		"eligible":         n.CanSponsor(day, p),
+		"from":             n.SponsorFrom(p) * 86400,
+		"founder":          n.Founder,
+		"seniority_days":   day - n.AdmittedDay,
+		"seniority_needed": p.SponsorSeniorityDays,
+		"cooldown_days":    p.SponsorCooldownDays,
+		"has_sponsored":    n.HasSponsored,
+		"ban_until":        n.SponsorBanUntil * 86400,
+	}
+	if n.HasSponsored {
+		out["days_since_last"] = day - n.LastSponsorDay
+	}
+	return out
 }
 
 // history parcourt les blocs conservés (au plus 100, du plus récent au plus ancien) et renvoie les
@@ -286,6 +321,7 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 	tip := s.cfg.Chain.Tip()
 	out := []txJSON{}
 	moves := []escrowMove{}
+	rewards := []rewardJSON{}
 	scanned := 0
 	for h := tip.Height; h > 0 && scanned < maxBlocks; h-- {
 		b, err := s.cfg.Chain.BlockAt(h)
@@ -301,8 +337,18 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 		for i := range b.EscrowOps {
 			moves = append(moves, s.escrowMoves(&b.EscrowOps[i], a, h)...)
 		}
+		if r, known := s.rewardOf(&b, a); known && r > 0 {
+			rewards = append(rewards, rewardJSON{Height: h, Time: b.Header.Timestamp, Amount: units(r)})
+		}
 	}
-	reply(w, map[string]any{"transactions": out, "escrow_movements": moves, "blocks_scanned": scanned})
+	reply(w, map[string]any{"transactions": out, "escrow_movements": moves, "rewards": rewards, "blocks_scanned": scanned})
+}
+
+// rewardJSON : part de récompense touchée par l'adresse au bloc Height.
+type rewardJSON struct {
+	Height uint64 `json:"height"`
+	Time   int64  `json:"time"`
+	Amount string `json:"amount"`
 }
 
 // escrowMove : effet d'une opération d'escrow sur le solde d'une adresse.
@@ -430,6 +476,8 @@ func (s *Server) ipc(w http.ResponseWriter, _ *http.Request) {
 		}
 		out["oracle"] = o
 	}
+	out["history"] = s.derivedNow().ipc
+	out["source_url"] = s.cfg.IPCSource
 	reply(w, out)
 }
 

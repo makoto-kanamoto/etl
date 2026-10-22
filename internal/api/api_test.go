@@ -65,6 +65,16 @@ func (c *chain) BlockAt(h uint64) (blockchain.Block, error) {
 	}
 	return b, nil
 }
+func (c *chain) RewardAt(h uint64) (uint64, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if h == 0 {
+		return 0, true
+	}
+	r, ok := c.net.Rewards[h]
+	return r, ok
+}
+
 func (c *chain) ReadState(f func(*blockchain.State)) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1031,5 +1041,99 @@ func TestRegistrationTextLayout(t *testing.T) {
 	if len(b) != 178 || !bytes.Equal(b[:20], f[0].Addr.Hash[:]) || !bytes.Equal(b[20:40], f[1].Addr.Hash[:]) ||
 		binary.BigEndian.Uint64(b[40:48]) != 20383 || !bytes.Equal(b[48:113], r.CandidateSig[:]) || !bytes.Equal(b[113:], make([]byte, 65)) {
 		t.Fatalf("disposition : %x", b)
+	}
+}
+
+// Données recalculées une fois par bloc : ETL en circulation, assiduité et part du nœud, historique
+// de l'IPC tiré des en-têtes, récompenses dans l'historique d'une adresse, éligibilité au parrainage.
+func TestDerivedData(t *testing.T) {
+	b := newBench(t, nil)
+	f := b.c.net.Founders
+	q4 := blockchain.IPCRecord{Value: 103500, Period: "2026-Q4", SourceSHA256: [32]byte{1}}
+	b.c.next(t, 2, func(blk *blockchain.Block) {
+		r := q4
+		blk.Header.IPC, blk.IPCVotes = &r, b.c.net.IPCVotes(t, q4, 7)
+	})
+	b.c.next(t, 3, nil)
+
+	st := b.get("/api/status")
+	var total uint64
+	for _, w := range f {
+		total += b.c.net.State.Account(w.Addr).Balance
+	}
+	if st["supply"] != fmt.Sprint(total) || total != 3*b.c.net.P.DailyReward {
+		t.Fatalf("circulation : %v (soldes %d)", st["supply"], total)
+	}
+	node := st["node"].(map[string]any)
+	share := b.c.net.Rewards[3]
+	if node["participated"].(float64) != 3 || node["examined"].(float64) != 3 || node["last_reward"] != fmt.Sprint(share) || share == 0 {
+		t.Fatalf("assiduité : %v (part %d)", node, share)
+	}
+
+	// Nœud qui n'a participé à aucun bloc : assiduité nulle, aucune part.
+	stranger0 := chaintest.NewWallet(t, b.c.net.P)
+	b.e.addr = stranger0.Addr
+	b.c.next(t, 4, nil)
+	if n := b.get("/api/status")["node"].(map[string]any); n["participated"].(float64) != 0 || n["examined"].(float64) != 4 || n["last_reward"] != "0" {
+		t.Fatalf("nœud absent des blocs : %v", n)
+	}
+	b.e.addr = f[0].Addr
+
+	hist := b.get("/api/ipc")["history"].([]any)
+	if len(hist) != 2 {
+		t.Fatalf("historique de l'IPC : %v", hist)
+	}
+	g, q := hist[0].(map[string]any), hist[1].(map[string]any)
+	if g["height"].(float64) != 0 || g["value"].(float64) != float64(b.c.net.Genesis.Header.IPC.Value) ||
+		q["height"].(float64) != 2 || q["period"] != "2026-Q4" || q["value"].(float64) != 103500 || q["time"].(float64) != float64(chaintest.Day(2)) {
+		t.Fatalf("points : %v / %v", g, q)
+	}
+	if src := b.get("/api/ipc")["source_url"]; src != "" {
+		t.Fatalf("source non configurée : %v", src)
+	}
+	if again := b.get("/api/ipc")["history"].([]any); len(again) != 2 {
+		t.Fatal("historique recalculé en double")
+	}
+
+	rw := b.get("/api/accounts/" + f[1].Addr.String() + "/history")["rewards"].([]any)
+	if len(rw) != 4 || rw[0].(map[string]any)["height"].(float64) != 4 || rw[1].(map[string]any)["amount"] != fmt.Sprint(share) {
+		t.Fatalf("récompenses : %v", rw)
+	}
+	stranger := chaintest.NewWallet(t, b.c.net.P)
+	if rw := b.get("/api/accounts/" + stranger.Addr.String() + "/history")["rewards"].([]any); len(rw) != 0 {
+		t.Fatalf("récompenses d'un non-participant : %v", rw)
+	}
+
+	sp := b.get("/api/accounts/" + f[0].Addr.String())["sponsorship"].(map[string]any)
+	if sp["eligible"] != true || sp["founder"] != true || sp["has_sponsored"] != false {
+		t.Fatalf("parrainage d'un fondateur : %v", sp)
+	}
+	if _, ok := b.get("/api/accounts/" + stranger.Addr.String())["sponsorship"]; ok {
+		t.Fatal("parrainage affiché pour une adresse hors registre")
+	}
+
+	// Part inconnue (bloc appliqué par une version antérieure) : rien d'inventé.
+	b.c.mu.Lock()
+	delete(b.c.net.Rewards, 3)
+	b.c.mu.Unlock()
+	b.c.next(t, 5, nil)
+	b.c.mu.Lock()
+	delete(b.c.net.Rewards, 5)
+	b.c.mu.Unlock()
+	if n := b.get("/api/status")["node"].(map[string]any); n["last_reward"] != nil {
+		t.Fatalf("part inconnue affichée : %v", n)
+	}
+	if rw := b.get("/api/accounts/" + f[1].Addr.String() + "/history")["rewards"].([]any); len(rw) != 3 {
+		t.Fatalf("blocs à part inconnue comptés : %v", rw)
+	}
+}
+
+func TestSponsorshipDetails(t *testing.T) {
+	p := chaintest.Params()
+	n := blockchain.Node{Status: blockchain.StatusAdmitted, AdmittedDay: 100, HasSponsored: true, LastSponsorDay: 250, SponsorBanUntil: 260}
+	sp := sponsorshipOf(n, 270, p)
+	if sp["eligible"] != (n.CanSponsor(270, p)) || sp["seniority_days"].(int64) != 170 || sp["days_since_last"].(int64) != 20 ||
+		sp["from"].(int64) != n.SponsorFrom(p)*86400 || sp["ban_until"].(int64) != 260*86400 {
+		t.Fatalf("détail : %v", sp)
 	}
 }

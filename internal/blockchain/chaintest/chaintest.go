@@ -48,6 +48,7 @@ type Net struct {
 	State    *blockchain.State
 	Tip      blockchain.Header
 	Founders []Wallet
+	Rewards  map[uint64]uint64 // hauteur → part de récompense par participant (comme le stockage)
 	keys     map[crypto.Address]*crypto.PrivateKey
 }
 
@@ -130,9 +131,15 @@ func (n *Net) Next(tb testing.TB, d int, edit func(*blockchain.Block)) (blockcha
 		tb.Fatal(err)
 	}
 	c := n.Certify(tb, &b.Header, len(n.keys))
-	if err := n.State.ApplyBlock(&b, n.P); err != nil {
+	ch, err := n.State.Prepare(&b, n.P)
+	if err != nil {
 		tb.Fatal(err)
 	}
+	n.State.Commit(ch)
+	if n.Rewards == nil {
+		n.Rewards = map[uint64]uint64{}
+	}
+	n.Rewards[b.Header.Height] = ch.Reward
 	n.Tip = b.Header
 	return b, c
 }

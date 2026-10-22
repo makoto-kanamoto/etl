@@ -29,6 +29,19 @@ export function svg(tag, attrs = {}, ...children) {
   return el;
 }
 
+// legible : le texte d'un graphique SVG garde la même taille à l'écran (px réels) quelle que soit la
+// largeur du graphique : la taille en unités du dessin suit le rapport largeur du dessin / largeur
+// affichée (variable CSS --fs, recalculée quand le graphique change de taille).
+export const CHART_TEXT_PX = 11;
+export function legible(el, viewWidth) {
+  if (typeof ResizeObserver !== "function") return el;
+  new ResizeObserver(([entry]) => {
+    const w = entry.contentRect.width;
+    if (w > 0) el.style.setProperty("--fs", `${(CHART_TEXT_PX * viewWidth) / w}px`);
+  }).observe(el);
+  return el;
+}
+
 // field : étiquette + champ (+ aide), reliés pour l'accessibilité.
 let fieldSeq = 0;
 export function field(label, input, help) {

@@ -49,6 +49,7 @@ export function makeApi(fetchImpl = (...a) => fetch(...a)) {
       return {
         transactions: h.transactions.map((tx) => ({ ...tx, amount: BigInt(tx.amount), fee: BigInt(tx.fee) })),
         escrow: (h.escrow_movements ?? []).map((m) => ({ ...m, amount: BigInt(m.amount) })),
+        rewards: (h.rewards ?? []).map((r) => ({ ...r, amount: BigInt(r.amount) })),
       };
     },
     ipc: () => call("GET", "/api/ipc"),

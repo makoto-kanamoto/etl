@@ -296,6 +296,27 @@ func TestFourNodesFinalizeBlocks(t *testing.T) {
 			t.Fatalf("récompenses du fondateur %d : %d, attendu %d", i, got, want[a])
 		}
 	}
+	// Part enregistrée par le stockage (table rewards) : identique sur chaque nœud, et son total
+	// sur les participants égale les ETL en circulation.
+	var issued uint64
+	for h := uint64(1); h <= 3; h++ {
+		share, ok := nodes[0].Store.RewardAt(h)
+		blk, _ := nodes[0].Store.BlockAt(h)
+		if !ok || share != blockchain.RewardShare(h, len(blk.Participants), test.Params) {
+			t.Fatalf("part du bloc %d : %d %v", h, share, ok)
+		}
+		for _, n := range nodes[1:] {
+			if other, _ := n.Store.RewardAt(h); other != share {
+				t.Fatalf("part du bloc %d différente selon le nœud", h)
+			}
+		}
+		issued += share * uint64(len(blk.Participants))
+	}
+	var supply uint64
+	nodes[0].Store.ReadState(func(st *blockchain.State) { supply = st.Supply() })
+	if supply != issued {
+		t.Fatalf("circulation %d, parts × participants %d", supply, issued)
+	}
 	// Cinquième nœud, passif, démarré après coup : il rattrape la chaîne.
 	late := testConfig(t)
 	late.Network.Bootstrap = []string{fmt.Sprintf("127.0.0.1:%d", cfgs[0].Node.Port)}

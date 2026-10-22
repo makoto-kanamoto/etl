@@ -1,7 +1,8 @@
 // Contrôle de mise en page du dashboard dans Chrome (sans fenêtre) : chaque page, six largeurs d'écran
 // (1440 à 360 px), thèmes clair et sombre. Signale : page plus large que l'écran, élément qui dépasse
 // à droite, contenu coupé ou barre de défilement interne, texte coupé dans un champ, texte d'un
-// graphique hors de son cadre, erreurs de la console et refus de la CSP.
+// graphique hors de son cadre, trop petit à l'écran (< 9,5 px) ou superposé à un autre, erreurs de la
+// console et refus de la CSP.
 //
 //   go run -tags dev ./cmd/etl-dev &                       (ou un vrai nœud)
 //   node web/tools/layoutcheck.mjs [http://localhost:3001] [répertoire de captures]
@@ -43,7 +44,18 @@ const PROBE = `(() => {
   }
   for (const s of document.querySelectorAll("svg[viewBox]")) {
     const vb = s.viewBox.baseVal;
+    const scale = s.getBoundingClientRect().width / vb.width;
     for (const t of s.querySelectorAll("text")) {
+      const px = parseFloat(getComputedStyle(t).fontSize) * scale;
+      if (!t.classList.contains("watermark")) {
+        const r = t.getBoundingClientRect();
+        for (const u of s.querySelectorAll("text")) {
+          if (u === t || u.classList.contains("watermark") || !(t.compareDocumentPosition(u) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
+          const q = u.getBoundingClientRect();
+          if (r.width && q.width && r.left < q.right - 1 && q.left < r.right - 1 && r.top < q.bottom - 1 && q.top < r.bottom - 1) out.push("textes superposés : « " + t.textContent + " » et « " + u.textContent + " »");
+        }
+      }
+      if (px < 9.5) out.push("texte de graphique trop petit (" + px.toFixed(1) + " px) : « " + t.textContent + " »");
       const b = t.getBBox();
       if (b.x < vb.x - 1 || b.y < vb.y - 1 || b.x + b.width > vb.x + vb.width + 1 || b.y + b.height > vb.y + vb.height + 1) out.push("texte hors de son graphique : « " + t.textContent + " »");
     }

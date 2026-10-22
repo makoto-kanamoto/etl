@@ -93,6 +93,22 @@ func (s *State) Status(a crypto.Address) NodeStatus {
 }
 
 // ActiveCount renvoie le nombre de nœuds admis et actifs (dénominateur des votes 2/3).
+// Supply renvoie les ETL en circulation : soldes de tous les comptes, plus les fonds retenus par les
+// échanges en cours (montant et rémunération de l'arbitre). Rien n'est détruit (les frais vont au
+// proposant) : c'est le total émis depuis le genesis.
+func (s *State) Supply() uint64 {
+	var total uint64
+	for _, a := range s.accounts {
+		total += a.Balance
+	}
+	for _, e := range s.escrows {
+		if e.Outcome == EscrowPending {
+			total += e.Terms.Amount + e.Terms.ArbiterFee
+		}
+	}
+	return total
+}
+
 func (s *State) ActiveCount() int {
 	return s.nodes.activeCount()
 }
@@ -163,6 +179,9 @@ type Changes struct {
 	DeletedEscrows []crypto.Hash          // échanges élagués
 	Reputations    map[addrKey]Reputation // réputations modifiées
 	Root           crypto.Hash            // racine de l'état après le bloc
+	// Reward : part versée à chaque participant récompensé par ce bloc (0 sous MinActiveNodes).
+	// Information pour l'affichage, HORS racine d'état : elle ne participe pas au consensus.
+	Reward uint64
 
 	nodes registry // registre complet après le bloc
 	gov   govState // paramètres après le bloc
@@ -344,6 +363,7 @@ func (s *State) prepare(b *Block, p Params) (*Changes, error) {
 		return nil, err
 	}
 	c := s.changes(changes, nodes, s.baseIPC, ipc, gov, &escrowChanges{esc.escrows, deleted, esc.reps})
+	c.Reward = share
 	return c, nil
 }
 

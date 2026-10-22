@@ -343,6 +343,7 @@ function renderFeed(app, el, hist, address) {
       return { height: tx.height, out, kind: out ? "out" : "in", peer, amount: tx.amount, fee: out ? tx.fee : 0n };
     }),
     ...hist.escrow.map((m) => ({ height: m.height, out: m.out, kind: "lock", label: t(`history.escrow.${m.kind}`), amount: m.amount, escrow: m.escrow })),
+    ...(hist.rewards ?? []).map((r) => ({ height: r.height, out: false, kind: "reward", label: t("activity.reward"), amount: r.amount })),
   ].sort((a, b) => b.height - a.height);
   if (!rows.length) return put(clear(el), h("p", { class: "muted" }, t("history.empty")));
   put(clear(el), h("ul", {}, rows.map((r) => {

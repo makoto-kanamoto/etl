@@ -1,8 +1,8 @@
 // Accueil : la valeur de 1 ETL et pourquoi elle tient, le prochain bloc sur une règle de 24 h, l'état
 // du nœud et du réseau.
 
-import { h, svg } from "../lib/dom.js";
-import { formatRate } from "../lib/amount.js";
+import { h, svg, legible } from "../lib/dom.js";
+import { formatRate, formatETL } from "../lib/amount.js";
 
 const DAY = 86400;
 // Fenêtre de lecture de l'IPC par les nœuds (internal/oracle : 20:00 + 150 min, UTC).
@@ -45,7 +45,7 @@ const ipcText = (v, lang) => (v / 1000).toLocaleString(locale(lang), { minimumFr
 // --- graphique de simulation ---
 
 function simChart(t) {
-  const W = 520, H = 220, L = 40, R = 14, T = 14, B = 30, LO = 75;
+  const W = 520, H = 230, L = 46, R = 14, T = 14, B = 34, LO = 75;
   const eur = simulation();
   const x = (y) => L + ((W - L - R) * y) / SIM_YEARS;
   const yv = (v) => T + ((H - T - B) * (100 - v)) / (100 - LO);
@@ -54,11 +54,11 @@ function simChart(t) {
     svg("line", { class: "grid", x1: L, x2: W - R, y1: yv(v), y2: yv(v) }),
     svg("text", { x: L - 8, y: yv(v) + 4, "text-anchor": "end" }, String(v)),
   ]);
-  const xl = [0, 2, 4, 6, 8, 10].map((y) =>
+  const xl = [0, 5, 10].map((y) =>
     svg("text", { x: x(y), y: H - 8, "text-anchor": y === 0 ? "start" : y === SIM_YEARS ? "end" : "middle" },
       y === 0 ? t("home.sim.now") : t("home.sim.year", { n: y })));
   const last = eur[SIM_YEARS];
-  return svg("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": t("home.sim.alt") },
+  return legible(svg("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": t("home.sim.alt") },
     ...grid, ...xl,
     svg("path", { class: "area-loss", d: `${line(eur)} L${x(SIM_YEARS)},${yv(LO)} L${x(0)},${yv(LO)} Z` }),
     svg("text", { class: "watermark", x: (L + W - R) / 2, y: yv(87), "text-anchor": "middle" }, t("home.sim.watermark")),
@@ -68,7 +68,7 @@ function simChart(t) {
     svg("circle", { class: "dot-eur", cx: x(SIM_YEARS), cy: yv(last), r: 4.5 }),
     svg("text", { class: "lbl-etl", x: x(SIM_YEARS) - 8, y: yv(100) + 18, "text-anchor": "end" }, `${t("home.sim.etl")} : 100`),
     svg("text", { class: "lbl-eur", x: x(SIM_YEARS) - 8, y: yv(last) + 18, "text-anchor": "end" }, `100 € : ${Math.round(last)}`),
-  );
+  ), W);
 }
 
 // --- règle graduée du jour (UTC) ---
@@ -90,10 +90,10 @@ function dayRule(t, now, blockTime) {
   }
   const b = rulePosition(blockTime);
   parts.push(svg("rect", { class: "blk", x: (W * b - 3).toFixed(1), y: 6, width: 6, height: 26, rx: 2 }));
-  parts.push(svg("text", { class: "blk-label", x: x(b), y: 0, "text-anchor": b > 0.95 ? "end" : "middle" }, t("home.rule.blockShort")));
+  parts.push(svg("text", { class: "blk-label", x: x(b), y: 2, "text-anchor": b > 0.95 ? "end" : "middle" }, t("home.rule.blockShort")));
   const nowLine = svg("line", { class: "now", x1: x(rulePosition(now)), x2: x(rulePosition(now)), y1: 8, y2: 32 });
   parts.push(nowLine);
-  const el = svg("svg", { viewBox: `0 -14 ${W} 70`, "aria-hidden": "true" }, ...parts);
+  const el = legible(svg("svg", { viewBox: `0 -28 ${W} 86`, "aria-hidden": "true" }, ...parts), W);
   el.moveNow = (n) => { nowLine.setAttribute("x1", x(rulePosition(n))); nowLine.setAttribute("x2", x(rulePosition(n))); };
   return el;
 }
@@ -125,6 +125,8 @@ function nodePanel(app) {
       } catch { /* presse-papiers refusé : l'adresse reste sélectionnable */ }
     } }, t("home.copy"));
     body.push(h("p", { class: "addr" }, st.node.address), copy);
+    if (st.node.examined) body.push(h("p", { class: "fine" }, t("home.participation", { n: st.node.participated, of: st.node.examined })));
+    if (st.node.last_reward !== undefined) body.push(h("p", { class: "fine" }, t("home.lastReward", { amount: formatETL(BigInt(st.node.last_reward), app.lang) })));
   } else {
     body.push(h("p", { class: "muted" }, t("home.passive")));
   }
@@ -198,7 +200,8 @@ export function renderHome(app) {
     stat(t("home.blocks"), st.height.toLocaleString(locale(lang)), t("home.blocksNote")),
     stat(t("home.active"), String(st.active_nodes), t("home.activeNote")),
     st.peers ? stat(t("home.peers"), String(st.peers.in + st.peers.out), t("home.peersValue", st.peers)) : null,
-    stat(t("home.ipc"), ipcText(st.ipc.value, lang), t("home.ipcPeriod", { period: st.ipc.period })));
+    stat(t("home.ipc"), ipcText(st.ipc.value, lang), t("home.ipcPeriod", { period: st.ipc.period })),
+    st.supply !== undefined ? stat(t("home.supply"), formatETL(BigInt(st.supply), lang), t("home.supplyNote")) : null);
 
   return h("div", { class: "page" },
     h("div", { class: "page-head" }, h("div", {}, h("span", { class: "label" }, t("home.kicker")), h("h1", {}, t("home.title")))),

@@ -57,6 +57,7 @@ var (
 	bucketNodes    = []byte("nodes")       // adresse → entrée du registre
 	bucketEscrows  = []byte("escrows")     // identifiant → échange sous escrow (élagué 90 j après règlement)
 	bucketReps     = []byte("reputations") // adresse → réputation
+	bucketRewards  = []byte("rewards")     // hauteur → part de récompense par participant (affichage, hors racine d'état)
 
 	keyChainID = []byte("chain_id")
 	keyGenesis = []byte("genesis")
@@ -109,7 +110,7 @@ func (s *Store) Close() error {
 
 func (s *Store) load() error {
 	return s.db.Update(func(tx *bolt.Tx) error {
-		for _, name := range [][]byte{bucketMeta, bucketHeaders, bucketBlocks, bucketCerts, bucketVotes, bucketHashes, bucketAccounts, bucketNodes, bucketEscrows, bucketReps} {
+		for _, name := range [][]byte{bucketMeta, bucketHeaders, bucketBlocks, bucketCerts, bucketVotes, bucketHashes, bucketAccounts, bucketNodes, bucketEscrows, bucketReps, bucketRewards} {
 			if _, err := tx.CreateBucketIfNotExists(name); err != nil {
 				return err
 			}
@@ -285,6 +286,7 @@ func (s *Store) write(tx *bolt.Tx, b *blockchain.Block, c *blockchain.Changes) e
 		{bucketMeta, keyBaseIPC, blockchain.AppendIPCRecord(nil, c.BaseIPC)},
 		{bucketMeta, keyIPC, blockchain.AppendIPCRecord(nil, c.IPC)},
 		{bucketMeta, keyGov, c.Gov},
+		{bucketRewards, height, u64(c.Reward)},
 	}
 	for _, p := range puts {
 		if err := tx.Bucket(p.bucket).Put(p.key, p.value); err != nil {
@@ -399,6 +401,18 @@ func (s *Store) ReadState(fn func(*blockchain.State)) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	fn(s.state)
+}
+
+// RewardAt renvoie la part de récompense versée à chaque participant récompensé du bloc height
+// (gardée à vie, 8 octets par bloc). ok faux : bloc inconnu, ou appliqué par une version antérieure.
+func (s *Store) RewardAt(height uint64) (reward uint64, ok bool) {
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		if v := tx.Bucket(bucketRewards).Get(u64(height)); len(v) == 8 {
+			reward, ok = binary.BigEndian.Uint64(v), true
+		}
+		return nil
+	})
+	return reward, ok
 }
 
 // HeaderAt renvoie l'en-tête à une hauteur donnée (toujours disponible, même élagué).
