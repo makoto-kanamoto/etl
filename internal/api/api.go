@@ -90,8 +90,9 @@ type Config struct {
 	Static    fs.FS  // interface web (web.FS) ; nil : API seule
 	Version   string // version du logiciel, affichée
 	Now       func() time.Time
-	Poll      time.Duration // fréquence de surveillance des nouveaux blocs (SSE) ; défaut 1 s
-	MaxEvents int           // clients SSE simultanés au plus ; défaut 16
+	NextBlock func() time.Time // serveur de développement seulement (blocs simulés) ; nil : règle du réseau
+	Poll      time.Duration    // fréquence de surveillance des nouveaux blocs (SSE) ; défaut 1 s
+	MaxEvents int              // clients SSE simultanés au plus ; défaut 16
 
 	Chain   Chain
 	Engine  Engine

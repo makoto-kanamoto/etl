@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -235,14 +236,18 @@ func main() {
 	c := &chain{net: chaintest.New(tb{}, p), blocks: map[uint64]blockchain.Block{}}
 	founder := c.net.Founders[0]
 	eng := &engine{c: c, pool: mempool.New(p, mempool.DefaultOptions()), key: founder.Key, me: founder.Addr}
-	// Historique jusqu'à hier : la tête de chaîne précède l'heure réelle (horodatages du navigateur).
-	for chaintest.Day(c.day+1) < time.Now().Unix()-86400 {
+	// Historique jusqu'aux dernières 24 h : la tête de chaîne précède l'heure réelle (horodatages du
+	// navigateur) et reste assez récente pour que l'accueil indique un réseau en bonne santé.
+	for chaintest.Day(c.day+1) < time.Now().Unix() {
 		c.next(eng)
 	}
 	words, _ := wallet.EncodePhrase(founder.Key.Bytes(), wallet.French)
 	dir, _ := os.MkdirTemp("", "etl-dev-")
 	defer os.RemoveAll(dir)
-	srv, err := api.New(api.Config{Params: p, Port: *port, TokenPath: filepath.Join(dir, "dashboard.token"), Version: "dev",
+	// Prochain bloc simulé : affiché tel quel par l'accueil (« dans moins d'une minute »).
+	var nextAt atomic.Int64
+	nextAt.Store(time.Now().Add(*every).Unix())
+	srv, err := api.New(api.Config{Params: p, Port: *port, NextBlock: func() time.Time { return time.Unix(nextAt.Load(), 0) }, TokenPath: filepath.Join(dir, "dashboard.token"), Version: "dev",
 		Static: os.DirFS(*static), Poll: 500 * time.Millisecond, Chain: c,
 		Engine: eng, Network: network{}, Oracle: &oracle{st: ioracle.Status{LastAttempt: time.Now().Add(-time.Hour),
 			Read: &blockchain.IPCRecord{Value: 104120, Period: "2026-Q4", SourceSHA256: [32]byte{0xed, 0xa2}}, Voted: true,
@@ -267,6 +272,7 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-t.C:
+				nextAt.Store(time.Now().Add(*every).Unix())
 				b := c.next(eng)
 				log.Printf("bloc %d (%s), %d transaction(s), %d opération(s) d'escrow", b.Header.Height,
 					time.Unix(b.Header.Timestamp, 0).UTC().Format("2006-01-02"), len(b.Txs), len(b.EscrowOps))

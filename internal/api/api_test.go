@@ -198,12 +198,13 @@ func newBench(t *testing.T, mod func(*Config)) *bench {
 		Now: func() time.Time { return time.Unix(chaintest.Day(1)+3600, 0) }, Poll: 10 * time.Millisecond, MaxEvents: 2,
 		Chain: c, Engine: b.e, Network: netStub{}, Oracle: b.o,
 		Static: fstest.MapFS{
-			"dashboard/index.html":   {Data: []byte("<!doctype html>")},
-			"wallet/keys.js":         {Data: []byte("export {}")},
-			"wallet/keys.test.js":    {Data: []byte("test")},
-			"wallet/testdata/v.json": {Data: []byte("{}")},
-			"wallet/.cache.js":       {Data: []byte("x")},
-			"wallet/notes.md":        {Data: []byte("x")},
+			"dashboard/index.html":    {Data: []byte("<!doctype html>")},
+			"wallet/keys.js":          {Data: []byte("export {}")},
+			"wallet/keys.test.js":     {Data: []byte("test")},
+			"wallet/testdata/v.json":  {Data: []byte("{}")},
+			"wallet/.cache.js":        {Data: []byte("x")},
+			"wallet/notes.md":         {Data: []byte("x")},
+			"dashboard/fonts/f.woff2": {Data: []byte("wOF2")},
 		}}
 	if mod != nil {
 		mod(&cfg)
@@ -408,15 +409,65 @@ func TestStatus(t *testing.T) {
 	if st["next_block"].(float64) != float64(chaintest.Day(2)) {
 		t.Fatalf("prochain bloc : %v (bloc du jour 1 déjà finalisé)", st["next_block"])
 	}
+	if st["block_time"].(float64) != 23*3600 {
+		t.Fatalf("heure du bloc : %v", st["block_time"])
+	}
 	if st["clock_offset_ms"].(float64) != 3500 {
 		t.Fatalf("écart d'horloge : %v", st["clock_offset_ms"])
 	}
 	if p := st["peers"].(map[string]any); p["in"].(float64) != 3 || p["out"].(float64) != 8 {
 		t.Fatalf("pairs : %v", p)
 	}
+	// Santé : horloge du banc décalée de 3,5 s → un seul critère non rempli.
+	if h := st["health"].(map[string]any); h["ok"] != false || fmt.Sprint(h["issues"]) != "[clock]" {
+		t.Fatalf("santé : %v", h)
+	}
 	passive := newBench(t, func(c *Config) { c.Engine, c.Network, c.Oracle = nil, nil, nil })
-	if n := passive.get("/api/status")["node"].(map[string]any); n["address"] != "" {
+	pst := passive.get("/api/status")
+	if n := pst["node"].(map[string]any); n["address"] != "" {
 		t.Fatalf("nœud passif : %v", n)
+	}
+	if h := pst["health"].(map[string]any); h["ok"] != true || len(h["issues"].([]any)) != 0 {
+		t.Fatalf("santé sans réseau : %v", h)
+	}
+	// Dernier bloc trop ancien (25 h) ; prochain bloc imposé (serveur de développement).
+	at := time.Unix(chaintest.Day(1), 0).Add(MaxTipAge)
+	old := newBench(t, func(c *Config) {
+		c.Network = nil
+		c.Now = func() time.Time { return at }
+		c.NextBlock = func() time.Time { return at.Add(time.Minute) }
+	})
+	ost := old.get("/api/status")
+	if h := ost["health"].(map[string]any); h["ok"] != false || fmt.Sprint(h["issues"]) != "[stale]" {
+		t.Fatalf("bloc ancien : %v", h)
+	}
+	if ost["next_block"].(float64) != float64(at.Add(time.Minute).Unix()) {
+		t.Fatalf("prochain bloc imposé : %v", ost["next_block"])
+	}
+}
+
+func TestNetworkIssues(t *testing.T) {
+	if MinPeers != 2 || MaxClockSkew != 2*time.Second || MaxTipAge != 25*time.Hour {
+		t.Fatal("règle de santé : 2 pairs, 2 s d'horloge, dernier bloc de moins de 25 h (décision du 22/10/2026)")
+	}
+	for _, c := range []struct {
+		peers    int
+		halted   bool
+		off      time.Duration
+		measured int
+		want     string
+	}{
+		{2, false, 0, 2, "[]"},
+		{1, false, 0, 1, "[peers]"},
+		{9, false, MaxClockSkew, 9, "[]"},
+		{9, false, MaxClockSkew + time.Millisecond, 9, "[clock]"},
+		{9, false, -MaxClockSkew - time.Millisecond, 9, "[clock]"},
+		{0, false, time.Hour, 0, "[peers]"}, // aucune mesure : l'horloge n'est pas jugée
+		{0, true, -time.Minute, 3, "[peers clock halted]"},
+	} {
+		if got := fmt.Sprint(networkIssues(c.peers, c.halted, c.off, c.measured)); got != c.want {
+			t.Errorf("%+v : %s", c, got)
+		}
 	}
 }
 
@@ -672,6 +723,9 @@ func TestStatic(t *testing.T) {
 	}
 	if code, ct, _ := get("/wallet/keys.js"); code != 200 || !strings.HasPrefix(ct, "text/javascript") {
 		t.Fatalf("module : %d %s", code, ct)
+	}
+	if code, ct, _ := get("/dashboard/fonts/f.woff2"); code != 200 || ct != "font/woff2" {
+		t.Fatalf("police : %d %s", code, ct)
 	}
 	for _, p := range []string{"/wallet/keys.test.js", "/wallet/testdata/v.json", "/wallet/.cache.js", "/wallet/notes.md", "/../etc/passwd", "/wallet/../wallet/keys.test.js", "/wallet/absent.js"} {
 		if code, _, _ := get(p); code == 200 {

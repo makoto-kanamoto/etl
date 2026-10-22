@@ -37,3 +37,33 @@ func TestEmbeddedModulesMatchImportMap(t *testing.T) {
 		}
 	}
 }
+
+// Polices, logo et icône sont embarqués, et les polices ont l'empreinte de fonts/integrity.json.
+func TestEmbeddedFontsAndIcons(t *testing.T) {
+	data, err := fs.ReadFile(FS, "dashboard/fonts/integrity.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fonts map[string]struct {
+		SHA384 string `json:"sha384"`
+	}
+	if err := json.Unmarshal(data, &fonts); err != nil || len(fonts) != 4 {
+		t.Fatalf("fonts/integrity.json : %v (%d polices)", err, len(fonts))
+	}
+	for name, f := range fonts {
+		data, err := fs.ReadFile(FS, "dashboard/fonts/"+name)
+		if err != nil {
+			t.Errorf("%s absente du binaire", name)
+			continue
+		}
+		sum := sha512.Sum384(data)
+		if "sha384-"+base64.StdEncoding.EncodeToString(sum[:]) != f.SHA384 {
+			t.Errorf("%s : empreinte différente", name)
+		}
+	}
+	for _, p := range []string{"dashboard/logo.svg", "dashboard/icon-180.png", "dashboard/style.css"} {
+		if _, err := fs.Stat(FS, p); err != nil {
+			t.Errorf("%s absent du binaire", p)
+		}
+	}
+}

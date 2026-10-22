@@ -26,6 +26,9 @@ func (s *Server) addr(a crypto.Address) string {
 
 // nextBlockTime : 23:00 UTC du jour, ou du lendemain si l'heure est passée ou le bloc du jour finalisé.
 func (s *Server) nextBlockTime(tip blockchain.Header) int64 {
+	if s.cfg.NextBlock != nil {
+		return s.cfg.NextBlock().Unix()
+	}
 	now := s.cfg.Now().Unix()
 	at := now - now%86400 + int64(s.cfg.Params.BlockTimeOfDay.Seconds())
 	if at <= now {
@@ -69,6 +72,7 @@ func (s *Server) status(w http.ResponseWriter, _ *http.Request) {
 		"tip":          hexOf(tip.Hash()),
 		"tip_time":     tip.Timestamp,
 		"next_block":   s.nextBlockTime(tip),
+		"block_time":   int64(s.cfg.Params.BlockTimeOfDay.Seconds()), // heure du bloc quotidien (secondes après 00:00 UTC)
 		"active_nodes": active,
 		"ipc":          ipcOf(ipc),
 		"base_ipc":     ipcOf(base),
@@ -78,15 +82,45 @@ func (s *Server) status(w http.ResponseWriter, _ *http.Request) {
 			"status":  nodeStatus,
 		},
 	}
+	var issues []string
 	if s.cfg.Network != nil {
 		in, outPeers := s.cfg.Network.PeerCount()
 		out["peers"] = map[string]int{"in": in, "out": outPeers}
 		out["halted"] = s.cfg.Network.Halted()
-		if off, n := s.cfg.Network.ClockOffset(); n > 0 {
+		off, measured := s.cfg.Network.ClockOffset()
+		if measured > 0 {
 			out["clock_offset_ms"] = off.Milliseconds() // le dashboard avertit au-delà de 2 s
 		}
+		issues = networkIssues(in+outPeers, out["halted"].(bool), off, measured)
 	}
+	if age := s.cfg.Now().Sub(time.Unix(tip.Timestamp, 0)); age >= MaxTipAge {
+		issues = append(issues, "stale")
+	}
+	out["health"] = map[string]any{"ok": len(issues) == 0, "issues": append([]string{}, issues...)}
 	reply(w, out)
+}
+
+// Règle « réseau en bonne santé » affichée sur l'accueil : au moins MinPeers pairs, horloge à moins
+// de MaxClockSkew de celle des pairs, nœud non arrêté, dernier bloc de moins de MaxTipAge.
+const (
+	MinPeers     = 2
+	MaxClockSkew = 2 * time.Second
+	MaxTipAge    = 25 * time.Hour // un bloc par jour à 23:00 UTC, plus une heure de marge
+)
+
+// networkIssues renvoie les critères non remplis côté réseau : "peers", "clock", "halted".
+func networkIssues(peers int, halted bool, offset time.Duration, measured int) []string {
+	var issues []string
+	if peers < MinPeers {
+		issues = append(issues, "peers")
+	}
+	if measured > 0 && (offset > MaxClockSkew || offset < -MaxClockSkew) {
+		issues = append(issues, "clock")
+	}
+	if halted {
+		issues = append(issues, "halted")
+	}
+	return issues
 }
 
 type headerJSON struct {

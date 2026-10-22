@@ -17,6 +17,18 @@ export function h(tag, attrs = {}, ...children) {
   return el;
 }
 
+// svg(tag, attrs, ...enfants) : comme h, dans l'espace de noms SVG (graphiques, logo, icônes).
+const SVG_NS = "http://www.w3.org/2000/svg";
+export function svg(tag, attrs = {}, ...children) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs ?? {})) if (v !== undefined && v !== null && v !== false) el.setAttribute(k, String(v));
+  for (const c of children.flat()) {
+    if (c === null || c === undefined || c === false) continue;
+    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return el;
+}
+
 // field : étiquette + champ (+ aide), reliés pour l'accessibilité.
 let fieldSeq = 0;
 export function field(label, input, help) {

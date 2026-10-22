@@ -2,6 +2,7 @@
 // automatique du portefeuille.
 
 import { h, clear } from "./lib/dom.js";
+import { logo, icon } from "./lib/icons.js";
 import { t as translate, LANGS } from "./lib/strings.js";
 import { makeApi } from "./lib/api.js";
 import { Session, AUTO_LOCK_MS } from "./lib/session.js";
@@ -33,28 +34,42 @@ const app = {
   session: null,
   autoLocked: false,
   onBlock: null,
+  tick: null, // minuterie d'une vue (compte à rebours), arrêtée à chaque changement de page
   t: (key, vars) => translate(app.lang, key, vars),
   render,
+  refresh: async () => (await refreshStatus(), render()),
 };
 
 const main = h("main", { id: "main", tabindex: "-1" });
-const dot = h("span", { class: "dot", "aria-hidden": "true" });
-const nodeState = h("span", { class: "node-state" }, dot, h("span", { class: "label" }));
 const toasts = h("div", { class: "toasts", "aria-live": "polite" });
+// État du nœud : affiché dans la barre latérale (ordinateur) et dans la barre du haut (téléphone).
+const nodeStates = [0, 1].map(() => h("span", { class: "node-state" }, h("span", { class: "dot", "aria-hidden": "true" }), h("span", { class: "state-text" })));
 
-function header() {
-  const select = h("select", { "aria-label": app.t("lang.label"), onChange: (e) => {
+const ROUTES = [["", "home", "nav.home"], ["wallet", "wallet", "nav.wallet"], ["escrow", "escrow", "nav.escrow"], ["ipc", "ipc", "nav.ipc"], ["operator", "operator", "nav.operator"]];
+
+function langSelect() {
+  return h("select", { "aria-label": app.t("lang.label"), onChange: (e) => {
     app.lang = e.target.value;
     try { localStorage.setItem(LANG_KEY, app.lang); } catch { /* préférence non retenue */ }
     document.documentElement.lang = app.lang;
     build();
   } }, LANGS.map((l) => h("option", { value: l, selected: l === app.lang }, l.toUpperCase())));
-  const link = (route, key) => h("a", { href: `#/${route}`, "aria-current": currentRoute() === route ? "page" : null }, app.t(key));
-  return h("header", {},
-    h("div", { class: "brand" }, h("strong", {}, app.t("app.title")), h("span", { class: "muted" }, app.t("app.subtitle"))),
-        h("nav", {}, link("", "nav.home"), link("wallet", "nav.wallet"), link("escrow", "nav.escrow"), link("ipc", "nav.ipc"), link("operator", "nav.operator")),
-    h("div", { class: "tools" }, nodeState, select),
-  );
+}
+
+function brand() {
+  return h("a", { class: "brand", href: "#/" }, logo(), h("span", { class: "name" }, app.t("app.title")));
+}
+
+function sidebar() {
+  const link = ([route, ico, key]) => h("a", { href: `#/${route}`, "aria-current": currentRoute() === route ? "page" : null }, icon(ico), h("span", {}, app.t(key)));
+  return h("aside", { class: "side" },
+    brand(),
+    h("nav", { class: "nav", "aria-label": app.t("nav.label") }, ROUTES.map(link)),
+    h("div", { class: "side-foot" }, nodeStates[0], h("span", { class: "fine" }, app.t("app.subtitle")), langSelect()));
+}
+
+function topbar() {
+  return h("header", { class: "topbar" }, brand(), h("div", { class: "tools" }, nodeStates[1], langSelect()));
 }
 
 function currentRoute() {
@@ -63,27 +78,31 @@ function currentRoute() {
 
 function updateNodeState() {
   const st = app.status;
-  const label = nodeState.querySelector(".label");
-  if (!st) {
-    dot.className = "dot off";
-    label.textContent = app.t("node.offline");
-  } else if (st.halted) {
-    dot.className = "dot halted";
-    label.textContent = app.t("node.halted");
-  } else {
-    dot.className = "dot on";
-    label.textContent = `${app.t("node.online")} · #${st.height}`;
+  for (const el of nodeStates) {
+    const [dot, label] = el.children;
+    if (!st) {
+      dot.className = "dot off";
+      label.textContent = app.t("node.offline");
+    } else if (st.halted) {
+      dot.className = "dot halted";
+      label.textContent = app.t("node.halted");
+    } else {
+      dot.className = "dot on";
+      label.textContent = `${app.t("node.online")} · #${st.height}`;
+    }
   }
 }
 
 function render() {
   app.onBlock = null;
-    clear(main).append((VIEWS[currentRoute()] ?? renderHome)(app));
+  clearInterval(app.tick);
+  app.tick = null;
+  clear(main).append((VIEWS[currentRoute()] ?? renderHome)(app));
   updateNodeState();
 }
 
 function build() {
-  document.body.replaceChildren(header(), main, toasts);
+  document.body.replaceChildren(h("div", { class: "shell" }, sidebar(), h("div", { class: "content" }, topbar(), main)), toasts);
   document.title = `${app.t("app.title")} — ${app.t("app.subtitle")}`;
   render();
 }
