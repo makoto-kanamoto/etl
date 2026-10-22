@@ -3,7 +3,7 @@
 
 import { createVault, openVault, readAddress } from "../../wallet/vault.js";
 import { wipe } from "../../wallet/keys.js";
-import { Contacts, CONTACTS_KEY } from "./contacts.js";
+import { Contacts, CONTACTS_KEY, Labels, LABELS_KEY } from "./contacts.js";
 
 export const VAULT_KEY = "etl.vault";
 export const AUTO_LOCK_MS = 15 * 60 * 1000;
@@ -17,6 +17,7 @@ export class Session {
     this.key = null;
     this.lastActivity = 0;
     this.book = null; // contacts déchiffrés (portefeuille déverrouillé seulement)
+    this.tags = null; // libellés d'échanges déchiffrés
   }
 
   hasVault() {
@@ -65,6 +66,13 @@ export class Session {
     return this.book;
   }
 
+  // labels renvoie les libellés d'échanges du portefeuille déverrouillé.
+  async labels() {
+    if (!this.key) throw new Error("portefeuille verrouillé");
+    this.tags ??= await Labels.open(this.storage, this.key, this.address(), this.hrp);
+    return this.tags;
+  }
+
   isUnlocked() {
     return this.key !== null;
   }
@@ -86,6 +94,7 @@ export class Session {
     if (this.key) wipe(this.key);
     this.key = null;
     this.book = null;
+    this.tags = null;
   }
 
   // forget supprime le coffre de ce navigateur (la phrase de récupération reste le seul moyen de retour).
@@ -93,5 +102,6 @@ export class Session {
     this.lock();
     this.storage.removeItem(VAULT_KEY);
     this.storage.removeItem(CONTACTS_KEY);
+    this.storage.removeItem(LABELS_KEY);
   }
 }

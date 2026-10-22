@@ -10,16 +10,17 @@ import { Session, VAULT_KEY, AUTO_LOCK_MS } from "./lib/session.js";
 import { STRINGS, LANGS, t } from "./lib/strings.js";
 import { makeApi, ApiError } from "./lib/api.js";
 import { addressHint, put, h, svg } from "./lib/dom.js";
+import { capitalize } from "./lib/ui.js";
 import { createHash } from "node:crypto";
 import { identicon, HUES } from "./lib/identicon.js";
 import { qrMatrix } from "./lib/qr.js";
-import { Contacts, ContactsError, CONTACTS_KEY, normalizeName, MAX_NAME } from "./lib/contacts.js";
+import { Contacts, ContactsError, CONTACTS_KEY, Labels, LABELS_KEY, normalizeName, MAX_NAME } from "./lib/contacts.js";
 import { lockedInEscrows, timesPaid, short, group, afterBalance, paidText } from "./views/wallet.js";
 import { priceChange, simulation, countdown, countdownText, rulePosition, SIM_RATE, SIM_YEARS } from "./views/home.js";
 import { render } from "../tools/importmap.js";
-import { actions, roleOf, completes, escrowState, reputation, signerRoles } from "./lib/escrowui.js";
+import { actions, roleOf, completes, escrowState, reputation, signerRoles, stages, nextStep, deadlineDays } from "./lib/escrowui.js";
 import * as esc from "../wallet/escrow.js";
-import { allowedRange, readRegistration, RegistrationTextError, REGISTRATION_PREFIX } from "./lib/governance.js";
+import { allowedRange, readRegistration, RegistrationTextError, REGISTRATION_PREFIX, PARAM_GROUPS, position } from "./lib/governance.js";
 import * as keys from "../wallet/keys.js";
 import * as mnemonic from "../wallet/mnemonic.js";
 
@@ -541,4 +542,93 @@ test("portefeuille : solde après l'envoi jamais négatif", () => {
   } finally {
     Object.assign(globalThis, saved);
   }
+});
+
+// Échange de test : règles « required » telles que les calcule le nœud (escrow.Required).
+function deal({ paid = false, disputed = false, outcome = "pending", arbiter = true, late = false } = {}) {
+  const S = esc.ROLE.seller, B = esc.ROLE.buyer, A = esc.ROLE.arbiter;
+  const required = outcome !== "pending" ? {} : {
+    paid: !paid && !late ? [B] : [],
+    dispute: disputed ? [] : [S, B],
+    release: arbiter ? [S, B | A] : [S],
+    refund: [B, ...(arbiter ? [S | A] : []), ...(!paid && late ? [S] : [])],
+  };
+  return { seller: "etl1qs", buyer: "etl1qb", arbiter: arbiter ? "etl1qa" : "", outcome, paid, disputed, required, deadline: 1_800_000_000 };
+}
+
+test("échanges : suivi fidèle au protocole (ouvert → euros payés → réglé, litige)", () => {
+  const st = (e) => stages(e).map((x) => `${x.key}:${x.state}`).join(" ");
+  assert.equal(st(deal()), "opened:done paid:current settled:todo");
+  assert.equal(st(deal({ paid: true })), "opened:done paid:done settled:current");
+  assert.equal(st(deal({ disputed: true })), "opened:done paid:todo disputed:alert");
+  assert.equal(st(deal({ paid: true, disputed: true })), "opened:done paid:done disputed:alert");
+  assert.equal(st(deal({ paid: true, outcome: "released" })), "opened:done paid:done released:done");
+  assert.equal(st(deal({ outcome: "refunded" })), "opened:done paid:skipped refunded:done", "remboursé sans paiement déclaré");
+});
+
+test("échanges : prochaine action selon le rôle", () => {
+  const S = esc.ROLE.seller, B = esc.ROLE.buyer, A = esc.ROLE.arbiter;
+  const n = (e, r) => { const x = nextStep(e, r); return `${x.key}${x.mine ? "!" : ""}${x.kind ? ":" + x.kind : ""}`; };
+  assert.equal(n(deal(), B), "buyer.pay!:paid");
+  assert.equal(n(deal(), S), "wait.payment");
+  assert.equal(n(deal(), A), "wait.payment");
+  assert.equal(n(deal({ paid: true }), S), "seller.release!:release");
+  assert.equal(n(deal({ paid: true }), B), "wait.release");
+  assert.equal(n(deal({ late: true }), S), "seller.late!:refund", "échéance passée : le vendeur récupère seul");
+  assert.equal(n(deal({ late: true }), B), "buyer.late");
+  assert.equal(n(deal({ disputed: true }), A), "arbiter.decide!");
+  assert.equal(n(deal({ disputed: true }), B), "wait.arbiter");
+  assert.equal(n(deal({ outcome: "released", paid: true }), S), "done.released");
+  assert.equal(deadlineDays({ deadline: 1_800_000_000 }, 1_800_000_000 - 86400 * 4.5), 5);
+  assert.equal(deadlineDays({ deadline: 1_800_000_000 }, 1_800_000_000 + 10), 0);
+  for (const l of LANGS) for (const k of ["done.released", "done.refunded", "arbiter.decide", "wait.arbiter", "buyer.pay", "seller.late", "buyer.late", "wait.payment", "seller.release", "wait.release"]) {
+    assert.ok(STRINGS[l][`escrow.next.${k}`], `${l} : escrow.next.${k}`);
+  }
+});
+
+test("paramètres : chaque paramètre gouvernable dans exactement un groupe ; position sur la règle", () => {
+  const all = PARAM_GROUPS.flatMap(([, names]) => names);
+  assert.equal(new Set(all).size, all.length, "aucun doublon");
+  const named = Object.keys(STRINGS.fr).filter((k) => k.startsWith("params.name.")).map((k) => k.slice(12)).sort();
+  assert.deepEqual([...all].sort(), named, "les 12 paramètres, ni plus ni moins");
+  for (const l of LANGS) for (const [g] of PARAM_GROUPS) assert.ok(STRINGS[l][`params.group.${g}`]);
+  assert.equal(position(50n, 0n, 100n), 50);
+  assert.equal(position(16n, 16n, 28n), 0);
+  assert.equal(position(28n, 16n, 28n), 100);
+  assert.equal(position(8n, 16n, 28n), 0, "hors bornes : ramené au bord");
+  assert.equal(position(5n, 5n, 5n), 0);
+});
+
+test("phrases : majuscule initiale", () => {
+  assert.equal(capitalize("l'arbitre demande"), "L'arbitre demande");
+  assert.equal(capitalize("école"), "École");
+  assert.equal(capitalize(""), "");
+});
+
+test("libellés d'échanges : chiffrés, liés au portefeuille, identifiant vérifié", async () => {
+  const st = memoryStorage();
+  const key = new Uint8Array(32).fill(3);
+  const owner = keys.address(key, "etl");
+  const id = "ab".repeat(32);
+  const l = await Labels.open(st, key, owner, "etl");
+  await l.put(id.toUpperCase(), "Vélo de ville");
+  assert.equal(l.get(id), "Vélo de ville");
+  assert.ok(!st.getItem(LABELS_KEY).includes("Vélo"));
+  assert.equal(st.getItem(CONTACTS_KEY), null, "enregistrement séparé des contacts");
+  assert.equal((await Labels.open(st, key, owner, "etl")).get(id), "Vélo de ville");
+  await assert.rejects(l.put("xyz", "a"), (e) => e.code === "id");
+  await l.delete(id);
+  assert.equal((await Labels.open(st, key, owner, "etl")).get(id), null);
+  // Clés de chiffrement distinctes : un enregistrement de libellés (même vide) recopié à la place des
+  // contacts est illisible ; avec la même clé, il se lirait comme une liste de contacts vide.
+  st.setItem(CONTACTS_KEY, st.getItem(LABELS_KEY));
+  assert.ok((await Contacts.open(st, key, owner, "etl")).unreadable);
+  const s = new Session(memoryStorage(), "etl");
+  await s.create(key, "phrase de passe assez longue");
+  await (await s.labels()).put(id, "Cours");
+  s.lock();
+  assert.equal(s.tags, null, "libellés effacés de la mémoire au verrouillage");
+  await assert.rejects(s.labels(), /verrouillé/);
+  s.forget();
+  assert.equal(s.storage.size(), 0, "libellés retirés avec le portefeuille");
 });

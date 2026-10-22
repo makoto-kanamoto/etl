@@ -8,6 +8,11 @@ import { challenge, check } from "../lib/phrase.js";
 import { identiconSvg } from "../lib/identicon.js";
 import { qrSvg } from "../lib/qr.js";
 import { icon } from "../lib/icons.js";
+import { short, group, message, actionRow as actions, steps, who } from "../lib/ui.js";
+
+export { short, group };
+
+const head = (app, title) => h("div", { class: "page-head" }, h("div", {}, h("span", { class: "label" }, app.t("nav.wallet")), h("h1", {}, title)));
 import * as keys from "../../wallet/keys.js";
 import * as mnemonic from "../../wallet/mnemonic.js";
 import * as txs from "../../wallet/tx.js";
@@ -16,9 +21,6 @@ import { MIN_PASSPHRASE, VaultError } from "../../wallet/vault.js";
 const hex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 const locale = (lang) => (lang === "fr" ? "fr-FR" : "en-GB");
 
-// short abrège une adresse ; group la découpe en groupes de 4 pour la relire.
-export const short = (a) => `${a.slice(0, 8)}…${a.slice(-4)}`;
-export const group = (a) => a.match(/.{1,4}/g).join(" ");
 
 // lockedInEscrows : ETL du vendeur retenus par ses échanges en cours (montant + rémunération de
 // l'arbitre ; les frais sont payés à l'ouverture).
@@ -40,32 +42,8 @@ export function renderWallet(app) {
   return root;
 }
 
-function actions(...buttons) {
-  return h("div", { class: "actions" }, ...buttons);
-}
-
-function message(kind, text) {
-  return h("p", { class: `msg ${kind}`, role: kind === "error" ? "alert" : "status" }, text);
-}
-
-function head(app, title) {
-  return h("div", { class: "page-head" }, h("div", {}, h("span", { class: "label" }, app.t("nav.wallet")), h("h1", {}, title)));
-}
-
-// steps : étapes numérotées, l'étape courante en évidence, les précédentes cochées.
-function steps(labels, current) {
-  return h("ol", { class: "steps" }, labels.map((l, i) => h("li", { class: i < current ? "done" : i === current ? "on" : null, "aria-current": i === current ? "step" : null }, l)));
-}
 
 // who : motif de l'adresse, nom du contact (ou adresse abrégée), ligne secondaire.
-// Sans nom (contact ou « Mon portefeuille »), l'adresse abrégée sert de nom ; bare : toujours l'adresse.
-function who(app, address, sub, big = false, bare = false) {
-  const name = bare ? null : address === app.session.address() ? app.t("who.mine") : app.book?.name(address);
-  const line = sub === false ? null : sub !== undefined ? h("div", { class: "who-sub" }, sub) : h("div", { class: name ? "who-sub mono" : "who-sub" }, name ? short(address) : app.t("who.unnamed"));
-  return h("div", { class: "who-line" }, identiconSvg(address, big ? "idc lg" : "idc"),
-    h("div", { class: "who-text" }, h("div", { class: name ? "who-name" : "who-name mono" }, name ?? short(address)), line));
-}
-
 // paidText : « aucun envoi », « 1 envoi » ou « n envois » vers cette adresse dans les blocs récents.
 export function paidText(t, n) {
   return t(n === 0 ? "send.valid0" : n === 1 ? "send.valid1" : "send.validN", { n });
@@ -424,18 +402,20 @@ function sendPanel(app, panel, address, ctx, refresh) {
       return null;
     }
   };
+  let seq = 0; // seul le calcul le plus récent du récapitulatif s'affiche (frappes rapprochées)
   const update = async () => {
+    const mine = ++seq;
     const a = target();
     clear(whoEl);
     if (a && a !== address) put(whoEl, who(app, a, paidText(t, timesPaid(ctx.hist, address, a))));
     else if (to.value.trim() && !a && to.value.trim().length >= 40) put(whoEl, message("error", t("send.badAddress")));
     const u = units();
     euroEl.textContent = u ? t("send.euro", { euro: euro(u) }) : "";
-    clear(recap);
-    if (!u) return;
+    if (!u) return clear(recap);
     const p = await params();
+    if (mine !== seq) return;
     const fee = txs.requiredFee(u, p);
-    put(recap,
+    put(clear(recap),
       h("dt", {}, t("send.amount.label")), h("dd", {}, E(u)),
       h("dt", {}, t("send.feeRule", { pct: (Number(p.feeBps) / 100).toLocaleString(locale(lang)), min: formatETL(p.minFee, lang) })), h("dd", {}, E(fee)),
       h("dt", { class: "tot" }, t("send.total")), h("dd", { class: "tot" }, E(u + fee)),

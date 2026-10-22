@@ -50,3 +50,18 @@ export function readRegistration(text, hrp) {
     sponsored: !b.slice(113).every((x) => x === 0),
   };
 }
+
+// Paramètres regroupés par thème pour le panneau opérateur (O2).
+export const PARAM_GROUPS = [
+  ["economy", ["fee_bps", "min_fee", "daily_reward", "max_block_txs"]],
+  ["blocks", ["target_bits"]],
+  ["admission", ["observation_days", "observation_min_days", "inactivity_days", "min_active_nodes"]],
+  ["sponsorship", ["sponsor_seniority_days", "sponsor_cooldown_days", "sponsor_ban_days"]],
+];
+
+// position place v (BigInt) sur la règle [lo, hi], en pourcentage borné à [0, 100].
+export function position(v, lo, hi) {
+  if (hi <= lo) return 0;
+  const p = Number(((v - lo) * 10000n) / (hi - lo)) / 100;
+  return Math.min(100, Math.max(0, p));
+}
