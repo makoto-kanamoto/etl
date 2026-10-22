@@ -89,6 +89,24 @@ Ouvrez **http://localhost:3001** dans un navigateur, sur la machine du nœud.
   demandent le **jeton opérateur**, contenu dans `~/.etl/dashboard.token`. Ce jeton change à chaque
   démarrage du nœud.
 
+### L'indicateur de santé de l'accueil
+
+Sur l'accueil, la carte « Prochain bloc » affiche **« Réseau en bonne santé »** quand les quatre
+conditions ci-dessous sont remplies, sinon **« À surveiller »** avec la liste de ce qui ne va pas.
+
+| Condition | Si elle n'est pas remplie |
+|---|---|
+| Au moins 2 pairs connectés | Vérifiez la connexion Internet, le port P2P (3000 par défaut) et la liste `bootstrap`. |
+| Horloge à moins de 2 secondes de celle des pairs | Synchronisez l'heure du système par NTP (section 1) : le consensus l'exige. |
+| Nœud non arrêté | Un conflit de finalité a arrêté le nœud : ne le redémarrez pas à l'aveugle, gardez le journal et prévenez les autres opérateurs. |
+| Dernier bloc il y a moins de 25 heures | Un bloc est produit chaque jour à 23:00 UTC : au-delà, le nœud n'est peut-être plus synchronisé (pairs, journal). |
+
+Un nœud seul, sans pair, affiche donc « À surveiller » : c'est normal tant qu'il n'a rejoint aucun
+réseau.
+
+La carte « Ce nœud » indique aussi sa participation aux 30 derniers blocs et la part de récompense
+touchée au dernier bloc.
+
 ## 5. Autres commandes
 
 | Commande | Rôle |

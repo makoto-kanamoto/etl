@@ -220,7 +220,7 @@ Valeurs par défaut — gouvernables par vote 2/3 (critères d'admission).
 | Étape | Règle |
 |---|---|
 | **Candidature** | Enregistrement on-chain signé par le candidat **et** contresigné par un parrain admis. Valable 7 jours après signature (anti-rejeu) |
-| **Parrain** | Nœud admis et actif, **≥ 6 mois d'ancienneté** (fondateurs dispensés), **1 parrainage par 30 jours** maximum (fondateurs compris) |
+| **Parrain** | Nœud admis et actif, **≥ 6 mois d'ancienneté** (fondateurs dispensés), **1 parrainage par 30 jours** maximum (fondateurs compris). Le panneau opérateur affiche ces conditions et la date d'éligibilité, calculées par **la même fonction que le consensus** (`Node.CanSponsor`) |
 | **Observation** | Les 7 jours suivant la candidature : le candidat doit participer (PoW valide) **au moins 5 jours**. Pas de récompense, pas de vote, pas de ticket |
 | **Admission** | Automatique à la fin de l'observation si 5/7 atteint ; sinon le candidat est retiré (il peut recandidater avec un autre parrain ; le quota du premier parrain reste consommé) |
 | **Inactivité** | **30 jours** sans participation → inactif : plus de part, ne compte plus dans le dénominateur des 2/3. Retour : nouvelle observation (sans parrain) ; l'ancienneté repart de zéro (un fondateur réactivé perd sa dispense) ; en cas d'échec, reste inactif |
@@ -288,7 +288,14 @@ regroupés par thème (économie, blocs, admission des nœuds, parrainage).
 
 **Mise en page vérifiée** avant chaque modification de l'interface : `web/tools/layoutcheck.mjs` ouvre
 chaque page dans Chrome à six largeurs (1440 à 360 px), en thème clair et sombre, et signale tout
-débordement, texte coupé, barre de défilement interne ou erreur de la console.
+débordement, texte coupé, barre de défilement interne ou erreur de la console, ainsi qu'un texte de
+graphique trop petit à l'écran (moins de 9,5 px) ou superposé à un autre. Le texte des graphiques
+s'ajuste à leur largeur réelle pour rester à 11 px, du téléphone à l'écran large.
+
+**Page IPC** : IPC en vigueur, au lancement et valeur de 1 ETL ; courbe de l'IPC adopté trimestre par
+trimestre ; vote en cours face au seuil des 2/3 (« il manque n voix ») ; lecture de ce nœud. Le lien
+« Vérifier sur insee.fr » est déduit de la source configurée (`ipc_url`) et n'apparaît que pour une série
+INSEE.
 
 #### Sécurité de l'API locale
 
@@ -430,6 +437,14 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
   participants — le rang du proposant en dépend — mais **ne touche pas sa part** ce jour-là
 - **Aucune récompense tant que moins de 10 nœuds sont admis et actifs** (compté au début du bloc)
 - Genesis : aucune récompense (zéro pré-mine)
+- **ETL en circulation** = somme des soldes + fonds retenus dans les échanges en cours. Rien n'étant
+  détruit (les frais vont au proposant), c'est exactement le total émis depuis le genesis
+- **Part de chaque bloc enregistrée pour l'affichage** : la part dépend du nombre de nœuds actifs
+  *avant* le bloc, que l'état ne conserve pas. Le nœud enregistre donc, au moment où il applique un bloc,
+  la part versée à chaque participant récompensé (table `rewards`, 8 octets par bloc). Cette donnée est
+  **hors du `StateRoot`** : elle ne participe pas au consensus et deux nœuds ne peuvent pas diverger à
+  cause d'elle. Elle alimente « part du dernier bloc » et les récompenses de l'historique ; pour un bloc
+  appliqué par une version antérieure, la part est inconnue et n'est pas affichée (jamais estimée)
 
 ### Difficulté
 - **Cible fixe**, calibrée pour ~2 secondes sur un CPU standard : **21 bits de tête à zéro**
@@ -485,6 +500,7 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
 | Genesis complet | Toujours |
 | Contenu des blocs | 90 derniers blocs (`prune_keep_blocks`), puis élagué |
 | État (soldes + registre) | Toujours, à jour au dernier bloc |
+| Part de récompense par bloc (8 o/jour, hors `StateRoot`) | Toujours |
 
 - **Mode archive** (`pruning = false`) : garde tout — pour l'explorateur et le nœud de bootstrap
 - Le pruning est un choix local à chaque nœud, pas une règle de consensus
@@ -603,6 +619,9 @@ type IPCVote struct {
 ### L'IPC dans l'état
 - L'état garde l'**IPC de référence** (genesis, immuable) et l'**IPC courant** ; les deux sont dans le `StateRoot`
 - Taux affiché : `1 ETL = IPC courant ÷ IPC de référence` euro — vérifiable par tous
+- **Historique** : chaque IPC adopté est inscrit dans l'en-tête du bloc qui l'adopte, et les en-têtes sont
+  gardés à vie. Le nœud reconstruit la courbe trimestre par trimestre en relisant ses en-têtes au
+  démarrage, puis la complète à chaque bloc : aucune donnée supplémentaire stockée
 
 ```
 Nœud A → { 103.07, "2026-Q3", 9f86d0... }

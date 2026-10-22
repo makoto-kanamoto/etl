@@ -92,6 +92,24 @@ Open **http://localhost:3001** in a browser, on the node's machine.
   the **operator token**, stored in `~/.etl/dashboard.token`. The token changes every time the node
   starts.
 
+### The health indicator on the home page
+
+On the home page, the “Next block” card shows **“Network healthy”** when the four conditions below are
+met, otherwise **“Needs attention”** with the list of what is wrong.
+
+| Condition | If it is not met |
+|---|---|
+| At least 2 connected peers | Check the Internet connection, the P2P port (3000 by default) and the `bootstrap` list. |
+| Clock within 2 seconds of the peers' clocks | Synchronise the system time with NTP (section 1): consensus requires it. |
+| Node not halted | A finality conflict has halted the node: do not restart it blindly; keep the log and warn the other operators. |
+| Last block less than 25 hours ago | A block is produced every day at 23:00 UTC: beyond that, the node may no longer be in sync (peers, log). |
+
+A lone node with no peers therefore shows “Needs attention”: this is expected as long as it has not
+joined any network.
+
+The “This node” card also shows its participation in the last 30 blocks and the reward share received
+in the last block.
+
 ## 5. Other commands
 
 | Command | Purpose |
