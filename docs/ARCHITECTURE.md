@@ -27,15 +27,15 @@
 | Site public | etalon-etl.fr |
 | Explorateur | explorer.etalon-etl.fr |
 | Référence IPC | Configurable — défaut : INSEE Série 011814630 (IPC base 2025, France entière), via l'API SDMX |
-| Fréquence IPC | Trimestrielle (gouvernable par vote) |
+| Fréquence IPC | Trimestrielle (passage au mensuel : objectif futur, par vote) |
 | Protocole | Forkable par toute communauté nationale |
 
 ---
 
 ## ETL comme protocole universel
 
-ETL est conçu pour être **forké par n'importe quelle communauté nationale**.
-Chaque fork a son propre genesis, sa propre communauté, son propre ancrage IPC.
+ETL est conçu pour être **repris par n'importe quelle communauté nationale**.
+Chaque fork est un réseau à part : son propre genesis, sa propre communauté, son propre indice des prix.
 
 ```
 ETL-FR  →  IPC France (INSEE)                         ← implémentation de référence
@@ -44,8 +44,20 @@ ETL-JP  →  IPC Japon (Statistics Bureau of Japan)     ← fork communauté jap
 ETL-CN  →  IPC Chine (NBS)                            ← fork communauté chinoise
 ```
 
-**Principe :** l'oracle IPC n'est pas codé en dur. Il est configurable dans default.toml.
-Un fork change uniquement `ipc_url` et `ipc_country`. Tout le reste du protocole est identique.
+**Ce qu'un fork change** — tout le reste du protocole est identique :
+
+| Élément | Où |
+|---|---|
+| Identifiant du réseau (`ETL-DE`) et préfixe des adresses (`etlde`) | Définition du réseau **dans le logiciel** (`internal/node/networks.go`) : c'est une modification du code, pas de la configuration. Une configuration locale ne peut pas créer un autre réseau (règles de consensus hors de `config.toml`) |
+| Genesis : fondateurs, IPC de référence, jour de lancement | `genesis.json` produit par `etl genesis` ; son empreinte est gravée dans le logiciel du fork |
+| Source de l'indice des prix | `ipc_url` et `ipc_country` dans `config.toml` |
+
+**Limite actuelle de l'oracle** : il lit les séries publiées au format SDMX-ML 2.1 (« structure-specific »),
+celui de l'INSEE. Une série mensuelle publiée dans ce format se lit en changeant `ipc_url` ; tout autre
+format demande d'écrire un lecteur adapté dans `internal/oracle`.
+
+Les adresses et les signatures d'un réseau sont refusées sur un autre : l'identifiant du réseau entre
+dans chaque signature, et le préfixe dans chaque adresse.
 
 Comme Linux — une base commune, des adaptations locales.
 
@@ -639,8 +651,10 @@ Nœud D → { 103.07 }                          ← rejeté (incomplet)
 ```
 
 ### Fréquence
-- **Trimestrielle** par défaut
-- Gouvernable par vote des nœuds
+- **Trimestrielle** : seule fréquence acceptée par le logiciel actuel (`ipc_frequency = "quarterly"` ;
+  toute autre valeur est refusée au démarrage d'un nœud avec clé)
+- Un passage au mensuel décidé par vote des nœuds reste un **objectif futur** : il fera l'objet d'une étape
+  dédiée si la communauté le demande
 
 ### Si l'INSEE ne publie pas
 - La valeur précédente est maintenue (règle immuable n°11)
