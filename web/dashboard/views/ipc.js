@@ -4,6 +4,7 @@
 
 import { h, svg, clear, put, legible } from "../lib/dom.js";
 import { formatRate } from "../lib/amount.js";
+import { localeOf } from "../lib/strings.js";
 import { message, pageHead } from "../lib/ui.js";
 import { TOKEN_KEY } from "./operator.js";
 
@@ -66,7 +67,7 @@ export function renderIPC(app) {
   const body = h("div", { class: "stack" }, h("p", { class: "muted" }, "…"));
   const verify = h("span", {});
   const root = h("div", { class: "page ipc" }, pageHead(t("ipc.kicker"), t("ipc.title"), verify), body);
-  const locale = lang === "fr" ? "fr-FR" : "en-GB";
+  const locale = localeOf(lang);
   const index = (v) => (v / 1000).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 3 });
   const when = (s) => new Date(s * 1000).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
   const date = (s) => new Date(s * 1000).toLocaleDateString(locale, { dateStyle: "medium" });

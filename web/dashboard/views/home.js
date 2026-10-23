@@ -3,6 +3,7 @@
 
 import { h, svg, legible } from "../lib/dom.js";
 import { formatRate, formatETL } from "../lib/amount.js";
+import { localeOf } from "../lib/strings.js";
 
 const DAY = 86400;
 // Fenêtre de lecture de l'IPC par les nœuds (internal/oracle : 20:00 + 150 min, UTC).
@@ -11,7 +12,7 @@ const IPC_WINDOW = [20 * 3600, 22.5 * 3600];
 export const SIM_RATE = 0.02;
 export const SIM_YEARS = 10;
 
-const locale = (lang) => (lang === "fr" ? "fr-FR" : "en-GB");
+const locale = localeOf;
 
 // priceChange compare l'IPC courant à celui du lancement : sens et variation en %, deux décimales.
 export function priceChange(ipc, base, lang) {

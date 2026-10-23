@@ -5,13 +5,14 @@
 
 import { h, field, clear, put, addressInput } from "../lib/dom.js";
 import { parseETL, formatETL, euroCents, formatEuro } from "../lib/amount.js";
+import { localeOf } from "../lib/strings.js";
 import { actions, roleOf, completes, escrowState, reputation, signerRoles, stages, nextStep, deadlineDays, KIND_OF, NAME_OF, ROLE_NAMES } from "../lib/escrowui.js";
 import { identiconSvg } from "../lib/identicon.js";
 import { short, group, message, actionRow, pageHead, steps, who, capitalize } from "../lib/ui.js";
 import * as esc from "../../wallet/escrow.js";
 import * as keys from "../../wallet/keys.js";
 
-const locale = (lang) => (lang === "fr" ? "fr-FR" : "en-GB");
+const locale = localeOf;
 
 function errorText(app, e) {
   return e?.message === "network" ? app.t("error.network") : String(e?.message ?? e);
@@ -66,7 +67,7 @@ function deadlineLine(app, e) {
 }
 
 function whoList(app, mask) {
-  return signerRoles(mask).map((r) => app.t(`escrow.who.${r}`)).join(app.lang === "fr" ? " et " : " and ");
+  return signerRoles(mask).map((r) => app.t(`escrow.who.${r}`)).join(app.t("list.and"));
 }
 
 function amountLine(app, e) {

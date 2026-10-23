@@ -5,6 +5,7 @@
 import { h, field, clear, put, addressInput } from "../lib/dom.js";
 import { actions, roleOf, signerRoles, nextStep, NAME_OF } from "../lib/escrowui.js";
 import { formatETL, parseETL } from "../lib/amount.js";
+import { localeOf } from "../lib/strings.js";
 import { allowedRange, readRegistration, AMOUNT_PARAMS, PARAM_GROUPS, position } from "../lib/governance.js";
 import { message, actionRow, pageHead, who, group, capitalize } from "../lib/ui.js";
 import * as esc from "../../wallet/escrow.js";
@@ -13,7 +14,7 @@ import { textBox, party, track } from "./escrow.js";
 
 export const TOKEN_KEY = "etl.operatorToken";
 const TABS = ["params", "sponsor", "arbiter", "exclusion"];
-const locale = (lang) => (lang === "fr" ? "fr-FR" : "en-GB");
+const locale = localeOf;
 
 function getToken() {
   try {
@@ -303,7 +304,7 @@ function pastePanel(app, op, onError) {
         return onError(out, err);
       }
       summary = [
-        h("p", {}, h("strong", {}, capitalize(t("receive.asks", { who: signerRoles(o.signers).map((r) => t(`escrow.who.${r}`)).join(lang === "fr" ? " et " : " and "), action: t(`escrow.kind.${NAME_OF[o.kind]}`) })))),
+        h("p", {}, h("strong", {}, capitalize(t("receive.asks", { who: signerRoles(o.signers).map((r) => t(`escrow.who.${r}`)).join(t("list.and")), action: t(`escrow.kind.${NAME_OF[o.kind]}`) })))),
         h("p", {}, t(`escrow.effect.${NAME_OF[o.kind]}`, { amount: formatETL(e.amount, lang) })),
         track(app, e),
         h("div", { class: "parties" }, party(app, "seller", e.seller, node), party(app, "buyer", e.buyer, node))];

@@ -27,8 +27,10 @@
   --bad-soft: #F7DEDA;
   --shadow: 0 1px 2px rgb(21 32 28 / 6%), 0 6px 20px rgb(21 32 28 / 6%);
 
-  --f-display: "Gloock", "Iowan Old Style", Georgia, serif;
-  --f-body: "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Polices embarquées : alphabet latin seulement. Japonais et chinois : polices du système, choisies
+     selon l'attribut lang de la page (ja, zh-Hans). */
+  --f-display: "Gloock", "Iowan Old Style", Georgia, "Hiragino Mincho ProN", "Yu Mincho", "Songti SC", "Noto Serif CJK JP", "Noto Serif CJK SC", serif;
+  --f-body: "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Yu Gothic", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK JP", "Noto Sans CJK SC", sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   --t-xs: 0.75rem; --t-sm: 0.8125rem; --t-md: 0.9375rem; --t-lg: 1.125rem; --t-xl: 1.5rem; --t-2xl: 2.25rem;

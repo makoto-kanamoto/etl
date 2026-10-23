@@ -6,6 +6,7 @@
 //
 //   go run -tags dev ./cmd/etl-dev &                       (ou un vrai nœud)
 //   node web/tools/layoutcheck.mjs [http://localhost:3001] [répertoire de captures]
+//   ETL_LANG=ja node web/tools/layoutcheck.mjs              (langue de l'interface : fr, en, ja, zh)
 //
 // Node 20 : ajouter --experimental-websocket. Chrome doit être installé (CHROME pour un autre chemin).
 // Code de sortie 1 si un problème est trouvé. Hors de « node --test » : il faut Chrome et un nœud.
@@ -17,6 +18,7 @@ import { join } from "node:path";
 
 const BASE = process.argv[2] ?? "http://localhost:3001";
 const SHOTS = process.argv[3];
+const LANG = process.env.ETL_LANG ?? "";
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const PORT = 9400 + Math.floor(Math.random() * 400);
 const ROUTES = ["", "wallet", "escrow", "ipc", "operator"];
@@ -107,10 +109,15 @@ class Chrome {
     if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? "évaluation");
     return r.result.value;
   }
-  close() {
+  // close arrête Chrome, attend sa fin (il écrit encore dans son profil), puis supprime le profil.
+  async close() {
     try { this.ws?.close(); } catch { /* déjà fermé */ }
+    const exited = new Promise((r) => this.proc.once("exit", r));
     this.proc.kill();
-    rmSync(this.profile, { recursive: true, force: true });
+    await Promise.race([exited, sleep(5000)]);
+    try {
+      rmSync(this.profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch { /* profil temporaire : le système le nettoiera */ }
   }
 }
 
@@ -118,6 +125,15 @@ const c = new Chrome();
 let problems = 0;
 try {
   await c.connect();
+  if (LANG) {
+    await c.send("Page.navigate", { url: `${BASE}/` });
+    await sleep(800);
+    await c.ev(`localStorage.setItem("etl.lang", ${JSON.stringify(LANG)}), true`);
+    await c.send("Page.reload");
+    await sleep(1500);
+    const shown = await c.ev("document.documentElement.lang");
+    if (!shown.startsWith(LANG)) throw new Error(`langue non appliquée : ${shown} au lieu de ${LANG}`);
+  }
   for (const theme of ["light", "dark"]) {
     await c.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
     for (const w of WIDTHS) {
@@ -135,17 +151,17 @@ try {
         }
         if (SHOTS) {
           const r = await c.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
-          writeFileSync(join(SHOTS, `${theme}-${w}-${route || "home"}.png`), Buffer.from(r.data, "base64"));
+          writeFileSync(join(SHOTS, `${LANG ? LANG + "-" : ""}${theme}-${w}-${route || "home"}.png`), Buffer.from(r.data, "base64"));
         }
       }
     }
   }
   const fonts = await c.ev(`[...new Set([...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family))].join(", ")`);
-  console.log(`${ROUTES.length} pages × ${WIDTHS.length} largeurs × 2 thèmes : ${problems ? problems + " problème(s)" : "aucun problème"} · polices chargées : ${fonts || "aucune"}`);
+  console.log(`${LANG ? "[" + LANG + "] " : ""}${ROUTES.length} pages × ${WIDTHS.length} largeurs × 2 thèmes : ${problems ? problems + " problème(s)" : "aucun problème"} · polices chargées : ${fonts || "aucune"}`);
 } catch (e) {
   console.log("ÉCHEC :", e.message);
   problems++;
 } finally {
-  c.close();
+  await c.close();
 }
 process.exit(problems ? 1 : 0);

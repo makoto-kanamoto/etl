@@ -4,6 +4,7 @@
 
 import { h, field, clear, put, addressInput } from "../lib/dom.js";
 import { parseETL, formatETL, euroCents, formatEuro } from "../lib/amount.js";
+import { localeOf } from "../lib/strings.js";
 import { challenge, check } from "../lib/phrase.js";
 import { identiconSvg } from "../lib/identicon.js";
 import { qrSvg } from "../lib/qr.js";
@@ -19,7 +20,7 @@ import * as txs from "../../wallet/tx.js";
 import { MIN_PASSPHRASE, VaultError } from "../../wallet/vault.js";
 
 const hex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
-const locale = (lang) => (lang === "fr" ? "fr-FR" : "en-GB");
+const locale = localeOf;
 
 
 // lockedInEscrows : ETL du vendeur retenus par ses échanges en cours (montant + rémunération de

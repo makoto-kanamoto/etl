@@ -3,7 +3,7 @@
 
 import { h, clear } from "./lib/dom.js";
 import { logo, icon } from "./lib/icons.js";
-import { t as translate, LANGS } from "./lib/strings.js";
+import { t as translate, LANGS, LANG_NAMES, HTML_LANG } from "./lib/strings.js";
 import { makeApi } from "./lib/api.js";
 import { Session, AUTO_LOCK_MS } from "./lib/session.js";
 import { formatETL } from "./lib/amount.js";
@@ -51,9 +51,9 @@ function langSelect() {
   return h("select", { "aria-label": app.t("lang.label"), onChange: (e) => {
     app.lang = e.target.value;
     try { localStorage.setItem(LANG_KEY, app.lang); } catch { /* préférence non retenue */ }
-    document.documentElement.lang = app.lang;
+    document.documentElement.lang = HTML_LANG[app.lang];
     build();
-  } }, LANGS.map((l) => h("option", { value: l, selected: l === app.lang }, l.toUpperCase())));
+  } }, LANGS.map((l) => h("option", { value: l, selected: l === app.lang }, LANG_NAMES[l])));
 }
 
 function brand() {
@@ -141,7 +141,7 @@ function listen() {
 }
 
 async function start() {
-  document.documentElement.lang = app.lang;
+  document.documentElement.lang = HTML_LANG[app.lang];
   await refreshStatus();
   app.session = new Session(localStorage, app.status?.hrp ?? "etl");
   for (const ev of ["pointerdown", "keydown"]) addEventListener(ev, () => app.session.isUnlocked() && app.session.touch(), { passive: true });

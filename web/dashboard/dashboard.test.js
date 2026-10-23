@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { parseETL, formatETL, euroCents, formatEuro, formatRate, AmountError, UNITS } from "./lib/amount.js";
 import { challenge, check, CHALLENGE_WORDS } from "./lib/phrase.js";
 import { Session, VAULT_KEY, AUTO_LOCK_MS } from "./lib/session.js";
-import { STRINGS, LANGS, t } from "./lib/strings.js";
+import { STRINGS, LANGS, LANG_NAMES, HTML_LANG, localeOf, t } from "./lib/strings.js";
 import { makeApi, ApiError } from "./lib/api.js";
 import { addressHint, put, h, svg } from "./lib/dom.js";
 import { capitalize } from "./lib/ui.js";
@@ -52,7 +52,8 @@ test("montants : affichage selon la langue, sans zéros inutiles", () => {
   assert.equal(formatETL(1n, "en"), "0.00000001");
   assert.equal(formatETL(0n, "fr"), "0");
   assert.equal(formatETL(1_000_000n * UNITS, "en"), "1,000,000");
-  assert.equal(formatETL(5n * UNITS, "ja"), "5", "langue inconnue : séparateurs anglais");
+  assert.equal(formatETL(5n * UNITS, "ja"), "5", "japonais : séparateurs anglais");
+  assert.equal(formatETL(1_234_567n * UNITS / 10n, "zh"), "123,456.7", "chinois : séparateurs anglais");
 });
 
 test("montants : équivalent en euros au taux IPC, arrondi au centime", () => {
@@ -145,14 +146,20 @@ test("textes : aucune clé définie deux fois (la seconde écraserait la premiè
   }
 });
 
-test("textes : mêmes clés en français et en anglais, variables cohérentes", () => {
-  assert.deepEqual(LANGS, ["fr", "en"]);
+test("textes : mêmes clés dans les quatre langues, variables cohérentes", () => {
   const fr = Object.keys(STRINGS.fr).sort();
-  assert.deepEqual(Object.keys(STRINGS.en).sort(), fr);
   const vars = (s) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
-  for (const k of fr) assert.deepEqual(vars(STRINGS.en[k]), vars(STRINGS.fr[k]), k);
+  assert.deepEqual(LANGS, ["fr", "en", "ja", "zh"]);
+  for (const l of LANGS) assert.deepEqual(Object.keys(STRINGS[l]).sort(), fr, `${l} : mêmes clés que le français`);
+  for (const l of LANGS) for (const k of fr) assert.deepEqual(vars(STRINGS[l][k]), vars(STRINGS.fr[k]), `${l} : ${k}`);
+  for (const l of ["ja", "zh"]) for (const k of fr) {
+    if (["app.title", "home.sim.watermark", "home.sim.etl", "nav.ipc", "forget.word", "replace.word", "list.and"].includes(k)) continue;
+    assert.ok(/[\u3040-\u30ff\u3400-\u9fff]/.test(STRINGS[l][k]) || /^[\d{}%+ ·.()A-Z-]*$/.test(STRINGS[l][k].replace(/ETL|CPI|SHA-256|UTC|INSEE|NTP|P2P|QR|Bitcoin|Ethereum|Ledger|MetaMask|Étalon|insee\.fr|<Obs>|etl-escrow:|etl-registration:/g, "")), `${l} : « ${k} » non traduit : ${STRINGS[l][k]}`);
+  }
   assert.equal(t("fr", "home.ipcPeriod", { period: "2026-Q3" }), "période 2026-Q3");
-  assert.equal(t("ja", "nav.home"), "Home", "langue non traduite : anglais");
+  assert.equal(t("de", "nav.home"), "Home", "langue non traduite : anglais");
+  assert.equal(t("ja", "nav.home"), "ホーム");
+  assert.equal(t("zh", "nav.home"), "首页");
   assert.equal(t("fr", "clé.inconnue"), "clé.inconnue");
   assert.equal(t("en", "home.ipcPeriod"), "period {period}", "variable absente laissée visible");
 });
@@ -361,7 +368,8 @@ test("accueil : simulation à 2 %/an sur 10 ans, clairement annoncée", () => {
   for (let i = 1; i < s.length; i++) assert.ok(s[i] < s[i - 1]);
   assert.match(t("fr", "home.sim.badge"), /^Simulation — inflation à 2 %\/an$/);
   assert.match(t("en", "home.sim.badge"), /^Simulation/);
-  for (const l of LANGS) assert.match(t(l, "home.sim.alt"), /^Simulation/, "description accessible : simulation dite d'emblée");
+  for (const l of LANGS) assert.match(t(l, "home.sim.alt"), /^(Simulation|シミュレーション|模拟)/, `${l} : description accessible : simulation dite d'emblée`);
+  for (const l of LANGS) assert.match(t(l, "home.sim.badge"), /(Simulation|シミュレーション|模拟).*2/, `${l} : bandeau de simulation`);
 });
 
 test("accueil : compte à rebours et position sur la règle du jour", () => {
@@ -645,4 +653,18 @@ test("IPC : page INSEE de la série lue, voix manquantes, échelle de la courbe"
   assert.deepEqual(chartScale([103070]), [102000, 104000], "une seule valeur : axe d'au moins un point de part et d'autre");
   const [lo, hi] = chartScale([100300, 105660]);
   assert.ok(lo <= 100300 - 500 && hi >= 105660 + 500 && lo % 1000 === 0 && hi % 1000 === 0);
+});
+
+test("langues : nom dans la langue, conventions de dates, attribut lang de la page", () => {
+  assert.deepEqual(Object.keys(LANG_NAMES), LANGS);
+  assert.deepEqual(Object.values(LANG_NAMES), ["Français", "English", "日本語", "中文"]);
+  assert.equal(localeOf("fr"), "fr-FR");
+  assert.equal(localeOf("ja"), "ja-JP");
+  assert.equal(localeOf("zh"), "zh-CN");
+  assert.equal(localeOf("de"), "en-GB", "autre langue : conventions anglaises");
+  assert.equal(HTML_LANG.zh, "zh-Hans", "chinois simplifié : formes de caractères correctes");
+  assert.equal(HTML_LANG.ja, "ja");
+  assert.equal(t("fr", "list.and"), " et ");
+  assert.equal(t("ja", "list.and"), "と");
+  assert.equal(t("zh", "list.and"), "和");
 });
