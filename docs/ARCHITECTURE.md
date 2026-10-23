@@ -252,7 +252,13 @@ Les jours sont des jours UTC (horodatage du bloc ÷ 86 400) : un jour sans bloc 
 - UX moderne, interactive
 - Servi par le nœud lui-même : interface embarquée dans le binaire, API JSON locale
 - La clé personnelle de l'utilisateur reste dans son navigateur (coffre chiffré) ; la clé du nœud ne quitte jamais le nœud
-- Interface en français et en anglais ; japonais et chinois après relecture par des locuteurs natifs
+- Interface en **français, anglais, japonais et chinois (simplifié)**, langue choisie d'après le navigateur
+  puis dans le menu ; dates et nombres aux conventions de chaque langue. Les traductions japonaise et
+  chinoise n'ont pas encore été relues par des locuteurs natifs : les corrections sont bienvenues
+- Polices embarquées pour l'alphabet latin seulement ; le japonais et le chinois utilisent les polices du
+  système (attribut `lang` de la page : `ja`, `zh-Hans`)
+- Phrase de récupération : listes de mots française et anglaise seulement ; en japonais et en chinois, les
+  24 mots sont en anglais (une liste japonaise ou chinoise serait un nouveau format de phrase)
 
 #### Identité visuelle et accueil
 
