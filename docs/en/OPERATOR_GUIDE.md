@@ -110,6 +110,35 @@ joined any network.
 The “This node” card also shows its participation in the last 30 blocks and the reward share received
 in the last block.
 
+### Public site (node exposed to the Internet)
+
+A node can serve the public site (web wallet and explorer) **instead of** the dashboard, behind an HTTPS
+proxy installed on the same machine (Caddy, for example). `[public]` section of `config.toml`:
+
+```toml
+[node]
+wallet  = ""        # required: passive node, no key on an exposed machine
+pruning = false     # required: archive node (full explorer history)
+
+[public]
+enabled = true
+host    = "etalon-etl.fr"   # site name only, without https:// or a port
+read_per_minute  = 300      # API reads per IP address per minute
+write_per_minute = 6        # transfers and exchanges submitted per IP address per minute
+```
+
+- The node still listens on `127.0.0.1` only (port `[dashboard] port`): only the proxy can be reached
+  from the Internet. The proxy must pass the site name in `Host` and add the visitor's address to
+  `X-Forwarded-For` (Caddy's default behaviour).
+- No token, no operator panel: these routes do not exist in public mode.
+- Visitors' IP addresses are used only for rate limiting, in memory; the node writes none of them.
+  Configure the proxy without an access log.
+- On the first start with `[public]`, the node builds the explorer index from the blocks (a few seconds).
+  A node that has already pruned its chain cannot build it: start again from a full chain.
+- **Before ETL-FR launches**, `etl run` does not refuse to start: it serves the presentation pages only
+  (log: `réseau pas encore lancé : site public de présentation seul`, network not launched yet:
+  presentation site only).
+
 ## 5. Other commands
 
 | Command | Purpose |
@@ -164,6 +193,9 @@ French).
 | `permissions trop ouvertes` | passphrase file readable by others | `chmod 600 FILE` |
 | `pas de terminal pour la saisie` | started without a keyboard (service) | use `-passphrase-file` |
 | `les règles de consensus ne se règlent pas ici` | consensus rule in `config.toml` | remove the line indicated |
+| `site public : nœud passif seulement` | `wallet` is not empty while `[public]` is enabled | `wallet = ""` |
+| `site public : nœud archive seulement` | `pruning = true` while `[public]` is enabled | `pruning = false` |
+| `l'index de l'explorateur exige un nœud archive` | the local chain has already been pruned | delete `~/.etl/chain`: the node downloads the full chain again |
 | `horloge décalée par rapport aux pairs` | the machine's clock differs from its peers' by more than 2 s | check NTP synchronisation (section 1) |
 | `ARRÊT DU NŒUD : conflit de finalité` | two blocks finalised at the same height: a serious abnormal situation | do not restart blindly; keep the log and warn the other operators |
 

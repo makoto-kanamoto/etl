@@ -25,7 +25,7 @@
 | Racine d'état | `StateRoot` dans chaque en-tête, validé par vote 2/3 |
 | Dashboard local | localhost:3001 |
 | Site public | etalon-etl.fr |
-| Explorateur | explorer.etalon-etl.fr |
+| Explorateur | etalon-etl.fr (onglet Explorateur du site public) |
 | Référence IPC | Configurable — défaut : INSEE Série 011814630 (IPC base 2025, France entière), via l'API SDMX |
 | Fréquence IPC | Trimestrielle (passage au mensuel : objectif futur, par vote) |
 | Protocole | Forkable par toute communauté nationale |
@@ -259,7 +259,7 @@ Les jours sont des jours UTC (horodatage du bloc ÷ 86 400) : un jour sans bloc 
 
 ### Dashboard
 - **localhost:3001** pour l'opérateur
-- **etalon-etl.fr** pour les utilisateurs web (plus tard : même interface, API en lecture seule)
+- **etalon-etl.fr** pour les visiteurs : même interface en mode « site public » (voir *Site public* ci-dessous)
 - Un seul codebase — deux contextes de déploiement
 - UX moderne, interactive
 - Servi par le nœud lui-même : interface embarquée dans le binaire, API JSON locale
@@ -329,6 +329,36 @@ Le navigateur de l'opérateur visite aussi d'autres sites : n'importe quelle pag
 
 - Les transactions et opérations d'escrow sont **signées dans le navigateur** : l'API ne fait que les transmettre au réseau.
 - Format JSON : montants en chaînes décimales d'unités (jamais de nombre à virgule), adresses `etl1q…`, identifiants en hexadécimal.
+
+#### Site public (etalon-etl.fr)
+
+Le site public est servi par un nœud Étalon lancé avec la section `[public]` de `config.toml`, derrière
+un proxy HTTPS sur la même machine (Caddy, certificat Let's Encrypt). Le nœud écoute toujours sur
+`127.0.0.1` seulement ; le proxy seul est joignable depuis Internet.
+
+- **Nœud archive et passif obligatoire** (`pruning = false`, `wallet = ""`) : aucune clé privée sur une
+  machine exposée. Une configuration contraire est refusée au démarrage.
+- **Ce qui change par rapport au dashboard** :
+
+| | Dashboard (localhost) | Site public |
+|---|---|---|
+| En-tête `Host` accepté | `localhost:3001`, `127.0.0.1:3001` | le nom du site seulement (`host`) |
+| `Origin` accepté pour une modification | `http://localhost:3001` | `https://` + nom du site |
+| HSTS | non | oui (deux ans) |
+| Jeton et routes de l'opérateur | oui | **ni jeton écrit, ni routes enregistrées** |
+| Transferts et échanges signés dans le navigateur | oui | oui |
+| Mises à jour en direct | SSE | relecture de l'API toutes les 30 secondes |
+| Limitation de débit | non | par adresse IP, lectures et soumissions séparées |
+
+- **Limitation de débit** : seau à jetons par adresse IP (par défaut 300 lectures et 6 soumissions par
+  minute), sur l'API seulement ; au-delà, réponse 429 avec le délai d'attente. L'adresse vient de
+  l'en-tête `X-Forwarded-For` ajouté par le proxy, cru seulement si la connexion arrive de la boucle
+  locale. Une adresse IPv6 compte par bloc /64. Mémoire bornée (100 000 clients, puis un seau commun).
+- **Aucun journal d'adresse IP** : les seaux restent en mémoire et s'effacent après une minute
+  d'inactivité ; le journal d'erreurs du serveur HTTP, qui cite l'adresse du client, est coupé. Le proxy
+  est configuré sans journal d'accès.
+- **Avant le lancement d'ETL-FR** : `etl run` sert seulement les pages de présentation et un statut
+  `{"launched": false}` — ni chaîne, ni réseau, ni portefeuille, ni explorateur.
 
 ---
 
@@ -519,9 +549,14 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
 | Contenu des blocs | 90 derniers blocs (`prune_keep_blocks`), puis élagué |
 | État (soldes + registre) | Toujours, à jour au dernier bloc |
 | Part de récompense par bloc (8 o/jour, hors `StateRoot`) | Toujours |
+| Index de l'explorateur (site public seulement, hors `StateRoot`) | Toujours, reconstructible à partir des blocs |
 
 - **Mode archive** (`pruning = false`) : garde tout — pour l'explorateur et le nœud de bootstrap
 - Le pruning est un choix local à chaque nœud, pas une règle de consensus
+- **Index de l'explorateur** (nœud archive avec `[public]` activé) : adresse → blocs où son solde
+  bouge (transferts, échanges, récompenses), transaction → bloc, échange → bloc d'ouverture et parties.
+  Il ne sert qu'à l'affichage : hors `StateRoot`, hors consensus. Activé après coup, ou après une
+  interruption, il est reconstruit au démarrage à partir des blocs, à l'identique
 
 ### Encodage binaire
 - Format canonique unique pour le stockage **et** le réseau : un objet = une seule suite d'octets possible
@@ -535,7 +570,7 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
   pas de confirmations supplémentaires à attendre, quel que soit le montant (règle immuable n°4)
 
 ### Notifications
-- **Server-Sent Events (SSE)** — notification temps réel dans le dashboard : le nœud pousse un événement par bloc finalisé, le navigateur garde ce qui le concerne (protocole HTTP standard, sans dépendance, reconnexion automatique)
+- **Server-Sent Events (SSE)** — notification temps réel dans le dashboard local (le site public relit l'API toutes les 30 secondes) : le nœud pousse un événement par bloc finalisé, le navigateur garde ce qui le concerne (protocole HTTP standard, sans dépendance, reconnexion automatique)
 - À 23:00 UTC : l'expéditeur et le destinataire reçoivent la confirmation
 
 ```
@@ -547,7 +582,7 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
 ### Explorateur public
 
 ```
-explorer.etalon-etl.fr
+etalon-etl.fr — Explorateur
 
 Bloc #142 — 17 octobre 2026 à 23:00 UTC
 ├── Transaction tx_3f7a... : ETL1xK9... → ETL1pAuL... : 5 ETL
@@ -557,6 +592,11 @@ Bloc #142 — 17 octobre 2026 à 23:00 UTC
 ```
 
 - Accessible à tous — membres ou non
+- Derniers blocs, détail d'un bloc (participants, transactions, échanges, IPC adopté, part de récompense),
+  page d'une adresse (solde, réputation, statut de nœud, historique complet page par page), page d'une
+  transaction, page d'un échange
+- Recherche : hauteur, adresse, empreinte de bloc, identifiant de transaction ou d'échange
+- Historique complet grâce à l'index de l'explorateur du nœud archive (voir *Stockage et pruning*)
 - UX moderne et interactive
 - Principe manifeste : *"Ne faites pas confiance. Vérifiez."*
 
@@ -811,7 +851,7 @@ Wallet etl1qxk9... — Réputation on-chain
 | Interface | URL | Audience |
 |---|---|---|
 | Site principal | etalon-etl.fr | Tous |
-| Explorateur blocs | explorer.etalon-etl.fr | Tous |
+| Explorateur blocs | etalon-etl.fr (onglet Explorateur) | Tous |
 | Échange P2P | etalon-etl.fr/echange | Membres |
 | Vote IPC | dashboard (section IPC) | Opérateurs nœuds |
 | Dashboard local | localhost:3001 | Opérateurs nœuds |

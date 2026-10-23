@@ -107,6 +107,35 @@ réseau.
 La carte « Ce nœud » indique aussi sa participation aux 30 derniers blocs et la part de récompense
 touchée au dernier bloc.
 
+### Site public (nœud exposé sur Internet)
+
+Un nœud peut servir le site public (portefeuille web et explorateur) **à la place** du dashboard, derrière
+un proxy HTTPS installé sur la même machine (Caddy, par exemple). Section `[public]` de `config.toml` :
+
+```toml
+[node]
+wallet  = ""        # obligatoire : nœud passif, aucune clé sur une machine exposée
+pruning = false     # obligatoire : nœud archive (historique complet de l'explorateur)
+
+[public]
+enabled = true
+host    = "etalon-etl.fr"   # nom du site seul, sans https:// ni port
+read_per_minute  = 300      # lectures de l'API par adresse IP et par minute
+write_per_minute = 6        # transferts et échanges soumis par adresse IP et par minute
+```
+
+- Le nœud écoute toujours sur `127.0.0.1` (port `[dashboard] port`) : seul le proxy est joignable depuis
+  Internet. Il doit transmettre le nom du site dans `Host` et ajouter l'adresse du visiteur dans
+  `X-Forwarded-For` (comportement par défaut de Caddy).
+- Pas de jeton, pas de panneau de l'opérateur : ces routes n'existent pas en mode public.
+- Les adresses IP des visiteurs ne servent qu'à la limitation de débit, en mémoire ; le nœud n'en écrit
+  aucune. Configurez le proxy sans journal d'accès.
+- Au premier démarrage avec `[public]`, le nœud construit l'index de l'explorateur à partir des blocs
+  (quelques secondes). Un nœud déjà élagué ne peut pas le construire : il faut repartir d'une chaîne
+  complète.
+- **Avant le lancement d'ETL-FR**, `etl run` ne refuse pas de démarrer : il sert seulement les pages de
+  présentation (journal : `réseau pas encore lancé : site public de présentation seul`).
+
 ## 5. Autres commandes
 
 | Commande | Rôle |
@@ -163,6 +192,9 @@ pruning, pairs d'amorçage, limites du mempool, source de l'IPC, dashboard. Chaq
 | `permissions trop ouvertes` | fichier de phrase de passe lisible par d'autres | `chmod 600 FICHIER` |
 | `pas de terminal pour la saisie` | démarrage sans clavier (service) | utiliser `-passphrase-file` |
 | `les règles de consensus ne se règlent pas ici` | règle de consensus dans `config.toml` | retirer la ligne indiquée |
+| `site public : nœud passif seulement` | `wallet` n'est pas vide alors que `[public]` est activé | `wallet = ""` |
+| `site public : nœud archive seulement` | `pruning = true` alors que `[public]` est activé | `pruning = false` |
+| `l'index de l'explorateur exige un nœud archive` | la chaîne locale a déjà été élaguée | supprimer `~/.etl/chain` : le nœud retélécharge la chaîne complète |
 | `horloge décalée par rapport aux pairs` | l'heure de la machine s'écarte de plus de 2 s de celle des pairs | vérifier la synchronisation NTP (section 1) |
 | `ARRÊT DU NŒUD : conflit de finalité` | deux blocs finalisés à la même hauteur : situation anormale grave | ne pas redémarrer à l'aveugle ; conserver le journal et prévenir les autres opérateurs |
 
