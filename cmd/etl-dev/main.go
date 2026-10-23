@@ -85,6 +85,19 @@ func (c *chain) RewardAt(h uint64) (uint64, bool) {
 	return r, ok
 }
 
+func (c *chain) HeightOf(h crypto.Hash) (uint64, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if h == c.net.Genesis.Header.Hash() {
+		return 0, nil
+	}
+	for height, b := range c.blocks {
+		if b.Header.Hash() == h {
+			return height, nil
+		}
+	}
+	return 0, errors.New("bloc inconnu")
+}
 func (c *chain) ReadState(f func(*blockchain.State)) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

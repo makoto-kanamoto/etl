@@ -70,7 +70,8 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 	var err error
 
 	// Stockage : genesis inscrit au premier démarrage, vérifié ensuite.
-	n.Store, err = storage.Open(filepath.Join(c.Node.DataDir, "chain.db"), p, storage.Options{Pruning: c.Node.Pruning, KeepBlocks: uint64(c.Node.PruneKeepBlocks)})
+	n.Store, err = storage.Open(filepath.Join(c.Node.DataDir, "chain.db"), p, storage.Options{Pruning: c.Node.Pruning, KeepBlocks: uint64(c.Node.PruneKeepBlocks),
+		Index: c.Public.Enabled})
 	if err != nil {
 		return nil, fmt.Errorf("stockage : %w", err)
 	}
@@ -127,9 +128,13 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 		orc = n.Oracle
 	}
 
-	// Dashboard (127.0.0.1 seulement).
-	n.API, err = api.New(api.Config{Params: p, Port: c.Dashboard.Port, TokenPath: c.Dashboard.Token, Static: o.Static,
-		Version: o.Version, Now: o.Now, Chain: n.Store, Engine: n.Engine, Network: n.Host, Oracle: orc, IPCSource: c.Oracle.IPCURL})
+	// Dashboard, ou site public derrière un proxy HTTPS (127.0.0.1 seulement dans les deux cas).
+	acfg := api.Config{Params: p, Port: c.Dashboard.Port, TokenPath: c.Dashboard.Token, Static: o.Static,
+		Version: o.Version, Now: o.Now, Chain: n.Store, Engine: n.Engine, Network: n.Host, Oracle: orc, IPCSource: c.Oracle.IPCURL}
+	if c.Public.Enabled {
+		acfg.Public, acfg.Index = PublicSite(c), n.Store
+	}
+	n.API, err = api.New(acfg)
 	if err != nil {
 		n.stopEarly()
 		return nil, err
@@ -150,8 +155,31 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 		addr = o.Key.PublicKey().Address(p.AddressHRP).String()
 	}
 	o.Log.Info("nœud démarré", "réseau", p.ChainID, "hauteur", n.Store.Tip().Height, "adresse", addr,
-		"passif", o.Key == nil, "archive", !c.Node.Pruning, "dashboard", fmt.Sprintf("http://localhost:%d", c.Dashboard.Port))
+		"passif", o.Key == nil, "archive", !c.Node.Pruning, "dashboard", siteURL(c))
 	return n, nil
+}
+
+// PublicSite : réglages du site public tirés de la configuration.
+func PublicSite(c config.Config) *api.Public {
+	return &api.Public{Host: c.Public.Host, ReadPerMinute: c.Public.ReadPerMinute, WritePerMinute: c.Public.WritePerMinute}
+}
+
+func siteURL(c config.Config) string {
+	if c.Public.Enabled {
+		return fmt.Sprintf("https://%s (site public, servi sur 127.0.0.1:%d)", c.Public.Host, c.Dashboard.Port)
+	}
+	return fmt.Sprintf("http://localhost:%d", c.Dashboard.Port)
+}
+
+// ServePrelaunch sert le site public d'un réseau pas encore lancé : pages de présentation et statut
+// minimal, sans chaîne ni réseau. Rend la main à l'annulation de ctx.
+func ServePrelaunch(ctx context.Context, c config.Config, n Network, static fs.FS, version string, log *slog.Logger) error {
+	srv, err := api.New(api.Config{Params: n.Params, Port: c.Dashboard.Port, Static: static, Version: version, Public: PublicSite(c)})
+	if err != nil {
+		return err
+	}
+	log.Info("réseau pas encore lancé : site public de présentation seul", "réseau", n.Params.ChainID, "site", siteURL(c))
+	return srv.ListenAndServe(ctx)
 }
 
 func (n *Node) run(ctx context.Context, f func(context.Context)) {

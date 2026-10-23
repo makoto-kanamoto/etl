@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -285,3 +286,49 @@ func TestRunRefusals(t *testing.T) {
 		t.Fatal("version")
 	}
 }
+
+// « etl run » avec le site public activé, réseau pas encore lancé : site de présentation seul.
+func TestRunPrelaunchSite(t *testing.T) {
+	home := t.TempDir()
+	port := freePort(t)
+	src := defaultConfig(home)
+	for old, repl := range map[string]string{
+		"pruning = true":  "pruning = false",
+		"port  = 3001":    fmt.Sprintf("port  = %d", port),
+		"enabled = false": "enabled = true",
+		`host    = ""`:    `host    = "etalon.test"`,
+	} {
+		if !strings.Contains(src, old) {
+			t.Fatalf("configuration par défaut sans %q", old)
+		}
+		src = strings.Replace(src, old, repl, 1)
+	}
+	src = regexpWallet.ReplaceAllString(src, `wallet  = ""`)
+	_ = os.WriteFile(filepath.Join(home, "config.toml"), []byte(src), 0o600)
+	ctx, cancel := context.WithCancel(context.Background())
+	a := newApp(t, ctx)
+	done := make(chan error, 1)
+	go func() { done <- a.run([]string{"-home", home, "run"}) }()
+	var st map[string]any
+	for i := 0; i < 50 && st == nil; i++ {
+		req, _ := http.NewRequest("GET", fmt.Sprintf("http://127.0.0.1:%d/api/status", port), nil)
+		req.Host = "etalon.test"
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			_ = json.NewDecoder(resp.Body).Decode(&st)
+			resp.Body.Close()
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if st["launched"] != false || st["chain_id"] != "ETL-FR" {
+		t.Fatalf("statut : %v", st)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(a.errw.String(), "réseau pas encore lancé") {
+		t.Fatalf("journal : %s", a.errw.String())
+	}
+}
+
+var regexpWallet = regexp.MustCompile(`wallet  = "[^"]*"`)

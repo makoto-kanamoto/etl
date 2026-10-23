@@ -46,6 +46,14 @@ type Config struct {
 		Port  int
 		Token string // fichier du jeton opérateur (régénéré à chaque démarrage)
 	}
+	// Public : site public (explorateur, portefeuille) servi derrière un proxy HTTPS, à la place du
+	// dashboard de l'opérateur. Nœud archive et passif seulement : aucune clé sur une machine exposée.
+	Public struct {
+		Enabled        bool
+		Host           string // nom d'hôte du site (etalon-etl.fr), sans schéma ni port
+		ReadPerMinute  int    // requêtes de lecture de l'API par adresse IP et par minute
+		WritePerMinute int    // soumissions (transferts, échanges) par adresse IP et par minute
+	}
 }
 
 // Default renvoie la configuration par défaut d'un nœud ETL-FR dont les fichiers sont sous home.
@@ -66,6 +74,7 @@ func Default(home string) Config {
 	c.Oracle.IPCFrequency = "quarterly"
 	c.Dashboard.Port = 3001
 	c.Dashboard.Token = filepath.Join(home, "dashboard.token")
+	c.Public.ReadPerMinute, c.Public.WritePerMinute = 300, 6
 	return c
 }
 
@@ -100,6 +109,10 @@ func (c *Config) fields() []field {
 		{section: "oracle", key: "ipc_frequency", str: &c.Oracle.IPCFrequency},
 		{section: "dashboard", key: "port", num: &c.Dashboard.Port},
 		{section: "dashboard", key: "token", str: &c.Dashboard.Token, path: true},
+		{section: "public", key: "enabled", flag: &c.Public.Enabled},
+		{section: "public", key: "host", str: &c.Public.Host},
+		{section: "public", key: "read_per_minute", num: &c.Public.ReadPerMinute},
+		{section: "public", key: "write_per_minute", num: &c.Public.WritePerMinute},
 	}
 }
 
@@ -199,7 +212,37 @@ func (c *Config) check() error {
 	case c.Network.MaxOutbound == 0 && len(c.Network.Bootstrap) > 0:
 		return errors.New("config : network.max_outbound nul alors que des pairs d'amorçage sont donnés")
 	}
+	if c.Public.Enabled {
+		switch {
+		case !validHost(c.Public.Host):
+			return errors.New("config : public.host invalide (nom d'hôte seul, par exemple etalon-etl.fr)")
+		case c.Node.Wallet != "":
+			return errors.New("config : site public : nœud passif seulement (wallet = \"\"), aucune clé sur une machine exposée")
+		case c.Node.Pruning:
+			return errors.New("config : site public : nœud archive seulement (pruning = false)")
+		case c.Public.ReadPerMinute == 0 || c.Public.WritePerMinute == 0:
+			return errors.New("config : public.read_per_minute et public.write_per_minute doivent être positifs")
+		}
+	}
 	return nil
+}
+
+// validHost : nom d'hôte DNS en minuscules (lettres, chiffres, tirets, au moins un point).
+func validHost(h string) bool {
+	if len(h) == 0 || len(h) > 253 || !strings.Contains(h, ".") {
+		return false
+	}
+	for _, label := range strings.Split(h, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, r := range label {
+			if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // Load lit le fichier path (absent : configuration par défaut).

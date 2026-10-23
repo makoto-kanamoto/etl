@@ -39,6 +39,7 @@ const DefaultKeepBlocks = 90
 type Options struct {
 	Pruning    bool   // false = nœud archive (explorateur, bootstrap)
 	KeepBlocks uint64 // contenu conservé quand Pruning est actif
+	Index      bool   // index de l'explorateur (index.go) ; nœud archive seulement
 }
 
 // DefaultOptions : pruning actif, 90 blocs conservés.
@@ -92,6 +93,10 @@ func Open(path string, p blockchain.Params, opt Options) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	if opt.Index && opt.Pruning {
+		db.Close()
+		return nil, ErrIndexNeedsArchive
+	}
 	if opt.Pruning && opt.KeepBlocks == 0 {
 		opt.KeepBlocks = 1 // le dernier bloc et son certificat sont toujours conservés
 	}
@@ -110,7 +115,8 @@ func (s *Store) Close() error {
 
 func (s *Store) load() error {
 	return s.db.Update(func(tx *bolt.Tx) error {
-		for _, name := range [][]byte{bucketMeta, bucketHeaders, bucketBlocks, bucketCerts, bucketVotes, bucketHashes, bucketAccounts, bucketNodes, bucketEscrows, bucketReps, bucketRewards} {
+		for _, name := range [][]byte{bucketMeta, bucketHeaders, bucketBlocks, bucketCerts, bucketVotes, bucketHashes, bucketAccounts, bucketNodes, bucketEscrows, bucketReps, bucketRewards,
+			bucketAddrIndex, bucketTxIndex, bucketEscrowIndex} {
 			if _, err := tx.CreateBucketIfNotExists(name); err != nil {
 				return err
 			}
@@ -190,6 +196,11 @@ func (s *Store) load() error {
 		state := blockchain.NewStateFrom(accounts, nodes, baseIPC, ipc, params, pending, esc)
 		if state.Root() != tip.StateRoot {
 			return ErrCorrupt
+		}
+		if s.opt.Index {
+			if err := s.catchUpIndex(tx, tip.Height); err != nil {
+				return err
+			}
 		}
 		s.state, s.tip, s.ready = state, tip, true
 		return nil
@@ -290,6 +301,11 @@ func (s *Store) write(tx *bolt.Tx, b *blockchain.Block, c *blockchain.Changes) e
 	}
 	for _, p := range puts {
 		if err := tx.Bucket(p.bucket).Put(p.key, p.value); err != nil {
+			return err
+		}
+	}
+	if s.opt.Index {
+		if err := indexBlock(tx, b, c.Reward); err != nil {
 			return err
 		}
 	}

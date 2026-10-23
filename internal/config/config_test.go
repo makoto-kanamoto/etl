@@ -169,3 +169,42 @@ func FuzzParse(f *testing.F) {
 		}
 	})
 }
+
+// Site public : nœud archive et passif seulement, nom d'hôte seul, limites positives.
+func TestPublic(t *testing.T) {
+	const ok = "[node]\nwallet = \"\"\npruning = false\n[public]\nenabled = true\nhost = \"etalon-etl.fr\"\n"
+	c, err := Parse(ok+"read_per_minute = 120\nwrite_per_minute = 2", "/h")
+	if err != nil || !c.Public.Enabled || c.Public.Host != "etalon-etl.fr" || c.Public.ReadPerMinute != 120 || c.Public.WritePerMinute != 2 {
+		t.Fatalf("site public : %+v %v", c.Public, err)
+	}
+	if d := Default("/h"); d.Public.Enabled || d.Public.ReadPerMinute != 300 || d.Public.WritePerMinute != 6 {
+		t.Fatalf("défaut : %+v", d.Public)
+	}
+	for name, src := range map[string]string{
+		"avec clé":         strings.Replace(ok, "wallet = \"\"\n", "", 1),
+		"élagué":           strings.Replace(ok, "pruning = false\n", "", 1),
+		"sans hôte":        strings.Replace(ok, "host = \"etalon-etl.fr\"\n", "", 1),
+		"URL pour hôte":    strings.Replace(ok, "etalon-etl.fr", "https://etalon-etl.fr", 1),
+		"lectures nulles":  ok + "read_per_minute = 0",
+		"écritures nulles": ok + "write_per_minute = 0",
+	} {
+		if _, err := Parse(src, "/h"); err == nil {
+			t.Errorf("%s : accepté", name)
+		}
+	}
+	for _, h := range []string{"https://etalon-etl.fr", "etalon-etl.fr:443", "etalon-etl.fr/", "Etalon-etl.fr", "localhost",
+		"-a.fr", "a-.fr", "a..fr", ".fr", "fr.", "é.fr", "a_b.fr", strings.Repeat("a", 64) + ".fr", strings.Repeat("a.", 127) + "fr"} {
+		if validHost(h) {
+			t.Errorf("hôte %q accepté", h)
+		}
+	}
+	for _, h := range []string{"etalon-etl.fr", "www.etalon-etl.fr", "a1.b2.c3", strings.Repeat("a", 63) + ".fr"} {
+		if !validHost(h) {
+			t.Errorf("hôte %q refusé", h)
+		}
+	}
+	// Désactivé : les autres clés de la section sont ignorées par les contrôles.
+	if _, err := Parse("[public]\nhost = \"\"\nread_per_minute = 0", "/h"); err != nil {
+		t.Fatalf("section désactivée : %v", err)
+	}
+}

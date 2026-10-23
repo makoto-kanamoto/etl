@@ -333,3 +333,68 @@ func TestFourNodesFinalizeBlocks(t *testing.T) {
 		n.Wait()
 	}
 }
+
+// statusVia lit /api/status sur le port donné, avec l'en-tête Host donné.
+func statusVia(t *testing.T, port int, host string) map[string]any {
+	t.Helper()
+	var st map[string]any
+	for i := 0; i < 50; i++ {
+		req, _ := http.NewRequest("GET", fmt.Sprintf("http://127.0.0.1:%d/api/status", port), nil)
+		req.Host = host
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			_ = json.NewDecoder(resp.Body).Decode(&st)
+			resp.Body.Close()
+			return st
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("serveur injoignable")
+	return nil
+}
+
+// Site public : nœud archive passif, index de l'explorateur, aucun jeton ; avant le lancement,
+// pages de présentation seules.
+func TestPublicSite(t *testing.T) {
+	g, _, _ := testGenesis(t, 4)
+	c := testConfig(t)
+	c.Node.Wallet, c.Node.Pruning = "", false
+	c.Public.Enabled, c.Public.Host = true, "etalon.test"
+	test, _ := Lookup("test")
+	ctx, cancel := context.WithCancel(context.Background())
+	n, err := Start(ctx, Options{Config: c, Network: test, Genesis: g, Log: quiet(), Version: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st := statusVia(t, c.Dashboard.Port, "etalon.test"); st["public"] != true || st["launched"] != true || st["chain_id"] != "ETL-TEST" {
+		t.Fatalf("statut : %v", st)
+	}
+	if st := statusVia(t, c.Dashboard.Port, fmt.Sprintf("localhost:%d", c.Dashboard.Port)); st["chain_id"] != nil {
+		t.Fatalf("hôte local accepté : %v", st)
+	}
+	if _, err := os.Stat(c.Dashboard.Token); err == nil {
+		t.Fatal("jeton opérateur écrit")
+	}
+	if _, _, err := n.Store.AddressHeights(crypto.Address{}, 1, 1); err != nil {
+		t.Fatalf("index absent : %v", err)
+	}
+	cancel()
+	n.Wait()
+
+	// Réseau pas encore lancé : site de présentation, rendu à l'annulation.
+	fr, _ := Lookup("ETL-FR")
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- ServePrelaunch(ctx2, c, fr, nil, "test", quiet()) }()
+	if st := statusVia(t, c.Dashboard.Port, "etalon.test"); st["launched"] != false || st["chain_id"] != "ETL-FR" {
+		t.Fatalf("avant le lancement : %v", st)
+	}
+	cancel2()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("arrêt non effectué")
+	}
+}

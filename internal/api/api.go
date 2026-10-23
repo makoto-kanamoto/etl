@@ -10,6 +10,8 @@
 //   - actions de l'opérateur : jeton aléatoire du fichier ~/.etl/dashboard.token en plus ;
 //   - aucun en-tête CORS ; politique de sécurité du contenu stricte, rien d'externe.
 //
+// Le même serveur sert aussi le site public (Config.Public, public.go).
+//
 // Format JSON : montants en chaînes décimales d'unités (1 ETL = 10^8), adresses bech32m,
 // identifiants en hexadécimal.
 package api
@@ -25,7 +27,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -46,6 +50,14 @@ type Chain interface {
 	BlockAt(height uint64) (blockchain.Block, error)
 	ReadState(func(*blockchain.State))
 	RewardAt(height uint64) (uint64, bool) // part de récompense par participant du bloc (affichage)
+	HeightOf(hash crypto.Hash) (uint64, error)
+}
+
+// Index : index de l'explorateur (storage.Store avec Options.Index, nœud archive).
+type Index interface {
+	AddressHeights(a crypto.Address, before uint64, limit int) (heights []uint64, more bool, err error)
+	TxHeight(id crypto.Hash) (uint64, bool)
+	EscrowOpenHeight(id crypto.Hash) (uint64, bool)
 }
 
 // Engine : soumissions et état du consensus (consensus.Engine).
@@ -95,11 +107,13 @@ type Config struct {
 	IPCSource string           // URL lue par l'oracle de ce nœud (config.toml, ipc_url), affichée pour vérification
 	Poll      time.Duration    // fréquence de surveillance des nouveaux blocs (SSE) ; défaut 1 s
 	MaxEvents int              // clients SSE simultanés au plus ; défaut 16
+	Public    *Public          // non nil : site public (public.go) ; nil : dashboard de l'opérateur
 
 	Chain   Chain
 	Engine  Engine
 	Network Network
 	Oracle  Oracle
+	Index   Index // nil : historique limité aux blocs conservés, pas de recherche de transaction
 }
 
 // Server est le serveur du dashboard.
@@ -110,6 +124,8 @@ type Server struct {
 	events chan struct{} // jetons de clients SSE
 	dv     derived       // données recalculées une fois par bloc
 	csp    string
+	reads  *limiter // site public seulement
+	writes *limiter
 }
 
 const cspBase = "default-src 'none'; script-src 'self'%s; style-src 'self'; img-src 'self' data:; " +
@@ -141,7 +157,7 @@ func importMapHash(static fs.FS) (string, error) {
 
 const maxBody = 64 << 10
 
-// New prépare le serveur et écrit un nouveau jeton opérateur (sauf en lecture seule).
+// New prépare le serveur et écrit un nouveau jeton opérateur (sauf en lecture seule et pour le site public).
 func New(cfg Config) (*Server, error) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -161,7 +177,15 @@ func New(cfg Config) (*Server, error) {
 		h = " " + h
 	}
 	s.csp = fmt.Sprintf(cspBase, h)
-	if !cfg.ReadOnly {
+	if p := cfg.Public; p != nil {
+		if p.Host == "" || p.ReadPerMinute <= 0 || p.WritePerMinute <= 0 {
+			return nil, errors.New("api : site public : nom d'hôte et limites de débit requis")
+		}
+		s.reads, s.writes = newLimiter(p.ReadPerMinute, cfg.Now), newLimiter(p.WritePerMinute, cfg.Now)
+	} else if cfg.Chain == nil {
+		return nil, errors.New("api : chaîne absente")
+	}
+	if !cfg.ReadOnly && cfg.Public == nil {
 		tok, err := writeToken(cfg.TokenPath)
 		if err != nil {
 			return nil, err
@@ -197,6 +221,16 @@ func writeToken(path string) (string, error) {
 
 func (s *Server) routes() {
 	m := s.mux
+	defer func() {
+		m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, http.StatusNotFound, "point d'API inconnu") })
+		if s.cfg.Static != nil {
+			m.HandleFunc("/", s.static)
+		}
+	}()
+	if s.cfg.Public != nil && s.cfg.Chain == nil { // réseau pas encore lancé
+		m.HandleFunc("GET /api/status", s.prelaunchStatus)
+		return
+	}
 	m.HandleFunc("GET /api/status", s.status)
 	m.HandleFunc("GET /api/blocks", s.blocks)
 	m.HandleFunc("GET /api/blocks/{height}", s.block)
@@ -205,6 +239,13 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/escrows/{id}", s.escrow)
 	m.HandleFunc("GET /api/ipc", s.ipc)
 	m.HandleFunc("GET /api/params", s.params)
+	m.HandleFunc("GET /api/tx/{id}", s.tx)
+	m.HandleFunc("GET /api/search", s.search)
+	if s.cfg.Public != nil {
+		m.HandleFunc("POST /api/tx", s.submitTx)
+		m.HandleFunc("POST /api/escrow", s.submitEscrow)
+		return // ni flux SSE, ni routes de l'opérateur
+	}
 	m.HandleFunc("GET /api/events", s.eventsHandler)
 	if !s.cfg.ReadOnly {
 		m.HandleFunc("POST /api/tx", s.submitTx)
@@ -218,10 +259,6 @@ func (s *Server) routes() {
 		m.HandleFunc("POST /api/operator/registration/request", s.operator(s.registrationRequest))
 		m.HandleFunc("POST /api/operator/registration/sponsor", s.operator(s.registrationSponsor))
 		m.HandleFunc("POST /api/operator/registration/reactivate", s.operator(s.registrationReactivate))
-	}
-	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, http.StatusNotFound, "point d'API inconnu") })
-	if s.cfg.Static != nil {
-		m.HandleFunc("/", s.static)
 	}
 }
 
@@ -238,6 +275,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusForbidden, "hôte non autorisé")
 		return
 	}
+	if s.cfg.Public != nil {
+		h.Set("Strict-Transport-Security", hsts)
+		if !s.limit(w, r) {
+			return
+		}
+	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		if o := r.Header.Get("Origin"); o != "" && !s.allowedOrigin(o) {
 			fail(w, http.StatusForbidden, "origine non autorisée")
@@ -253,10 +296,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) allowedHost(host string) bool {
+	if s.cfg.Public != nil {
+		return host == s.cfg.Public.Host
+	}
 	return host == fmt.Sprintf("localhost:%d", s.cfg.Port) || host == fmt.Sprintf("127.0.0.1:%d", s.cfg.Port)
 }
 
 func (s *Server) allowedOrigin(o string) bool {
+	if s.cfg.Public != nil {
+		return o == "https://"+s.cfg.Public.Host
+	}
 	return o == fmt.Sprintf("http://localhost:%d", s.cfg.Port) || o == fmt.Sprintf("http://127.0.0.1:%d", s.cfg.Port)
 }
 
@@ -280,6 +329,9 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	}
 	srv := &http.Server{Handler: s, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second,
 		IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
+	if s.cfg.Public != nil {
+		srv.ErrorLog = log.New(io.Discard, "", 0) // ses messages citent l'adresse du client : aucun journal d'IP
+	}
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

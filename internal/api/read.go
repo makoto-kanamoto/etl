@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/hex"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -77,6 +78,8 @@ func (s *Server) status(w http.ResponseWriter, _ *http.Request) {
 		"ipc":          ipcOf(ipc),
 		"base_ipc":     ipcOf(base),
 		"read_only":    s.cfg.ReadOnly,
+		"public":       s.cfg.Public != nil,
+		"launched":     true,
 		"node": map[string]any{
 			"address": node, // vide : nœud passif
 			"status":  nodeStatus,
@@ -150,19 +153,41 @@ func (s *Server) headerOf(h blockchain.Header) headerJSON {
 	return out
 }
 
-func (s *Server) blocks(w http.ResponseWriter, r *http.Request) {
-	limit := 10
+// pageArgs lit limit (1 à maxBlocks, défaut def) et before (hauteur exclue ; défaut : au-delà du
+// dernier bloc).
+func pageArgs(w http.ResponseWriter, r *http.Request, def int) (limit int, before uint64, ok bool) {
+	limit, before = def, math.MaxUint64
 	if v := r.URL.Query().Get("limit"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 || n > maxBlocks {
 			fail(w, http.StatusBadRequest, "limit : entier de 1 à 100")
-			return
+			return 0, 0, false
 		}
 		limit = n
 	}
+	if v := r.URL.Query().Get("before"); v != "" {
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			fail(w, http.StatusBadRequest, "before : hauteur attendue")
+			return 0, 0, false
+		}
+		before = n
+	}
+	return limit, before, true
+}
+
+func (s *Server) blocks(w http.ResponseWriter, r *http.Request) {
+	limit, before, ok := pageArgs(w, r, 10)
+	if !ok {
+		return
+	}
 	tip := s.cfg.Chain.Tip()
 	out := []headerJSON{}
-	for h := tip.Height; len(out) < limit; h-- {
+	if before == 0 {
+		reply(w, out)
+		return
+	}
+	for h := min(tip.Height, before-1); len(out) < limit; h-- {
 		hdr, err := s.cfg.Chain.HeaderAt(h)
 		if err != nil {
 			break
@@ -230,6 +255,14 @@ func (s *Server) block(w http.ResponseWriter, r *http.Request) {
 		ops[i] = escrowOpJSON{ID: hexOf(op.ID()), Kind: uint8(op.Kind), Escrow: hexOf(id), Signers: op.Signers}
 	}
 	out["participants"] = len(b.Participants)
+	miners := make([]string, len(b.Participants))
+	for i := range b.Participants {
+		miners[i] = s.addr(b.Participants[i].Miner)
+	}
+	out["participant_addresses"] = miners
+	if share, known := s.cfg.Chain.RewardAt(height); known {
+		out["reward_share"] = units(share)
+	}
 	out["txs"] = txs
 	out["escrow_ops"] = ops
 	reply(w, out)
@@ -318,16 +351,11 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	tip := s.cfg.Chain.Tip()
 	out := []txJSON{}
 	moves := []escrowMove{}
 	rewards := []rewardJSON{}
 	scanned := 0
-	for h := tip.Height; h > 0 && scanned < maxBlocks; h-- {
-		b, err := s.cfg.Chain.BlockAt(h)
-		if err != nil {
-			break // élagué au-delà
-		}
+	add := func(h uint64, b *blockchain.Block) {
 		scanned++
 		for i := range b.Txs {
 			if b.Txs[i].From.Hash == a.Hash || b.Txs[i].To.Hash == a.Hash {
@@ -337,11 +365,44 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 		for i := range b.EscrowOps {
 			moves = append(moves, s.escrowMoves(&b.EscrowOps[i], a, h)...)
 		}
-		if r, known := s.rewardOf(&b, a); known && r > 0 {
+		if r, known := s.rewardOf(b, a); known && r > 0 {
 			rewards = append(rewards, rewardJSON{Height: h, Time: b.Header.Timestamp, Amount: units(r)})
 		}
 	}
-	reply(w, map[string]any{"transactions": out, "escrow_movements": moves, "rewards": rewards, "blocks_scanned": scanned})
+	if s.cfg.Index == nil { // fenêtre des blocs conservés
+		for h := s.cfg.Chain.Tip().Height; h > 0 && scanned < maxBlocks; h-- {
+			b, err := s.cfg.Chain.BlockAt(h)
+			if err != nil {
+				break // élagué au-delà
+			}
+			add(h, &b)
+		}
+		reply(w, map[string]any{"transactions": out, "escrow_movements": moves, "rewards": rewards, "blocks_scanned": scanned})
+		return
+	}
+	// Index de l'explorateur : historique complet, page par page (before = plus petite hauteur reçue).
+	limit, before, ok := pageArgs(w, r, 20)
+	if !ok {
+		return
+	}
+	heights, more, err := s.cfg.Index.AddressHeights(a, before, limit)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "index de l'explorateur illisible")
+		return
+	}
+	for _, h := range heights {
+		b, err := s.cfg.Chain.BlockAt(h)
+		if err != nil {
+			fail(w, http.StatusInternalServerError, "bloc indexé illisible")
+			return
+		}
+		add(h, &b)
+	}
+	res := map[string]any{"transactions": out, "escrow_movements": moves, "rewards": rewards, "blocks_scanned": scanned, "indexed": true}
+	if more {
+		res["next_before"] = heights[len(heights)-1]
+	}
+	reply(w, res)
 }
 
 // rewardJSON : part de récompense touchée par l'adresse au bloc Height.
@@ -361,7 +422,8 @@ type escrowMove struct {
 }
 
 // escrowMoves calcule les mouvements de solde de a dus à op (bloc height). Les conditions d'un
-// échange réglé viennent de l'état ; un échange élagué depuis n'apparaît plus.
+// échange réglé viennent de l'état, ou du bloc d'ouverture (index de l'explorateur) ; sans index,
+// un échange élagué depuis n'apparaît plus.
 func (s *Server) escrowMoves(op *blockchain.EscrowOp, a crypto.Address, height uint64) []escrowMove {
 	var t blockchain.EscrowTerms
 	id := op.Escrow
@@ -371,10 +433,12 @@ func (s *Server) escrowMoves(op *blockchain.EscrowOp, a crypto.Address, height u
 		var e blockchain.Escrow
 		var ok bool
 		s.cfg.Chain.ReadState(func(st *blockchain.State) { e, ok = st.Escrow(op.Escrow) })
-		if !ok {
-			return nil
-		}
 		t = e.Terms
+		if !ok {
+			if t, ok = s.openedTerms(op.Escrow); !ok {
+				return nil
+			}
+		}
 	} else {
 		return nil // « payé », litige : aucun mouvement
 	}

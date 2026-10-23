@@ -36,3 +36,9 @@ ipc_frequency = "quarterly"
 [dashboard]               # tableau de bord : http://localhost:3001 (écoute sur 127.0.0.1 seulement)
 port  = 3001
 token = "~/.etl/dashboard.token"   # jeton opérateur, régénéré à chaque démarrage
+
+[public]                  # site public (explorateur, portefeuille) derrière un proxy HTTPS, à la place du dashboard
+enabled = false           # true : nœud archive (pruning = false) et passif (wallet = "") obligatoires
+host    = ""              # nom d'hôte du site, par exemple "etalon-etl.fr"
+read_per_minute  = 300    # lectures de l'API par adresse IP et par minute (en mémoire, aucun journal)
+write_per_minute = 6      # transferts et échanges soumis par adresse IP et par minute

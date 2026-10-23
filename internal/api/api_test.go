@@ -29,6 +29,7 @@ import (
 	"github.com/makoto-kanamoto/etl/internal/crypto"
 	"github.com/makoto-kanamoto/etl/internal/escrow"
 	"github.com/makoto-kanamoto/etl/internal/oracle"
+	"github.com/makoto-kanamoto/etl/internal/storage"
 )
 
 const port = 3001
@@ -41,6 +42,8 @@ type chain struct {
 	blocks map[uint64]blockchain.Block
 	pruned map[uint64]bool
 	state  *blockchain.State // non nil : état présenté à la place de celui de la chaîne de test
+	store  *storage.Store    // non nil : reçoit aussi chaque bloc (explorateur, index réel)
+	certs  map[uint64]blockchain.Certificate
 }
 
 func (c *chain) Tip() blockchain.Header { c.mu.Lock(); defer c.mu.Unlock(); return c.net.Tip }
@@ -75,6 +78,20 @@ func (c *chain) RewardAt(h uint64) (uint64, bool) {
 	return r, ok
 }
 
+func (c *chain) HeightOf(h crypto.Hash) (uint64, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if h == c.net.Genesis.Header.Hash() {
+		return 0, nil
+	}
+	for height, b := range c.blocks {
+		if b.Header.Hash() == h {
+			return height, nil
+		}
+	}
+	return 0, errors.New("inconnu")
+}
+
 func (c *chain) ReadState(f func(*blockchain.State)) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -87,8 +104,17 @@ func (c *chain) ReadState(f func(*blockchain.State)) {
 func (c *chain) next(t *testing.T, d int, edit func(*blockchain.Block)) blockchain.Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	b, _ := c.net.Next(t, d, edit)
+	b, cert := c.net.Next(t, d, edit)
 	c.blocks[b.Header.Height] = b
+	if c.certs == nil {
+		c.certs = map[uint64]blockchain.Certificate{}
+	}
+	c.certs[b.Header.Height] = cert
+	if c.store != nil {
+		if err := c.store.Append(&b, &cert); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return b
 }
 
@@ -399,7 +425,7 @@ func TestReadOnly(t *testing.T) {
 	if b.get("/api/status")["read_only"] != true {
 		t.Fatal("statut : lecture seule non signalée")
 	}
-	if _, err := New(Config{Params: b.s.cfg.Params, Port: port}); err == nil {
+	if _, err := New(Config{Params: b.s.cfg.Params, Port: port, Chain: b.c}); err == nil {
 		t.Fatal("serveur modifiable sans chemin de jeton")
 	}
 }

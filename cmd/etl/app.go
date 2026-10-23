@@ -229,6 +229,10 @@ func (a *app) restore(cfg config.Config, net node.Network, passFile string) erro
 
 func (a *app) runNode(cfg config.Config, net node.Network, passFile string) error {
 	genesis, err := node.LoadGenesis(cfg.Node.Genesis, net)
+	if errors.Is(err, node.ErrNotLaunched) && cfg.Public.Enabled {
+		log := slog.New(slog.NewTextHandler(a.errw, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		return node.ServePrelaunch(a.ctx, cfg, net, a.static, Version, log)
+	}
 	if err != nil {
 		return err
 	}
