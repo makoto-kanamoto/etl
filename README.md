@@ -48,6 +48,12 @@ The code is public. Every transaction is verifiable. Every IPC update is verifia
 
 ---
 
+## Contact
+
+makoto.kanamoto@proton.me
+
+---
+
 ## Licence / License
 
 GPL v3 — Le code reste libre, pour toujours. / The code stays free, forever.
