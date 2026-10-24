@@ -308,7 +308,11 @@ regroupés par thème (économie, blocs, admission des nœuds, parrainage).
 chaque page dans Chrome à six largeurs (1440 à 360 px), en thème clair et sombre, et signale tout
 débordement, texte coupé, barre de défilement interne ou erreur de la console, ainsi qu'un texte de
 graphique trop petit à l'écran (moins de 9,5 px) ou superposé à un autre. Le texte des graphiques
-s'ajuste à leur largeur réelle pour rester à 11 px, du téléphone à l'écran large.
+s'ajuste à leur largeur réelle pour rester à 11 px, du téléphone à l'écran large. Le contrôle suit le mode
+annoncé par le nœud : sur le site public, il vérifie aussi l'explorateur avec un vrai bloc, une adresse,
+une transaction et un échange pris dans la chaîne, et les recherches sans résultat ; avant le lancement,
+l'accueil et « Rejoindre ». Le serveur de développement (non livré) sert le site public derrière un proxy
+HTTPS local qui imite celui du serveur (`etl-dev -public`, `-prelaunch`).
 
 **Page IPC** : IPC en vigueur, au lancement et valeur de 1 ETL ; courbe de l'IPC adopté trimestre par
 trimestre ; vote en cours face au seuil des 2/3 (« il manque n voix ») ; lecture de ce nœud. Le lien
@@ -359,6 +363,30 @@ un proxy HTTPS sur la même machine (Caddy, certificat Let's Encrypt). Le nœud 
   est configuré sans journal d'accès.
 - **Avant le lancement d'ETL-FR** : `etl run` sert seulement les pages de présentation et un statut
   `{"launched": false}` — ni chaîne, ni réseau, ni portefeuille, ni explorateur.
+
+**Interface du site public.** C'est la même page et le même code que le dashboard : l'interface lit
+`/api/status` et choisit sa navigation.
+
+| Mode | Navigation |
+|---|---|
+| Dashboard de l'opérateur (localhost) | Accueil · Portefeuille · Échanges · IPC · Opérateur |
+| Site public, réseau lancé | Accueil · Portefeuille · Échanges · Explorateur · IPC · Rejoindre |
+| Site public, avant le lancement | Accueil · Rejoindre, avec le bandeau « réseau pas encore lancé » |
+
+- Une page absente du mode (Opérateur sur le site public) ramène à l'accueil.
+- **Accueil visiteur** : la valeur de 1 ETL, la simulation, le prochain bloc et les chiffres du réseau ;
+  ni la carte du nœud, ni l'indicateur de santé (qui décrit le nœud qui sert le site), remplacé par
+  « dernier bloc il y a X h ». Avant le lancement : la promesse, sans valeur du jour, et trois principes.
+- **Portefeuille** : le même, avec un avertissement permanent — son code vient du site ; pour une sécurité
+  maximale, utiliser le portefeuille de son propre nœud. Historique complet, page par page.
+- **Échanges** : l'outil d'escrow (ouvrir, compléter, suivre) sur les deux interfaces. Le tableau
+  d'annonces, quand il existera, ne sera visible que sur le dashboard local tant que la vérification MiCA
+  n'est pas faite.
+- **IPC** : la même page, sans la relecture manuelle de la source (action de l'opérateur).
+- **Rejoindre** : les trois étapes (comprendre, essayer, devenir fondateur) et la documentation dans les
+  quatre langues, lue sur le dépôt GitHub (aucune copie à tenir à jour).
+- **Mises à jour** : relecture de l'état toutes les 30 secondes ; à chaque nouveau bloc, la page se met à
+  jour et le visiteur est averti des transactions de son portefeuille.
 
 ---
 
@@ -581,21 +609,33 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
 
 ### Explorateur public
 
-```
-etalon-etl.fr — Explorateur
+Onglet Explorateur du site public (etalon-etl.fr). Chaque page a sa propre adresse, que l'on peut
+partager :
 
-Bloc #142 — 17 octobre 2026 à 23:00 UTC
-├── Transaction tx_3f7a... : ETL1xK9... → ETL1pAuL... : 5 ETL
-├── Transaction tx_8b2c... : ETL1aB3... → ETL1cD4... : 12.5 ETL
-├── Proposant : etl1q... (frais du bloc)
-└── Récompense : 10 ETL partagés entre 42 participants (0.23809523 ETL chacun)
-```
+| Page | Adresse | Contenu |
+|---|---|---|
+| Derniers blocs | `#/explorer` | hauteur, date, proposant, nombre de transactions, d'opérations d'échange et de participants, IPC adopté ; pages plus anciennes à la demande |
+| Bloc | `#/explorer/block/412` | empreinte, bloc précédent, proposant, partage de la récompense, IPC, tour de vote ; transactions, opérations d'échange, participants |
+| Adresse | `#/explorer/address/etl1q…` | solde, transactions envoyées, statut de nœud, échanges menés à terme ; historique complet, page par page |
+| Transaction | `#/explorer/tx/…` | montant, expéditeur, destinataire, bloc, frais, numéro d'envoi, heure de signature |
+| Échange | `#/explorer/escrow/…` | montant, parties et leur réputation, frise des étapes avec le numéro de bloc de chacune, rémunération de l'arbitre (versée ou rendue) |
 
 - Accessible à tous — membres ou non
-- Derniers blocs, détail d'un bloc (participants, transactions, échanges, IPC adopté, part de récompense),
-  page d'une adresse (solde, réputation, statut de nœud, historique complet page par page), page d'une
-  transaction, page d'un échange
-- Recherche : hauteur, adresse, empreinte de bloc, identifiant de transaction ou d'échange
+- Tout identifiant mène à sa page ; une empreinte s'affiche en entier sur sa propre page
+- **Recherche** : une seule case pour une hauteur, une adresse (majuscules acceptées) ou une empreinte de
+  bloc, de transaction ou d'échange. Sans résultat, la page dit pourquoi :
+
+| Motif | Exemple | Ce que la page dit |
+|---|---|---|
+| empreinte incomplète | `3f7a91c2e8` | une empreinte complète compte 64 caractères ; celle-ci en a 10 |
+| empreinte inconnue | 64 caractères | une transaction n'apparaît qu'après le prochain bloc (heure donnée) |
+| autre réseau | `etlt1q…` | adresse du réseau de test (ou d'un autre préfixe) ; préfixe de ce réseau |
+| bloc futur | `99999` | le dernier bloc est le N ; heure du prochain bloc |
+| non reconnu | `bonjour` | ni hauteur, ni adresse de ce réseau, ni empreinte |
+
+- **Échanges archivés** : un échange réglé depuis plus de 90 jours n'est plus dans l'état des nœuds ; sa
+  page est reconstituée à partir de son bloc d'ouverture et de son bloc de règlement (index de
+  l'explorateur), et le dit.
 - Historique complet grâce à l'index de l'explorateur du nœud archive (voir *Stockage et pruning*)
 - UX moderne et interactive
 - Principe manifeste : *"Ne faites pas confiance. Vérifiez."*
