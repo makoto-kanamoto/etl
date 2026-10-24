@@ -110,7 +110,9 @@ touchée au dernier bloc.
 ### Site public (nœud exposé sur Internet)
 
 Un nœud peut servir le site public (portefeuille web et explorateur) **à la place** du dashboard, derrière
-un proxy HTTPS installé sur la même machine (Caddy, par exemple). Section `[public]` de `config.toml` :
+un proxy HTTPS installé sur la même machine (Caddy, par exemple). Installation pas à pas sur un serveur,
+avec les fichiers prêts à l'emploi du dossier `deploy/` : [guide de déploiement](GUIDE_DEPLOIEMENT.md).
+Section `[public]` de `config.toml` :
 
 ```toml
 [node]

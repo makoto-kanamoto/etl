@@ -113,7 +113,9 @@ in the last block.
 ### Public site (node exposed to the Internet)
 
 A node can serve the public site (web wallet and explorer) **instead of** the dashboard, behind an HTTPS
-proxy installed on the same machine (Caddy, for example). `[public]` section of `config.toml`:
+proxy installed on the same machine (Caddy, for example). Step-by-step installation on a server, with the
+ready-made files of the `deploy/` folder: [deployment guide](DEPLOYMENT_GUIDE.md). `[public]` section of
+`config.toml`:
 
 ```toml
 [node]
