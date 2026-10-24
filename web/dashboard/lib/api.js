@@ -1,11 +1,16 @@
 // Client de l'API locale du nœud. Les montants arrivent en chaînes décimales et sont convertis en BigInt.
 
 export class ApiError extends Error {
-  constructor(status, message) {
+  // data : corps de la réponse d'erreur (motif d'une recherche sans résultat, par exemple).
+  constructor(status, message, data = null) {
     super(message);
     this.status = status;
+    this.data = data;
   }
 }
+
+// txOf convertit les montants d'une transaction en BigInt.
+const txOf = (tx) => ({ ...tx, amount: BigInt(tx.amount), fee: BigInt(tx.fee) });
 
 // makeApi : fetchImpl injecté pour les tests (fetch du navigateur par défaut).
 export function makeApi(fetchImpl = (...a) => fetch(...a)) {
@@ -29,7 +34,7 @@ export function makeApi(fetchImpl = (...a) => fetch(...a)) {
       // corps absent ou illisible
     }
         // Erreur du nœud : le préfixe technique du paquet Go (« blockchain: … ») n'est pas affiché.
-    if (!res.ok) throw new ApiError(res.status, (data?.error ?? `HTTP ${res.status}`).replace(/^[a-z]+: /, ""));
+    if (!res.ok) throw new ApiError(res.status, (data?.error ?? `HTTP ${res.status}`).replace(/^[a-z]+: /, ""), data);
     return data;
   }
 
@@ -44,14 +49,30 @@ export function makeApi(fetchImpl = (...a) => fetch(...a)) {
       const a = await call("GET", `/api/accounts/${encodeURIComponent(address)}`);
       return { ...a, balance: BigInt(a.balance), nonce: BigInt(a.nonce), nextNonce: BigInt(a.next_nonce) };
     },
-        history: async (address) => {
-      const h = await call("GET", `/api/accounts/${encodeURIComponent(address)}/history`);
+    // history : historique d'une adresse. Nœud avec index (site public) : complet, page par page
+    // (before = nextBefore de la page précédente) ; sinon, les blocs conservés.
+    history: async (address, before) => {
+      const q = before !== undefined && before !== null ? `?before=${before}` : "";
+      const h = await call("GET", `/api/accounts/${encodeURIComponent(address)}/history${q}`);
       return {
-        transactions: h.transactions.map((tx) => ({ ...tx, amount: BigInt(tx.amount), fee: BigInt(tx.fee) })),
+        transactions: h.transactions.map(txOf),
         escrow: (h.escrow_movements ?? []).map((m) => ({ ...m, amount: BigInt(m.amount) })),
         rewards: (h.rewards ?? []).map((r) => ({ ...r, amount: BigInt(r.amount) })),
+        indexed: h.indexed === true,
+        nextBefore: h.next_before ?? null,
       };
     },
+    // Explorateur.
+    blocks: (limit = 20, before) => call("GET", `/api/blocks?limit=${limit}${before !== undefined && before !== null ? `&before=${before}` : ""}`),
+    block: async (height) => {
+      const b = await call("GET", `/api/blocks/${encodeURIComponent(height)}`);
+      return { ...b, txs: (b.txs ?? []).map(txOf), rewardShare: b.reward_share !== undefined ? BigInt(b.reward_share) : null };
+    },
+    tx: async (id) => {
+      const r = await call("GET", `/api/tx/${encodeURIComponent(id)}`);
+      return { ...txOf(r.tx), blockTime: r.block_time };
+    },
+    search: (q) => call("GET", `/api/search?q=${encodeURIComponent(q)}`),
     ipc: () => call("GET", "/api/ipc"),
         submitTx: (hex) => call("POST", "/api/tx", { tx: hex }),
     escrow: async (id) => {

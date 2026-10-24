@@ -8,6 +8,14 @@
 //   node web/tools/layoutcheck.mjs [http://localhost:3001] [répertoire de captures]
 //   ETL_LANG=ja node web/tools/layoutcheck.mjs              (langue de l'interface : fr, en, ja, zh)
 //
+// Site public : les pages contrôlées suivent le mode annoncé par /api/status (réseau lancé : accueil,
+// portefeuille, échanges, explorateur avec un vrai bloc, une adresse, une transaction et un échange
+// pris dans la chaîne, recherches sans résultat, IPC, rejoindre ; avant le lancement : accueil et
+// rejoindre). Site de développement :
+//   go run -tags dev ./cmd/etl-dev -public &
+//   node web/tools/layoutcheck.mjs https://etalon.test:8443
+// (un nom en .test est résolu vers 127.0.0.1 et son certificat autosigné accepté).
+//
 // Node 20 : ajouter --experimental-websocket. Chrome doit être installé (CHROME pour un autre chemin).
 // Code de sortie 1 si un problème est trouvé. Hors de « node --test » : il faut Chrome et un nœud.
 
@@ -21,7 +29,10 @@ const SHOTS = process.argv[3];
 const LANG = process.env.ETL_LANG ?? "";
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const PORT = 9400 + Math.floor(Math.random() * 400);
-const ROUTES = ["", "wallet", "escrow", "ipc", "operator"];
+let ROUTES = ["", "wallet", "escrow", "ipc", "operator"];
+const TEST_HOST = new URL(BASE).hostname.endsWith(".test");
+// Recherches sans résultat : la page affiche le motif ; la réponse 404 de l'API est attendue.
+const NOT_FOUND = ["3f7a91c2e8", "99999", "bonjour"];
 const WIDTHS = [1440, 1280, 1024, 768, 390, 360];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -68,8 +79,10 @@ const PROBE = `(() => {
 class Chrome {
   constructor() {
     this.profile = mkdtempSync(join(tmpdir(), "etl-layout-"));
+    const host = new URL(BASE).hostname;
+    const extra = TEST_HOST ? [`--host-resolver-rules=MAP ${host} 127.0.0.1`, "--ignore-certificate-errors"] : [];
     this.proc = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${PORT}`, `--user-data-dir=${this.profile}`, "--no-first-run",
-      "--no-default-browser-check", "about:blank"], { stdio: "ignore" });
+      "--no-default-browser-check", ...extra, "about:blank"], { stdio: "ignore" });
     this.seq = 0;
     this.pending = new Map();
     this.errors = [];
@@ -121,10 +134,45 @@ class Chrome {
   }
 }
 
+// publicRoutes : pages du site public, avec de vrais identifiants lus dans la chaîne (par le navigateur,
+// qui seul résout le nom du site de développement).
+async function publicRoutes(c) {
+  const st = await c.ev(`fetch("/api/status").then((r) => r.json())`);
+  if (st.public !== true) return null;
+  if (st.launched === false) return ["", "join"];
+  const sample = await c.ev(`(async () => {
+    const get = (p) => fetch(p).then((r) => r.json());
+    const blocks = await get("/api/blocks?limit=100");
+    const out = { block: blocks[0].height, address: blocks[0].proposer };
+    for (const b of blocks) {
+      if (!b.counts || (out.tx && out.escrow)) continue;
+      if ((b.counts.txs && !out.tx) || (b.counts.escrow_ops && !out.escrow)) {
+        const d = await get("/api/blocks/" + b.height);
+        if (d.txs.length && !out.tx) out.tx = d.txs[0].id;
+        if (d.escrow_ops.length && !out.escrow) out.escrow = d.escrow_ops[0].escrow;
+      }
+    }
+    return out;
+  })()`);
+  const r = ["", "wallet", "escrow", "explorer", `explorer/block/${sample.block}`];
+  if (sample.address) r.push(`explorer/address/${sample.address}`);
+  if (sample.tx) r.push(`explorer/tx/${sample.tx}`);
+  else console.log("aucune transaction dans les 100 derniers blocs : page de transaction non contrôlée");
+  if (sample.escrow) r.push(`explorer/escrow/${sample.escrow}`);
+  else console.log("aucun échange dans les 100 derniers blocs : page d'échange non contrôlée");
+  r.push(...NOT_FOUND.map((q) => `explorer/search/${q}`), "ipc", "join");
+  return r;
+}
+const expected404 = (route, msg) => route.startsWith("explorer/search/") && /status of 404/.test(msg);
+
 const c = new Chrome();
 let problems = 0;
 try {
   await c.connect();
+  await c.send("Page.navigate", { url: `${BASE}/` });
+  await sleep(1500);
+  ROUTES = (await publicRoutes(c)) ?? ROUTES;
+  c.errors.splice(0);
   if (LANG) {
     await c.send("Page.navigate", { url: `${BASE}/` });
     await sleep(800);
@@ -144,14 +192,15 @@ try {
         await c.ev(`new Promise((r) => { const t = Date.now(); (function w() { document.querySelector("main")?.children.length || Date.now() - t > 5000 ? r() : setTimeout(w, 50); })(); })`);
         await c.ev("document.fonts.ready.then(() => true)");
         await sleep(300);
-        const found = [...(await c.ev(PROBE)), ...c.errors.splice(0)];
+        const found = [...(await c.ev(PROBE)), ...c.errors.splice(0).filter((m) => !expected404(route, m))];
         if (found.length) {
           problems += found.length;
           console.log(`${theme} ${w}px #/${route} :\n  ${found.join("\n  ")}`);
         }
         if (SHOTS) {
           const r = await c.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
-          writeFileSync(join(SHOTS, `${LANG ? LANG + "-" : ""}${theme}-${w}-${route || "home"}.png`), Buffer.from(r.data, "base64"));
+          const name = (route || "home").replace(/^explorer\/search\/(.*)/, "explorer-search-$1").replace(/^explorer\/(block|address|tx|escrow)\/.*/, "explorer-$1").replace(/\//g, "-");
+          writeFileSync(join(SHOTS, `${LANG ? LANG + "-" : ""}${theme}-${w}-${name}.png`), Buffer.from(r.data, "base64"));
         }
       }
     }

@@ -11,6 +11,7 @@ import { identiconSvg } from "../lib/identicon.js";
 import { short, group, message, actionRow, pageHead, steps, who, capitalize } from "../lib/ui.js";
 import * as esc from "../../wallet/escrow.js";
 import * as keys from "../../wallet/keys.js";
+import { route } from "../lib/site.js";
 
 const locale = localeOf;
 
@@ -47,7 +48,8 @@ export async function repCounts(app, address) {
 export function party(app, roleKey, address, me) {
   const rep = h("div", { class: "rep" }, "…");
   repCounts(app, address).then((s) => (rep.textContent = s));
-  return h("div", { class: "party" },
+  // Site public : la partie ouvre sa page dans l'explorateur (réputation, historique).
+  return h(app.status?.public ? "a" : "div", { class: "party", href: app.status?.public ? route.address(address) : null },
     h("span", { class: "label" }, app.t(`escrow.${roleKey}`) + (address === me ? ` · ${app.t("escrow.you")}` : "")),
     who(app, address), rep);
 }

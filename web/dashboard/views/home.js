@@ -1,9 +1,12 @@
 // Accueil : la valeur de 1 ETL et pourquoi elle tient, le prochain bloc sur une règle de 24 h, l'état
-// du nœud et du réseau.
+// du nœud et du réseau. Site public : sans la carte du nœud ni l'indicateur de santé (P4) ; avant le
+// lancement, la promesse seule (D3).
 
 import { h, svg, legible } from "../lib/dom.js";
 import { formatRate, formatETL } from "../lib/amount.js";
 import { localeOf } from "../lib/strings.js";
+import { icon } from "../lib/icons.js";
+import { modeOf, ago, docFor, external } from "../lib/site.js";
 
 const DAY = 86400;
 // Fenêtre de lecture de l'IPC par les nœuds (internal/oracle : 20:00 + 150 min, UTC).
@@ -141,9 +144,45 @@ function stat(label, value, note) {
   return h("div", { class: "stat" }, h("span", { class: "label" }, label), h("span", { class: "v" }, value), note ? h("span", { class: "s" }, note) : null);
 }
 
+// banner : réseau pas encore lancé (site public).
+export function prelaunchBanner(t) {
+  return h("div", { class: "banner", role: "note" }, icon("info"), h("p", {}, h("strong", {}, t("site.pre.title")), " ", t("site.pre.text")));
+}
+
+function simBlock(t) {
+  return h("div", { class: "hero-sim" },
+    h("span", { class: "sim" }, t("home.sim.badge")),
+    h("span", { class: "label" }, t("home.sim.title")),
+    simChart(t),
+    h("div", { class: "legend" },
+      h("span", {}, h("i", { class: "key-etl" }), t("home.sim.etl")),
+      h("span", {}, h("i", { class: "key-eur" }), t("home.sim.eur"))));
+}
+
+// Avant le lancement : ni chaîne, ni valeur du jour, ni chiffres (le nœud ne répond que launched: false).
+function renderPrelaunch(app) {
+  const { t, lang } = app;
+  const pillar = (k) => h("section", { class: "panel pillar" }, h("h2", {}, t(`site.pillar.${k}.title`)), h("p", { class: "muted" }, t(`site.pillar.${k}.text`)));
+  return h("div", { class: "page" },
+    prelaunchBanner(t),
+    h("div", { class: "page-head" }, h("div", {}, h("span", { class: "label" }, t("site.kicker", { chain: app.status.chain_id })), h("h1", {}, t("site.title"))),
+      h("div", { class: "cta" }, h("a", { class: "button primary", href: "#/join" }, t("nav.join")), external(docFor("short", lang), t("site.readShort")))),
+    h("section", { class: "hero" },
+      h("div", { class: "hero-value" },
+        h("span", { class: "label" }, t("site.promise")),
+        h("p", { class: "eq" }, h("span", {}, "1 ETL"), h("span", { class: "unit" }, "="), h("em", {}, "1 €")),
+        h("p", { class: "explain" }, t("site.promiseText")),
+        h("div", { class: "engrave", "aria-hidden": "true" })),
+      simBlock(t)),
+    h("div", { class: "grid-3" }, pillar("ipc"), pillar("premine"), pillar("member")));
+}
+
 export function renderHome(app) {
   const { status: st, lang, t } = app;
   if (!st) return h("p", { class: "msg error" }, t("error.network"));
+  const mode = modeOf(st);
+  if (mode === "prelaunch") return renderPrelaunch(app);
+  const pub = mode === "public";
 
   const change = priceChange(st.ipc.value, st.base_ipc.value, lang);
   const explain = change.dir === "same"
@@ -156,20 +195,15 @@ export function renderHome(app) {
       h("p", { class: "eq" }, h("span", {}, "1 ETL"), h("span", { class: "unit" }, "="), h("em", {}, `${formatRate(st.ipc.value, st.base_ipc.value, lang)} €`)),
       h("p", { class: "explain" }, explain),
       h("div", { class: "engrave", "aria-hidden": "true" })),
-    h("div", { class: "hero-sim" },
-      h("span", { class: "sim" }, t("home.sim.badge")),
-      h("span", { class: "label" }, t("home.sim.title")),
-      simChart(t),
-      h("div", { class: "legend" },
-        h("span", {}, h("i", { class: "key-etl" }), t("home.sim.etl")),
-        h("span", {}, h("i", { class: "key-eur" }), t("home.sim.eur")))));
+    simBlock(t));
 
   const nextAt = new Date(st.next_block * 1000);
   const cd = h("span", { class: "countdown" }, countdownText(t, st.next_block - Date.now() / 1000));
   // Heure du bloc du réseau (23:00 UTC) ; le compte à rebours suit le prochain bloc annoncé par le nœud.
   const rule = dayRule(t, Date.now() / 1000, st.block_time);
   const blockUTC = new Date(st.block_time * 1000).toISOString().slice(11, 16);
-  const health = healthPanel(app);
+  // Site public : l'état du nœud qui sert le site n'intéresse pas un visiteur (P4).
+  const health = pub ? { chip: h("span", { class: "chip neutral" }, t("site.lastBlockAgo", { ago: ago(t, st.tip_time) })), list: null } : healthPanel(app);
   const nextPanel = h("section", { class: "panel dayrule" },
     h("div", { class: "panel-head" }, h("h2", {}, t("home.next")), health.chip),
     h("div", { class: "next-row" }, cd,
@@ -200,10 +234,22 @@ export function renderHome(app) {
   const stats = h("section", { class: "stats" },
     stat(t("home.blocks"), st.height.toLocaleString(locale(lang)), t("home.blocksNote")),
     stat(t("home.active"), String(st.active_nodes), t("home.activeNote")),
-    st.peers ? stat(t("home.peers"), String(st.peers.in + st.peers.out), t("home.peersValue", st.peers)) : null,
+    st.peers && !pub ? stat(t("home.peers"), String(st.peers.in + st.peers.out), t("home.peersValue", st.peers)) : null,
     stat(t("home.ipc"), ipcText(st.ipc.value, lang), t("home.ipcPeriod", { period: st.ipc.period })),
     st.supply !== undefined ? stat(t("home.supply"), formatETL(BigInt(st.supply), lang), t("home.supplyNote")) : null);
 
+  if (pub) {
+    const verify = h("section", { class: "panel" },
+      h("h2", {}, t("site.verify.title")),
+      h("p", { class: "muted" }, t("site.verify.text")),
+      h("div", { class: "cta" }, h("a", { class: "button", href: "#/explorer" }, t("site.verify.blocks")), h("a", { href: "#/ipc" }, t("site.verify.ipc"))));
+    return h("div", { class: "page" },
+      h("div", { class: "page-head" }, h("div", {}, h("span", { class: "label" }, t("site.kicker", { chain: st.chain_id })), h("h1", {}, t("site.title"))),
+        h("div", { class: "cta" }, h("a", { class: "button primary", href: "#/wallet" }, t("site.createWallet")), h("a", { class: "button", href: "#/explorer" }, t("site.explore")))),
+      hero,
+      h("div", { class: "split" }, nextPanel, verify),
+      stats);
+  }
   return h("div", { class: "page" },
     h("div", { class: "page-head" }, h("div", {}, h("span", { class: "label" }, t("home.kicker")), h("h1", {}, t("home.title")))),
     hero,

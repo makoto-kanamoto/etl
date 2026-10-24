@@ -668,3 +668,133 @@ test("langues : nom dans la langue, conventions de dates, attribut lang de la pa
   assert.equal(t("ja", "list.and"), "と");
   assert.equal(t("zh", "list.and"), "和");
 });
+
+// --- site public (etalon-etl.fr) ---
+
+import { parseRoute, route, searchTarget, ago, docURL, docFor, DOC_KEYS, DOC_LANGS, REPO, NAVS, modeOf, POLL_MS, shortHex } from "./lib/site.js";
+import { feedRows, weave, MARK } from "./lib/feed.js";
+import { timeline, counts, PAGE } from "./views/explorer.js";
+import { existsSync } from "node:fs";
+
+test("site public : mode et navigation (opérateur absent ; avant le lancement, accueil et rejoindre)", () => {
+  assert.equal(modeOf(null), "dashboard");
+  assert.equal(modeOf({ public: false }), "dashboard");
+  assert.equal(modeOf({ public: true, launched: true }), "public");
+  assert.equal(modeOf({ public: true }), "public");
+  assert.equal(modeOf({ public: true, launched: false }), "prelaunch");
+  for (const v of [1, "true", {}]) assert.equal(modeOf({ public: v }), "dashboard", "statut mal formé : jamais le site public");
+  const pages = (m) => NAVS[m].map(([r]) => r);
+  assert.deepEqual(pages("dashboard"), ["", "wallet", "escrow", "ipc", "operator"]);
+  assert.deepEqual(pages("public"), ["", "wallet", "escrow", "explorer", "ipc", "join"]);
+  assert.deepEqual(pages("prelaunch"), ["", "join"]);
+  for (const m of Object.keys(NAVS)) for (const [, , key] of NAVS[m]) for (const l of LANGS) assert.ok(STRINGS[l][key], `${l} : ${key}`);
+  assert.equal(POLL_MS, 30_000, "D4 : relecture toutes les 30 secondes");
+});
+
+test("site public : routes de l'explorateur, aller et retour", () => {
+  assert.deepEqual(parseRoute(""), { page: "", params: [] });
+  assert.deepEqual(parseRoute("#/"), { page: "", params: [] });
+  assert.deepEqual(parseRoute("#/join"), { page: "join", params: [] });
+  assert.deepEqual(parseRoute("#/explorer/block/42"), { page: "explorer", params: ["block", "42"] });
+  assert.deepEqual(parseRoute("#/explorer/"), { page: "explorer", params: [] });
+  assert.deepEqual(parseRoute("#/explorer/search/%E2%80%A6%25zz"), { page: "explorer", params: ["search", "…%zz"] });
+  assert.deepEqual(parseRoute("#/explorer/search/%E0%A4%A"), { page: "explorer", params: ["search", "%E0%A4%A"] }, "encodage invalide : tel quel");
+  const q = "a b/c?d#e";
+  assert.deepEqual(parseRoute(route.search(q)).params, ["search", q]);
+  assert.deepEqual(parseRoute(route.address("etl1qabc")).params, ["address", "etl1qabc"]);
+  assert.equal(route.block(0), "#/explorer/block/0");
+  assert.equal(searchTarget({ type: "block", height: 7 }), "#/explorer/block/7");
+  assert.equal(searchTarget({ type: "address", address: "etl1qx" }), "#/explorer/address/etl1qx");
+  assert.equal(searchTarget({ type: "tx", id: "ab", height: 3 }), "#/explorer/tx/ab");
+  assert.equal(searchTarget({ type: "escrow", id: "cd" }), "#/explorer/escrow/cd");
+  assert.equal(searchTarget({ type: "autre" }), null);
+  assert.equal(searchTarget(null), null);
+  assert.equal(shortHex("0123456789abcdef".repeat(4)), "0123456789…abcdef");
+  assert.equal(PAGE, 20);
+});
+
+test("site public : « il y a … » en minutes, heures, puis jours", () => {
+  const tt = (key, vars) => t("fr", key, vars);
+  const now = 1_800_000_000;
+  assert.equal(ago(tt, now, now), "il y a 1 min");
+  assert.equal(ago(tt, now + 60, now), "il y a 1 min", "heure future (horloge en retard) : jamais négatif");
+  assert.equal(ago(tt, now + 7200, now), "il y a 1 min");
+  assert.equal(ago(tt, now - 59 * 60, now), "il y a 59 min");
+  assert.equal(ago(tt, now - 3600, now), "il y a 1 h");
+  assert.equal(ago(tt, now - 17 * 3600 - 59, now), "il y a 17 h");
+  assert.equal(ago(tt, now - (2 * 86400 - 1), now), "il y a 47 h");
+  assert.equal(ago(tt, now - 2 * 86400, now), "il y a 2 jours");
+});
+
+test("site public : chaque lien de documentation pointe vers un fichier du dépôt (P2)", () => {
+  const root = join(DIR, "..", "..");
+  let n = 0;
+  for (const d of DOC_KEYS) {
+    for (const l of DOC_LANGS) {
+      const url = docURL(d, l);
+      if (!url) continue;
+      n++;
+      assert.ok(url.startsWith(`${REPO}/blob/main/`), url);
+      assert.ok(existsSync(join(root, url.slice(`${REPO}/blob/main/`.length))), `fichier absent : ${url}`);
+    }
+  }
+  assert.equal(n, 11, "4 + 4 manifestes, 2 guides, 1 architecture");
+  assert.equal(docURL("guide", "ja"), null);
+  assert.match(docFor("guide", "ja"), /OPERATOR_GUIDE\.md$/, "repli : anglais");
+  assert.match(docFor("architecture", "en"), /ARCHITECTURE\.md$/, "repli : français");
+  assert.match(docFor("short", "zh"), /zh\/SHORT_MANIFESTO\.md$/);
+  assert.equal(REPO, "https://github.com/makoto-kanamoto/etl");
+});
+
+test("historique : lignes triées du bloc le plus récent au plus ancien", () => {
+  const me = "etl1qme", other = "etl1qother";
+  const rows = feedRows({
+    transactions: [{ id: "t1", from: me, to: other, amount: 5n, fee: 1n, height: 3 }, { id: "t2", from: other, to: me, amount: 7n, fee: 2n, height: 9 }],
+    escrow: [{ height: 5, escrow: "e1", kind: "lock", amount: 4n, out: true }],
+    rewards: [{ height: 7, amount: 1n }],
+  }, me);
+  assert.deepEqual(rows.map((r) => [r.height, r.kind]), [[9, "in"], [7, "reward"], [5, "lock"], [3, "out"]]);
+  assert.deepEqual(rows.map((r) => r.peer), [other, undefined, undefined, other]);
+  assert.equal(rows[0].fee, 0n, "frais d'un transfert reçu : payés par l'expéditeur");
+  assert.equal(rows[3].fee, 1n);
+  assert.equal(rows[0].tx, "t2");
+  assert.equal(rows[2].escrow, "e1");
+  assert.equal(rows[2].escrowKind, "lock");
+});
+
+test("historique : le lien vers l'adresse respecte l'ordre des mots de chaque langue", () => {
+  const node = { node: true };
+  for (const l of LANGS) {
+    const parts = weave(t(l, "activity.from", { who: MARK }), node);
+    assert.equal(parts.length, 3, l);
+    assert.equal(parts[1], node);
+    assert.equal(parts[0] + "X" + parts[2], t(l, "activity.from", { who: "X" }), l);
+  }
+  assert.deepEqual(weave("sans marque", node), ["sans marque"]);
+});
+
+test("explorateur : étapes d'un échange (frise)", () => {
+  const step = (kind, height) => ({ kind, height, time: 0, signers: 1 });
+  const keys = (e) => timeline(e).map((s) => `${s.key}${s.step ? "@" + s.step.height : ""}${s.alert ? "!" : ""}`).join(" ");
+  assert.equal(keys({ outcome: "pending", history: [step("open", 2)] }), "opened@2 paid settled");
+  assert.equal(keys({ outcome: "pending", history: [step("open", 2), step("paid", 3)] }), "opened@2 paid@3 settled");
+  assert.equal(keys({ outcome: "released", history: [step("open", 2), step("paid", 3), step("release", 4)] }), "opened@2 paid@3 released@4");
+  assert.equal(keys({ outcome: "released", history: [step("open", 2), step("release", 4)] }), "opened@2 released@4", "libéré sans « payé »");
+  assert.equal(keys({ outcome: "refunded", history: [step("open", 2), step("paid", 3), step("dispute", 4), step("refund", 6)] }), "opened@2 paid@3 disputed@4! refunded@6");
+  assert.equal(keys({ outcome: "pending" }), "opened paid settled", "nœud sans index : étapes sans bloc");
+  for (const l of LANGS) for (const k of ["opened", "paid", "settled", "released", "refunded", "disputed"]) assert.ok(STRINGS[l][`escrow.stage.${k}`], `${l} : ${k}`);
+});
+
+test("explorateur : contenu résumé d'un bloc, motifs des recherches sans résultat traduits", () => {
+  const tt = (key, vars) => t("fr", key, vars);
+  assert.deepEqual(counts(tt, { txs: 3, escrow_ops: 1, participants: 42 }), ["3 tx", "1 éch.", "42 part."]);
+  assert.deepEqual(counts(tt, undefined), ["contenu élagué"]);
+  for (const l of LANGS) {
+    for (const k of ["short", "unknown", "pending", "test", "other", "future", "nextBlock", "unrecognized", "title", "can"]) assert.ok(STRINGS[l][`explorer.nf.${k}`], `${l} : explorer.nf.${k}`);
+    for (const k of ["open", "paid", "dispute", "release", "refund"]) assert.ok(STRINGS[l][`explorer.op.${k}`], `${l} : explorer.op.${k}`);
+    for (const k of ["ipc", "premine", "member"]) assert.ok(STRINGS[l][`site.pillar.${k}.title`] && STRINGS[l][`site.pillar.${k}.text`], `${l} : ${k}`);
+    for (const d of DOC_KEYS) assert.ok(STRINGS[l][`join.doc.${d}`], `${l} : join.doc.${d}`);
+  }
+  assert.match(t("fr", "explorer.nf.short", { n: 10 }), /64 .* 10/);
+  assert.match(t("fr", "wallet.webWarning"), /propre nœud/, "P3");
+});

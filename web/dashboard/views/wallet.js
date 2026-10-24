@@ -10,6 +10,7 @@ import { identiconSvg } from "../lib/identicon.js";
 import { qrSvg } from "../lib/qr.js";
 import { icon } from "../lib/icons.js";
 import { short, group, message, actionRow as actions, steps, who } from "../lib/ui.js";
+import { feedRows, renderFeed } from "../lib/feed.js";
 
 export { short, group };
 
@@ -273,6 +274,8 @@ function unlocked(app, root) {
   const euroEl = h("span", { class: "muted" });
   const lockedEl = h("span", { class: "muted" });
   const feed = h("div", { class: "feed" }, h("p", { class: "muted" }, "…"));
+  // Historique complet (nœud avec index, site public) : pages suivantes à la demande.
+  const older = h("button", { class: "older", type: "button", hidden: true, onClick: () => more() }, t("history.older"));
   const side = h("section", { class: "panel" });
   const euro = (u) => (app.status ? formatEuro(euroCents(u, app.status.ipc.value, app.status.base_ipc.value), lang) : "");
   app.walletAct ??= "send";
@@ -290,18 +293,38 @@ function unlocked(app, root) {
       showSide();
     }, "data-act": k }, t(key)));
 
+  const addContact = (peer) => ((app.walletAct = "contacts"), (app.contactDraft = peer), app.render());
+  const showFeed = () => {
+    if (!ctx.hist) return;
+    renderFeed(app, feed, feedRows(ctx.hist, address), { addContact: app.book ? addContact : null });
+    older.hidden = ctx.hist.nextBefore === null;
+  };
   const rerender = () => {
-    if (ctx.hist) renderFeed(app, feed, ctx.hist, address);
+    showFeed();
     showSide();
   };
+  async function more() {
+    if (ctx.hist?.nextBefore === null || ctx.hist?.nextBefore === undefined) return; // aucune page suivante
+    older.disabled = true;
+    try {
+      const page = await api.history(address, ctx.hist.nextBefore);
+      for (const k of ["transactions", "escrow", "rewards"]) ctx.hist[k].push(...page[k]);
+      ctx.hist.nextBefore = page.nextBefore;
+      showFeed();
+    } catch {
+      /* réessai au prochain clic */
+    } finally {
+      older.disabled = false;
+    }
+  }
 
   async function refresh() {
     try {
       ctx.account = await api.account(address);
       balanceEl.textContent = formatETL(ctx.account.balance, lang);
       euroEl.textContent = `≈ ${euro(ctx.account.balance)}`;
-      ctx.hist = await api.history(address);
-      renderFeed(app, feed, ctx.hist, address);
+      ctx.hist = await api.history(address); // première page : un nouveau bloc la remplace
+      showFeed();
       const escrows = await Promise.all(ctx.account.escrows.map((id) => api.escrow(id)));
       const held = lockedInEscrows(escrows, address);
       lockedEl.textContent = held ? t("main.held", { amount: formatETL(held, lang) }) : "";
@@ -316,8 +339,10 @@ function unlocked(app, root) {
       h("div", { class: "stack" },
         h("section", { class: "panel" },
           h("div", { class: "balance" }, h("span", { class: "label" }, t("main.balance")), h("p", { class: "amount" }, balanceEl, h("span", { class: "unit" }, "ETL")), euroEl, lockedEl),
-          h("div", { class: "acts" }, actButtons, h("a", { class: "act", href: "#/escrow" }, t("act.escrow")))),
-        h("section", { class: "panel" }, h("h2", {}, t("activity.title")), feed, h("p", { class: "fine" }, t("history.note")))),
+          h("div", { class: "acts" }, actButtons, h("a", { class: "act", href: "#/escrow" }, t("act.escrow"))),
+          app.status?.public ? h("p", { class: "callout info" }, icon("info"), h("span", {}, t("wallet.webWarning"))) : null),
+        h("section", { class: "panel" }, h("h2", {}, t("activity.title")), feed, older,
+          app.status?.public ? null : h("p", { class: "fine" }, t("history.note")))),
       side),
     h("section", { class: "panel" },
       actions(
@@ -332,35 +357,6 @@ function unlocked(app, root) {
     showSide();
     refresh();
   });
-}
-
-// renderFeed : transferts et mouvements d'escrow, du plus récent au plus ancien.
-function renderFeed(app, el, hist, address) {
-  const { t, lang } = app;
-  const rows = [
-    ...hist.transactions.map((tx) => {
-      const out = tx.from === address;
-      const peer = out ? tx.to : tx.from;
-      return { height: tx.height, out, kind: out ? "out" : "in", peer, amount: tx.amount, fee: out ? tx.fee : 0n };
-    }),
-    ...hist.escrow.map((m) => ({ height: m.height, out: m.out, kind: "lock", label: t(`history.escrow.${m.kind}`), amount: m.amount, escrow: m.escrow })),
-    ...(hist.rewards ?? []).map((r) => ({ height: r.height, out: false, kind: "reward", label: t("activity.reward"), amount: r.amount })),
-  ].sort((a, b) => b.height - a.height);
-  if (!rows.length) return put(clear(el), h("p", { class: "muted" }, t("history.empty")));
-  put(clear(el), h("ul", {}, rows.map((r) => {
-    const name = r.peer ? app.book?.name(r.peer) : null;
-    const title = r.peer ? t(r.out ? "activity.to" : "activity.from", { who: name ?? short(r.peer) }) : r.label;
-    const detail = [t("history.block", { n: r.height })];
-    if (r.peer && name) detail.push(short(r.peer));
-    if (r.fee) detail.push(t("activity.fee", { fee: formatETL(r.fee, lang) }));
-    const add = r.peer && !name && app.book
-      ? h("button", { class: "link small", type: "button", onClick: () => ((app.walletAct = "contacts"), (app.contactDraft = r.peer), app.render()) }, t("contacts.add"))
-      : null;
-    return h("li", {},
-      h("span", { class: `ico ${r.kind}` }, icon(r.kind)),
-      h("div", { class: "row-text" }, h("div", { class: "t" }, title), h("div", { class: "d" }, detail.join(" · ")), add),
-      h("div", { class: `a${r.out ? "" : " plus"}` }, `${r.out ? "−" : "+"}${formatETL(r.amount, lang)}`, h("small", {}, "ETL")));
-  })));
 }
 
 // afterBalance : solde après l'envoi, ou « solde insuffisant » (jamais un montant négatif).

@@ -117,7 +117,8 @@ export function renderIPC(app) {
           }
         } }, t("ipc.readNow"))
       : h("p", { class: "fine" }, h("a", { href: "#/operator" }, t("ipc.needToken")));
-    const oracle = h("section", { class: "panel" },
+    // Site public : aucune route de l'opérateur ; le nœud qui sert le site ne lit pas l'IPC (passif).
+    const oracle = app.status?.public ? h("section", { class: "panel" }, h("h2", {}, t("ipc.oracle")), h("p", { class: "fine" }, t("ipc.auto"))) : h("section", { class: "panel" },
       h("h2", {}, t("ipc.oracle")),
       h("p", { class: "fine" }, t("ipc.auto")),
       o ? h("dl", { class: "pair" },

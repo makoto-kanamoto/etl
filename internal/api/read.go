@@ -182,7 +182,7 @@ func (s *Server) blocks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tip := s.cfg.Chain.Tip()
-	out := []headerJSON{}
+	out := []blockSummary{}
 	if before == 0 {
 		reply(w, out)
 		return
@@ -192,12 +192,28 @@ func (s *Server) blocks(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			break
 		}
-		out = append(out, s.headerOf(hdr))
+		sum := blockSummary{headerJSON: s.headerOf(hdr)}
+		if b, err := s.cfg.Chain.BlockAt(h); err == nil { // élagué : en-tête seul
+			sum.Counts = &blockCounts{Txs: len(b.Txs), EscrowOps: len(b.EscrowOps), Participants: len(b.Participants)}
+		}
+		out = append(out, sum)
 		if h == 0 {
 			break
 		}
 	}
 	reply(w, out)
+}
+
+// blockSummary : en-tête et contenu résumé d'un bloc (liste de l'explorateur).
+type blockSummary struct {
+	headerJSON
+	Counts *blockCounts `json:"counts,omitempty"` // absent : contenu élagué
+}
+
+type blockCounts struct {
+	Txs          int `json:"txs"`
+	EscrowOps    int `json:"escrow_ops"`
+	Participants int `json:"participants"`
 }
 
 type txJSON struct {
@@ -235,6 +251,9 @@ func (s *Server) block(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := map[string]any{"header": s.headerOf(hdr)}
+	if height > 0 {
+		out["prev"] = hexOf(hdr.PrevHash)
+	}
 	b, err := s.cfg.Chain.BlockAt(height)
 	if err != nil { // élagué : seul l'en-tête reste
 		out["pruned"] = true

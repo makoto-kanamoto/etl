@@ -433,7 +433,9 @@ func TestExplorerTxAndSearch(t *testing.T) {
 
 func TestBlocksPaginationAndDetail(t *testing.T) {
 	b := newBench(t, nil)
-	for d := 2; d <= 5; d++ {
+	tx := b.validTx()
+	b.c.next(t, 2, func(blk *blockchain.Block) { blk.Txs = []blockchain.Transaction{tx} })
+	for d := 3; d <= 5; d++ {
 		b.c.next(t, d, nil)
 	}
 	list := func(q string) (int, []uint64) {
@@ -461,7 +463,32 @@ func TestBlocksPaginationAndDetail(t *testing.T) {
 			t.Errorf("%s : %d", q, code)
 		}
 	}
+	// Contenu résumé dans la liste ; absent pour un bloc élagué.
+	b.c.pruned[4] = true
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/blocks?limit=3", nil)
+	r.Host = "localhost:3001"
+	b.s.ServeHTTP(w, r)
+	var sums []map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &sums)
+	if c := sums[2]["counts"].(map[string]any); sums[1]["counts"] != nil || c["participants"].(float64) != float64(len(b.c.blocks[3].Participants)) ||
+		c["txs"].(float64) != 0 || c["escrow_ops"].(float64) != 0 || sums[0]["hash"] == nil {
+		t.Fatalf("résumés : %v", sums)
+	}
+	delete(b.c.pruned, 4)
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("GET", "/api/blocks?before=3&limit=1", nil)
+	r.Host = "localhost:3001"
+	b.s.ServeHTTP(w, r)
+	_ = json.Unmarshal(w.Body.Bytes(), &sums)
+	if c := sums[0]["counts"].(map[string]any); c["txs"].(float64) != 1 || c["escrow_ops"].(float64) != 0 {
+		t.Fatalf("résumé du bloc 2 : %v", c)
+	}
 	blk := b.get("/api/blocks/3")
+	prev := b.c.blocks[2].Header
+	if blk["prev"] != hexOf(prev.Hash()) || b.get("/api/blocks/0")["prev"] != nil {
+		t.Fatalf("bloc précédent : %v", blk["prev"])
+	}
 	miners := blk["participant_addresses"].([]any)
 	if len(miners) != len(b.c.blocks[3].Participants) || miners[0] != b.c.blocks[3].Participants[0].Miner.String() {
 		t.Fatalf("participants : %v", miners)

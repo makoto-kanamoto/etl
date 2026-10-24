@@ -1,5 +1,6 @@
-// Point d'entrée du dashboard : navigation, langue, état du nœud, notifications (SSE), verrouillage
-// automatique du portefeuille.
+// Point d'entrée du dashboard et du site public : navigation, langue, état du nœud, notifications
+// (flux SSE sur le dashboard ; relecture toutes les 30 s sur le site public), verrouillage automatique
+// du portefeuille. Le mode vient de /api/status : public (site etalon-etl.fr) et launched (réseau lancé).
 
 import { h, clear } from "./lib/dom.js";
 import { logo, icon } from "./lib/icons.js";
@@ -13,8 +14,12 @@ import { renderWallet } from "./views/wallet.js";
 import { renderEscrow } from "./views/escrow.js";
 import { renderOperator } from "./views/operator.js";
 import { renderIPC } from "./views/ipc.js";
+import { renderExplorer } from "./views/explorer.js";
+import { renderJoin } from "./views/join.js";
+import { parseRoute, ago, NAVS, modeOf, POLL_MS } from "./lib/site.js";
 
-const VIEWS = { "": renderHome, wallet: renderWallet, escrow: renderEscrow, ipc: renderIPC, operator: renderOperator };
+const VIEWS = { "": renderHome, wallet: renderWallet, escrow: renderEscrow, ipc: renderIPC, operator: renderOperator, explorer: renderExplorer, join: renderJoin };
+
 
 const LANG_KEY = "etl.lang";
 
@@ -45,7 +50,7 @@ const toasts = h("div", { class: "toasts", "aria-live": "polite" });
 // État du nœud : affiché dans la barre latérale (ordinateur) et dans la barre du haut (téléphone).
 const nodeStates = [0, 1].map(() => h("span", { class: "node-state" }, h("span", { class: "dot", "aria-hidden": "true" }), h("span", { class: "state-text" })));
 
-const ROUTES = [["", "home", "nav.home"], ["wallet", "wallet", "nav.wallet"], ["escrow", "escrow", "nav.escrow"], ["ipc", "ipc", "nav.ipc"], ["operator", "operator", "nav.operator"]];
+const routes = () => NAVS[modeOf(app.status)];
 
 function langSelect() {
   return h("select", { "aria-label": app.t("lang.label"), onChange: (e) => {
@@ -62,25 +67,40 @@ function brand() {
 
 function sidebar() {
   const link = ([route, ico, key]) => h("a", { href: `#/${route}`, "aria-current": currentRoute() === route ? "page" : null }, icon(ico), h("span", {}, app.t(key)));
+  const items = routes();
   return h("aside", { class: "side" },
     brand(),
-    h("nav", { class: "nav", "aria-label": app.t("nav.label") }, ROUTES.map(link)),
-    h("div", { class: "side-foot" }, nodeStates[0], h("span", { class: "fine" }, app.t("app.subtitle")), langSelect()));
+    h("nav", { class: `nav n${items.length}`, "aria-label": app.t("nav.label") }, items.map(link)),
+    h("div", { class: "side-foot" }, nodeStates[0], h("span", { class: "fine" }, subtitle()), langSelect()));
+}
+
+// subtitle : « Tableau de bord du nœud », ou réseau et nom du site public.
+function subtitle() {
+  return modeOf(app.status) === "dashboard" ? app.t("app.subtitle") : `${app.status.chain_id} · ${location.hostname}`;
 }
 
 function topbar() {
   return h("header", { class: "topbar" }, brand(), h("div", { class: "tools" }, nodeStates[1], langSelect()));
 }
 
+// currentRoute : la page affichée (premier segment de l'adresse) ; une page absente de la navigation
+// du mode (opérateur sur le site public, explorateur avant le lancement) ramène à l'accueil.
 function currentRoute() {
-  return location.hash.replace(/^#\/?/, "");
+  const { page } = parseRoute(location.hash);
+  return routes().some(([r]) => r === page) ? page : "";
 }
 
 function updateNodeState() {
   const st = app.status;
   for (const el of nodeStates) {
     const [dot, label] = el.children;
-    if (!st) {
+    if (st && modeOf(st) === "prelaunch") {
+      dot.className = "dot pending";
+      label.textContent = app.t("site.notLaunched");
+    } else if (st && modeOf(st) === "public") {
+      dot.className = "dot on";
+      label.textContent = app.t("site.lastBlock", { n: st.height, ago: ago(app.t, st.tip_time) });
+    } else if (!st) {
       dot.className = "dot off";
       label.textContent = app.t("node.offline");
     } else if (st.halted) {
@@ -97,13 +117,14 @@ function render() {
   app.onBlock = null;
   clearInterval(app.tick);
   app.tick = null;
+  app.route = parseRoute(location.hash);
   clear(main).append((VIEWS[currentRoute()] ?? renderHome)(app));
   updateNodeState();
 }
 
 function build() {
   document.body.replaceChildren(h("div", { class: "shell" }, sidebar(), h("div", { class: "content" }, topbar(), main)), toasts);
-  document.title = `${app.t("app.title")} — ${app.t("app.subtitle")}`;
+  document.title = modeOf(app.status) === "dashboard" ? `${app.t("app.title")} — ${app.t("app.subtitle")}` : `${app.t("app.title")} — ${app.t("site.tagline")}`;
   render();
 }
 
@@ -122,20 +143,39 @@ async function refreshStatus() {
   updateNodeState();
 }
 
+// onNewBlock : état relu, notifications des transactions du portefeuille ouvert, page mise à jour.
+function onNewBlock(block) {
+  const me = app.session?.isUnlocked() ? app.session.address() : null;
+  if (me) {
+    for (const tx of block.txs) {
+      if (tx.from === me) toast(app.t("toast.confirmed", { n: block.height }));
+      else if (tx.to === me) toast(app.t("toast.received", { amount: formatETL(BigInt(tx.amount), app.lang), n: block.height }));
+    }
+  }
+  if (app.onBlock) app.onBlock();
+  else if (currentRoute() === "") render();
+}
+
+// poll (site public) : relit l'état ; à chaque nouveau bloc (5 au plus d'un coup), lit son contenu.
+async function poll() {
+  const before = app.status?.height;
+  await refreshStatus();
+  const now = app.status?.height;
+  if (before === undefined || now === undefined || now <= before) return;
+  for (let height = Math.max(before + 1, now - 4); height <= now; height++) {
+    try {
+      const b = await app.api.block(height);
+      onNewBlock({ height, txs: b.txs.map((tx) => ({ ...tx, amount: tx.amount.toString() })) });
+    } catch { /* bloc illisible : la prochaine relecture suffit */ }
+  }
+}
+
 function listen() {
   const es = new EventSource("/api/events");
   es.addEventListener("block", async (ev) => {
     const block = JSON.parse(ev.data);
     await refreshStatus();
-    const me = app.session?.isUnlocked() ? app.session.address() : null;
-    if (me) {
-      for (const tx of block.txs) {
-        if (tx.from === me) toast(app.t("toast.confirmed", { n: block.height }));
-        else if (tx.to === me) toast(app.t("toast.received", { amount: formatETL(BigInt(tx.amount), app.lang), n: block.height }));
-      }
-    }
-    if (app.onBlock) app.onBlock();
-    else if (currentRoute() === "") render();
+    onNewBlock(block);
   });
   es.onerror = () => refreshStatus();
 }
@@ -153,8 +193,12 @@ async function start() {
   }, Math.min(30_000, AUTO_LOCK_MS));
   addEventListener("hashchange", () => (build(), main.focus()));
   build();
-  listen();
-  setInterval(refreshStatus, 30_000);
+  if (modeOf(app.status) === "dashboard") {
+    listen();
+    setInterval(refreshStatus, 30_000);
+  } else if (modeOf(app.status) === "public") {
+    setInterval(poll, POLL_MS);
+  }
 }
 
 start();
