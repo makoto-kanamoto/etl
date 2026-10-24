@@ -36,6 +36,12 @@ func freePort(t *testing.T) int {
 func testGenesis(t *testing.T, n int) (blockchain.Block, []*crypto.PrivateKey, GenesisFile) {
 	t.Helper()
 	net, _ := Lookup("test")
+	return testGenesisOn(t, n, net)
+}
+
+// testGenesisOn : genesis du réseau net, le 20/10/2026, n fondateurs.
+func testGenesisOn(t *testing.T, n int, net Network) (blockchain.Block, []*crypto.PrivateKey, GenesisFile) {
+	t.Helper()
 	var keys []*crypto.PrivateKey
 	var addrs []string
 	for i := 0; i < n; i++ {
@@ -222,8 +228,13 @@ func TestFourNodesFinalizeBlocks(t *testing.T) {
 	if testing.Short() {
 		t.Skip("réseau réel : plusieurs secondes")
 	}
-	g, keys, _ := testGenesis(t, 4)
+	// Horloge 30 fois plus rapide : la fenêtre de participation de 30 s ne dure qu'une seconde réelle.
+	// Preuve de travail allégée (8 bits au lieu de 16) pour que les 4 nœuds la minent dans cette seconde
+	// même sous le détecteur de courses (16 bits : jusqu'à 0,8 s par nœud avec -race). Ce test vérifie
+	// le réseau, le consensus et la synchronisation, pas la difficulté.
 	test, _ := Lookup("test")
+	test.Params.TargetBits, test.Params.Target = 8, blockchain.TargetFromBits(8)
+	g, keys, _ := testGenesisOn(t, 4, test)
 	clk := &clock{}
 	genesisDay := time.Unix(g.Header.Timestamp, 0).UTC()
 	clk.jump(genesisDay.Add(24*time.Hour - 3*time.Second))
@@ -278,8 +289,7 @@ func TestFourNodesFinalizeBlocks(t *testing.T) {
 			t.Fatalf("nœud %d : tête différente", i)
 		}
 	}
-	// Récompenses : chaque fondateur touche exactement sa part des blocs où figure sa participation
-	// (sous forte charge, un nœud peut manquer la fenêtre d'un jour : c'est la règle, pas une erreur).
+	// Récompenses : chaque fondateur touche exactement sa part des blocs où figure sa participation.
 	want := map[crypto.Address]uint64{}
 	for h := uint64(1); h <= 3; h++ {
 		b, err := nodes[0].Store.BlockAt(h)
