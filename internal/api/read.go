@@ -480,7 +480,9 @@ func (s *Server) escrow(w http.ResponseWriter, r *http.Request) {
 		arbiterActive = st.Status(e.Terms.Arbiter) != blockchain.StatusExcluded
 	})
 	if !found {
-		fail(w, http.StatusNotFound, "échange inconnu (jamais ouvert, ou réglé depuis plus de 90 jours)")
+		if !s.archivedEscrow(w, id) {
+			fail(w, http.StatusNotFound, "échange inconnu (jamais ouvert, ou réglé depuis plus de 90 jours sur un nœud sans index)")
+		}
 		return
 	}
 	day := s.nextBlockTime(s.cfg.Chain.Tip()) / 86400
@@ -494,7 +496,7 @@ func (s *Server) escrow(w http.ResponseWriter, r *http.Request) {
 		required[name] = masks
 	}
 	t := e.Terms
-	reply(w, map[string]any{
+	out := map[string]any{
 		"id":          hexOf(id),
 		"seller":      s.addr(t.Seller),
 		"buyer":       s.addr(t.Buyer),
@@ -511,7 +513,13 @@ func (s *Server) escrow(w http.ResponseWriter, r *http.Request) {
 		"outcome":     []string{"pending", "released", "refunded"}[e.Outcome],
 		"closed_day":  e.ClosedDay * 86400,
 		"required":    required, // masques de signataires possibles : 1 vendeur, 2 acheteur, 4 arbitre
-	})
+	}
+	if s.cfg.Index != nil {
+		if steps, ok := s.escrowSteps(id, t.Seller); ok {
+			out["history"] = steps
+		}
+	}
+	reply(w, out)
 }
 
 func (s *Server) ipc(w http.ResponseWriter, _ *http.Request) {

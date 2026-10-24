@@ -96,3 +96,32 @@ const (
 	refAddress   = "etl1qnwxsgqx9c4phyx8vjt6650fl5zgxzcaav8qcw0"
 	refSignature = "1fca5e70ded84793cfe8f662696d2ca6301f826d8a929194e01f8f94bec355eda145eb5c29fe8c7478a52896ae154a7460140b18a9d2c9c6925ca5ff1ed9f07add"
 )
+
+func TestAddressHRP(t *testing.T) {
+	k, _ := GenerateKey()
+	for _, hrp := range []string{"etl", "etlt", "etlde"} {
+		a := k.PublicKey().Address(hrp).String()
+		if got, ok := AddressHRP(a); !ok || got != hrp {
+			t.Errorf("%s : %q %v", a, got, ok)
+		}
+		if got, ok := AddressHRP(strings.ToUpper(a)); !ok || got != hrp {
+			t.Errorf("majuscules %s : %q %v", a, got, ok)
+		}
+		last := byte('q')
+		if a[len(a)-1] == 'q' {
+			last = 'p'
+		}
+		bad := a[:len(a)-1] + string(last)
+		if _, ok := AddressHRP(bad); ok {
+			t.Errorf("somme de contrôle fausse acceptée : %s", bad)
+		}
+	}
+	// bech32m valide, mais pas une adresse : mauvaise version, mauvaise longueur.
+	notVersion, _ := bech32mEncode("etlt", append([]byte{AddressVersion + 1}, make([]byte, 32)...))
+	tooShort, _ := bech32mEncode("etlt", []byte{AddressVersion, 1, 2, 3})
+	for _, s := range []string{"", "etl1", "bonjour", "3f7a91c2e8", notVersion, tooShort} {
+		if _, ok := AddressHRP(s); ok {
+			t.Errorf("%q accepté", s)
+		}
+	}
+}

@@ -44,3 +44,16 @@ func ParseAddress(s, hrp string) (Address, error) {
 	copy(a.Hash[:], hash)
 	return a, nil
 }
+
+// AddressHRP renvoie le préfixe de réseau d'une adresse valide (somme de contrôle comprise), quel que
+// soit ce réseau : sert à signaler qu'une adresse appartient à un autre réseau.
+func AddressHRP(s string) (string, bool) {
+	hrp, _, err := bech32mDecode(s)
+	if err != nil {
+		return "", false
+	}
+	if _, err := ParseAddress(s, hrp); err != nil {
+		return "", false
+	}
+	return hrp, true
+}

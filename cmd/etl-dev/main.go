@@ -5,6 +5,10 @@
 // un bloc du « jour » suivant est produit chaque minute, avec les transactions reçues.
 //
 //	go run -tags dev ./cmd/etl-dev            puis http://localhost:3001
+//	go run -tags dev ./cmd/etl-dev -public    site public derrière un proxy HTTPS local (comme Caddy) :
+//	                                          https://etalon.test:8443 (Chrome : --host-resolver-rules=
+//	                                          "MAP etalon.test 127.0.0.1" --ignore-certificate-errors)
+//	go run -tags dev ./cmd/etl-dev -prelaunch site public d'un réseau pas encore lancé
 //
 // Au démarrage, la phrase d'un fondateur (clé jetable, propre à cette session) est affichée : la
 // restaurer dans le navigateur donne un portefeuille qui possède des ETL.
@@ -37,6 +41,7 @@ import (
 	"github.com/makoto-kanamoto/etl/internal/escrow"
 	"github.com/makoto-kanamoto/etl/internal/mempool"
 	ioracle "github.com/makoto-kanamoto/etl/internal/oracle"
+	"github.com/makoto-kanamoto/etl/internal/storage"
 	"github.com/makoto-kanamoto/etl/internal/wallet"
 )
 
@@ -53,6 +58,7 @@ type chain struct {
 	net    *chaintest.Net
 	blocks map[uint64]blockchain.Block
 	day    int
+	store  *storage.Store // site public : stockage archive indexé, alimenté avec les mêmes blocs
 }
 
 func (c *chain) Tip() blockchain.Header { c.mu.Lock(); defer c.mu.Unlock(); return c.net.Tip }
@@ -121,8 +127,13 @@ func (c *chain) next(e *engine) blockchain.Block {
 	}
 	sort.Slice(regs, func(i, j int) bool { return bytes.Compare(regs[i].Candidate.Hash[:], regs[j].Candidate.Hash[:]) < 0 })
 	e.regs = nil
-	b, _ := c.net.Next(tb{}, c.day, func(b *blockchain.Block) { b.Txs, b.EscrowOps, b.Registrations = txs, ops, regs })
+	b, cert := c.net.Next(tb{}, c.day, func(b *blockchain.Block) { b.Txs, b.EscrowOps, b.Registrations = txs, ops, regs })
 	c.blocks[b.Header.Height] = b
+	if c.store != nil {
+		if err := c.store.Append(&b, &cert); err != nil {
+			log.Fatal(err)
+		}
+	}
 	e.pool.Update(c.net.State, time.Now())
 	var kept []blockchain.EscrowOp
 	for i := range e.ops {
@@ -253,10 +264,26 @@ func main() {
 	port := flag.Int("port", 3001, "port local")
 	static := flag.String("web", "web", "répertoire de l'interface (servie depuis le disque)")
 	every := flag.Duration("every", time.Minute, "intervalle entre deux blocs simulés")
+	public := flag.Bool("public", false, "site public derrière un proxy HTTPS local")
+	prelaunch := flag.Bool("prelaunch", false, "site public d'un réseau pas encore lancé")
+	tlsPort := flag.Int("tls-port", 8443, "port du proxy HTTPS local (site public)")
 	flag.Parse()
+	*public = *public || *prelaunch
 
 	p := chaintest.Params()
 	c := &chain{net: chaintest.New(tb{}, p), blocks: map[uint64]blockchain.Block{}}
+	dir, _ := os.MkdirTemp("", "etl-dev-")
+	defer os.RemoveAll(dir)
+	if *public && !*prelaunch {
+		st, err := storage.Open(filepath.Join(dir, "chain.db"), p, storage.Options{Index: true})
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := st.Init(&c.net.Genesis); err != nil {
+			log.Fatal(err)
+		}
+		c.store = st
+	}
 	founder := c.net.Founders[0]
 	eng := &engine{c: c, pool: mempool.New(p, mempool.DefaultOptions()), key: founder.Key, me: founder.Addr}
 	// Historique jusqu'aux dernières 24 h : la tête de chaîne précède l'heure réelle (horodatages du
@@ -265,20 +292,34 @@ func main() {
 		c.next(eng)
 	}
 	words, _ := wallet.EncodePhrase(founder.Key.Bytes(), wallet.French)
-	dir, _ := os.MkdirTemp("", "etl-dev-")
-	defer os.RemoveAll(dir)
 	// Prochain bloc simulé : affiché tel quel par l'accueil (« dans moins d'une minute »).
 	var nextAt atomic.Int64
 	nextAt.Store(time.Now().Add(*every).Unix())
-	srv, err := api.New(api.Config{Params: p, Port: *port, IPCSource: "https://api.insee.fr/series/BDM/V1/data/SERIES_BDM/011814630", NextBlock: func() time.Time { return time.Unix(nextAt.Load(), 0) }, TokenPath: filepath.Join(dir, "dashboard.token"), Version: "dev",
+	cfg := api.Config{Params: p, Port: *port, IPCSource: "https://api.insee.fr/series/BDM/V1/data/SERIES_BDM/011814630", NextBlock: func() time.Time { return time.Unix(nextAt.Load(), 0) }, TokenPath: filepath.Join(dir, "dashboard.token"), Version: "dev",
 		Static: os.DirFS(*static), Poll: 500 * time.Millisecond, Chain: c,
 		Engine: eng, Network: network{}, Oracle: &oracle{st: ioracle.Status{LastAttempt: time.Now().Add(-time.Hour),
 			Read: &blockchain.IPCRecord{Value: 104120, Period: "2026-Q4", SourceSHA256: [32]byte{0xed, 0xa2}}, Voted: true,
-			NextRead: time.Now().Add(20 * time.Hour)}}})
+			NextRead: time.Now().Add(20 * time.Hour)}}}
+	if *public {
+		cfg.Public = &api.Public{Host: devHost, ReadPerMinute: 600, WritePerMinute: 30}
+		cfg.Chain, cfg.Index, cfg.Oracle = c.store, c.store, nil // nœud archive passif, comme sur le serveur
+		if *prelaunch {
+			cfg = api.Config{Params: p, Port: *port, Static: os.DirFS(*static), Version: "dev", Public: cfg.Public}
+		}
+	}
+	srv, err := api.New(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Serveur de développement : http://localhost:%d (un bloc toutes les %s)\n", *port, *every)
+	if *public {
+		url, err := startProxy(*tlsPort, *port)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Site public de développement : %s (proxy HTTPS local vers 127.0.0.1:%d)\n", url, *port)
+	} else {
+		fmt.Printf("Serveur de développement : http://localhost:%d (un bloc toutes les %s)\n", *port, *every)
+	}
 	fmt.Printf("Fondateur %s — phrase (clé jetable de cette session) :\n  %s\n", founder.Addr, strings.Join(words, " "))
 	other, _ := wallet.EncodePhrase(c.net.Founders[1].Key.Bytes(), wallet.French)
 	fmt.Printf("Fondateur %s — phrase :\n  %s\n", c.net.Founders[1].Addr, strings.Join(other, " "))

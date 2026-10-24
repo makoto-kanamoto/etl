@@ -392,6 +392,35 @@ func TestExplorerTxAndSearch(t *testing.T) {
 			t.Errorf("recherche %q : %d %v", q, code, out)
 		}
 	}
+	// Sans résultat : motif donné à l'interface.
+	other := f[1].Key.PublicKey().Address("etlt").String()
+	for q, want := range map[string]string{
+		"4":                               "future_block tip=3",
+		other:                             "other_network hrp=etlt",
+		strings.ToUpper(other):            "other_network hrp=etlt",
+		"3f7a91c2e8":                      "short_hash length=10",
+		hexOf(tx.ID)[1:]:                  "short_hash length=63",
+		hexOf(crypto.Hash{7}):             "unknown_hash",
+		"bonjour":                         "unrecognized",
+		hexOf(tx.ID) + "00":               "unrecognized",
+		"etl1" + f[1].Addr.String()[4:30]: "unrecognized",
+	} {
+		code, out := search(q)
+		got := fmt.Sprint(out["reason"])
+		for _, k := range []string{"tip", "hrp", "length"} {
+			if v, ok := out[k]; ok {
+				got += fmt.Sprintf(" %s=%v", k, v)
+			}
+		}
+		if code != 404 || got != want {
+			t.Errorf("recherche %q : %d %v, attendu %s", q, code, out, want)
+		}
+	}
+	// Échange en cours : étapes retrouvées par l'index.
+	e := b.get("/api/escrows/" + hexOf(terms.ID()))
+	if h := e["history"].([]any); len(h) != 1 || fmt.Sprintf("%v %v", h[0].(map[string]any)["kind"], h[0].(map[string]any)["height"]) != "open 3" || e["archived"] != nil {
+		t.Fatalf("échange en cours : %v", e)
+	}
 	// Sans index : pas de recherche de transaction, le reste fonctionne.
 	plain := newBench(t, nil)
 	if code, _, _ := plain.do(req{path: "/api/tx/" + hexOf(tx.ID)}); code != 404 {
@@ -455,10 +484,12 @@ func TestIndexedHistory(t *testing.T) {
 	other, _ := escrow.NewTerms(f[2].Addr, f[4].Addr, crypto.Address{}, blockchain.UnitsPerETL/10, 0, 3, chaintest.Day(1), b.c.net.P)
 	otherOpen, _ := escrow.Open(f[2].Key, other, b.c.net.P)
 	b.c.next(t, 2, func(blk *blockchain.Block) { blk.EscrowOps = []blockchain.EscrowOp{otherOpen, open} })
-	rel, _ := escrow.Act(buyer.Key, blockchain.EscrowRelease, terms.ID(), 0, blockchain.SignerBuyer, b.c.net.P)
+	paid, _ := escrow.Act(buyer.Key, blockchain.EscrowPaid, terms.ID(), 0, blockchain.SignerBuyer, b.c.net.P)
+	b.c.next(t, 3, func(blk *blockchain.Block) { blk.EscrowOps = []blockchain.EscrowOp{paid} })
+	rel, _ := escrow.Act(buyer.Key, blockchain.EscrowRelease, terms.ID(), 1, blockchain.SignerBuyer, b.c.net.P)
 	_ = rel.Sign(arbiter.Key, blockchain.SignerArbiter, b.c.net.P)
-	b.c.next(t, 3, func(blk *blockchain.Block) { blk.EscrowOps = []blockchain.EscrowOp{rel} })
-	last := 3 + blockchain.EscrowRetentionDays // échange élagué de l'état
+	b.c.next(t, 4, func(blk *blockchain.Block) { blk.EscrowOps = []blockchain.EscrowOp{rel} })
+	last := 4 + blockchain.EscrowRetentionDays // échange élagué de l'état
 	b.c.next(t, last, nil)
 	var inState bool
 	b.c.store.ReadState(func(st *blockchain.State) { _, inState = st.Escrow(terms.ID()) })
@@ -468,15 +499,15 @@ func TestIndexedHistory(t *testing.T) {
 	hist := b.get("/api/accounts/" + buyer.Addr.String() + "/history")
 	moves := hist["escrow_movements"].([]any)
 	if hist["indexed"] != true || len(moves) != 1 || moves[0].(map[string]any)["kind"] != "release" ||
-		moves[0].(map[string]any)["height"].(float64) != 3 || moves[0].(map[string]any)["amount"] != units(terms.Amount) ||
+		moves[0].(map[string]any)["height"].(float64) != 4 || moves[0].(map[string]any)["amount"] != units(terms.Amount) ||
 		hist["next_before"] != nil {
 		t.Fatalf("acheteur : %v", hist)
 	}
-	if fees := b.get("/api/accounts/" + arbiter.Addr.String() + "/history?before=4")["escrow_movements"].([]any); len(fees) != 1 ||
+	if fees := b.get("/api/accounts/" + arbiter.Addr.String() + "/history?before=5")["escrow_movements"].([]any); len(fees) != 1 ||
 		fees[0].(map[string]any)["kind"] != "fee" {
 		t.Fatalf("arbitre : %v", fees)
 	}
-	// Vendeur : récompenses des blocs 1 à 4, blocage au bloc 2 ; pages de 2 blocs.
+	// Vendeur : récompenses des blocs 1 à 5, blocage au bloc 2 ; pages de 2 blocs.
 	var heights []string
 	before := ""
 	for page := 0; ; page++ {
@@ -493,8 +524,35 @@ func TestIndexedHistory(t *testing.T) {
 		}
 		before = fmt.Sprintf("&before=%.0f", next.(float64))
 	}
-	if got := strings.Join(heights, " "); got != "4 3 2 1" { // jour last : hauteur 4
+	if got := strings.Join(heights, " "); got != "5 4 3 2 1" { // jour last : hauteur 5
 		t.Fatalf("récompenses du vendeur : %s", got)
+	}
+	// Page de l'échange archivé : conditions du bloc d'ouverture, étapes retrouvées par l'index (aussi
+	// page par page : deux blocs à la fois).
+	defer func(n int) { stepsPage = n }(stepsPage)
+	stepsPage = 2
+	arch := b.get("/api/escrows/" + hexOf(terms.ID()))
+	var steps []string
+	for _, st := range arch["history"].([]any) {
+		m := st.(map[string]any)
+		steps = append(steps, fmt.Sprint(m["kind"], "@", m["height"], "/", m["signers"]))
+	}
+	if arch["archived"] != true || arch["outcome"] != "released" || arch["amount"] != units(terms.Amount) ||
+		arch["arbiter"] != arbiter.Addr.String() || arch["seller"] != seller.Addr.String() || arch["paid"] != true || arch["disputed"] != nil ||
+		strings.Join(steps, " ") != "open@2/5 paid@3/2 release@4/6" ||
+		arch["deadline"].(float64) != float64((b.c.blocks[2].Header.Timestamp/86400+int64(terms.Days))*86400) ||
+		arch["closed_day"].(float64) != float64(b.c.blocks[4].Header.Timestamp/86400*86400) {
+		t.Fatalf("échange archivé : %v (%s)", arch, strings.Join(steps, " "))
+	}
+	if code, out, _ := b.do(req{path: "/api/search?q=" + hexOf(terms.ID())}); code != 200 || out["type"] != "escrow" {
+		t.Fatalf("recherche de l'échange archivé : %d %v", code, out)
+	}
+	if code, _, _ := b.do(req{path: "/api/escrows/" + hexOf(other.ID())}); code != 200 {
+		t.Fatalf("autre échange du même bloc : %d", code)
+	}
+	plain := newBench(t, nil)
+	if code, _, _ := plain.do(req{path: "/api/escrows/" + hexOf(terms.ID())}); code != 404 {
+		t.Fatalf("échange inconnu sans index : %d", code)
 	}
 	for _, q := range []string{"?limit=0", "?limit=101", "?before=x"} {
 		if code, _, _ := b.do(req{path: "/api/accounts/" + seller.Addr.String() + "/history" + q}); code != 400 {
