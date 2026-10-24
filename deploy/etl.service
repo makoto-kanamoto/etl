@@ -1,0 +1,45 @@
+# Nœud Étalon du site public <HOSTNAME> — /etc/systemd/system/etl.service.
+# Utilisateur système « etl », sans shell ; chaîne dans /var/lib/etl ; configuration dans /etc/etl.
+# Nœud passif : aucune clé, aucune phrase de passe. Guide : docs/fr/GUIDE_DEPLOIEMENT.md.
+
+[Unit]
+Description=Nœud Étalon (ETL), site public <HOSTNAME>
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=etl
+Group=etl
+ExecStart=/usr/local/bin/etl -home /var/lib/etl -config /etc/etl/config.toml run
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=30s
+LimitNOFILE=65536
+UMask=0077
+
+# Durcissement : le nœud n'écrit que dans /var/lib/etl et n'a besoin d'aucun privilège.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ReadWritePaths=/var/lib/etl
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

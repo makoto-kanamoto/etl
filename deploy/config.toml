@@ -1,0 +1,48 @@
+# Configuration du nœud qui sert le SITE PUBLIC (serveur, derrière Caddy) — /etc/etl/config.toml.
+# Remplacer <HOSTNAME> par le nom du site (par exemple etalon-etl.fr). Guide : docs/fr/GUIDE_DEPLOIEMENT.md.
+# Nœud archive (historique complet de l'explorateur) et passif (aucune clé sur une machine exposée).
+#
+# Configuration LOCALE d'un nœud Étalon (ETL).
+#
+# Les règles de consensus — identifiant du réseau, préfixe des adresses, récompense quotidienne,
+# difficulté, frais, taille des blocs, heure du bloc — ne se règlent PAS ici : elles viennent de la
+# définition du réseau dans le logiciel et du genesis, puis évoluent uniquement par vote on-chain
+# (plus de 2/3 des nœuds actifs, application 30 jours après). Un nœud qui les modifierait se
+# séparerait de la chaîne commune.
+
+[node]
+network = "ETL-FR"                 # réseau rejoint
+datadir = "/var/lib/etl/chain"     # chaîne (base de données)
+wallet  = ""                       # nœud passif : obligatoire pour le site public
+genesis = "/var/lib/etl/genesis.json" # genesis publié avec la version (au lancement d'ETL-FR)
+port    = 3000                     # port P2P ; 0 = pas de connexions entrantes
+pruning = false                    # nœud archive : obligatoire pour le site public
+prune_keep_blocks = 90             # contenu des blocs conservé ; en-têtes et genesis toujours gardés
+
+[network]
+bootstrap = [
+  "etl1.etalon-etl.fr:3000",
+]
+max_outbound = 8          # connexions sortantes
+max_inbound  = 64         # connexions entrantes (0 si le nœud n'est pas joignable de l'extérieur)
+ban_hours    = 24         # bannissement d'un pair qui envoie des données invalides
+
+[mempool]                 # limites locales au nœud
+max_per_account = 16
+max_total = 200000
+max_age_days = 7
+
+[oracle]                  # lecture de l'IPC (nœud avec clé seulement) ; l'INSEE voit l'adresse IP du nœud
+ipc_url       = "https://api.insee.fr/series/BDM/V1/data/SERIES_BDM/011814630"
+ipc_country   = "FR"
+ipc_frequency = "quarterly"
+
+[dashboard]               # site public : 127.0.0.1:3001, joint par Caddy seulement
+port  = 3001
+token = "/var/lib/etl/dashboard.token"   # inutilisé en mode public (aucun jeton écrit)
+
+[public]                  # site public (explorateur, portefeuille) derrière un proxy HTTPS, à la place du dashboard
+enabled = true            # nœud archive (pruning = false) et passif (wallet = "") obligatoires
+host    = "<HOSTNAME>"    # nom du site, sans https:// ni port
+read_per_minute  = 300    # lectures de l'API par adresse IP et par minute (en mémoire, aucun journal)
+write_per_minute = 6      # transferts et échanges soumis par adresse IP et par minute

@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -206,5 +207,52 @@ func TestPublic(t *testing.T) {
 	// Désactivé : les autres clés de la section sont ignorées par les contrôles.
 	if _, err := Parse("[public]\nhost = \"\"\nread_per_minute = 0", "/h"); err != nil {
 		t.Fatalf("section désactivée : %v", err)
+	}
+}
+
+// Configuration livrée pour le serveur du site public (deploy/config.toml) : valide une fois le nom du
+// site renseigné ; nœud archive, passif, site public activé, chemins du serveur.
+func TestDeployConfig(t *testing.T) {
+	data, err := os.ReadFile("../../deploy/config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse(string(data), "/h"); err == nil {
+		t.Fatal("espace réservé <HOSTNAME> accepté tel quel")
+	}
+	c, err := Parse(strings.ReplaceAll(string(data), "<HOSTNAME>", "etalon-etl.fr"), "/h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Public.Enabled || c.Public.Host != "etalon-etl.fr" || c.Node.Wallet != "" || c.Node.Pruning ||
+		c.Node.Network != "ETL-FR" || c.Dashboard.Port != 3001 || c.Node.Port != 3000 {
+		t.Fatalf("configuration du serveur : %+v", c)
+	}
+	for _, p := range []string{c.Node.DataDir, c.Node.Genesis, c.Dashboard.Token} {
+		if !strings.HasPrefix(p, "/var/lib/etl/") {
+			t.Errorf("chemin hors de /var/lib/etl : %s", p)
+		}
+	}
+	// Le reste est la configuration par défaut : mêmes limites, même source de l'IPC, mêmes pairs.
+	d := Default("/h")
+	if c.Network.Bootstrap[0] != d.Network.Bootstrap[0] || c.Mempool != d.Mempool || c.Oracle != d.Oracle || c.Public.ReadPerMinute != d.Public.ReadPerMinute {
+		t.Fatalf("écart avec la configuration par défaut : %+v", c)
+	}
+	for _, f := range []string{"../../deploy/Caddyfile", "../../deploy/etl.service"} {
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), "<HOSTNAME>") {
+			t.Errorf("%s : espace réservé <HOSTNAME> absent", f)
+		}
+	}
+	unit, _ := os.ReadFile("../../deploy/etl.service")
+	if !strings.Contains(string(unit), "-config /etc/etl/config.toml run") || !strings.Contains(string(unit), "ReadWritePaths=/var/lib/etl") {
+		t.Fatal("service : configuration ou répertoire de données inattendus")
+	}
+	caddy, _ := os.ReadFile("../../deploy/Caddyfile")
+	if !strings.Contains(string(caddy), fmt.Sprintf("reverse_proxy 127.0.0.1:%d", c.Dashboard.Port)) {
+		t.Fatal("Caddyfile : le proxy ne vise pas le port du nœud")
 	}
 }

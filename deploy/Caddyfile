@@ -1,0 +1,33 @@
+# Caddy devant le site public Étalon — /etc/caddy/Caddyfile.
+# Remplacer <HOSTNAME> (nom du site, par exemple etalon-etl.fr) et <IP_VPS> (adresse IPv4 publique du
+# serveur). Guide : docs/fr/GUIDE_DEPLOIEMENT.md.
+#
+# Caddy obtient et renouvelle seul le certificat HTTPS (Let's Encrypt) et transmet les requêtes au nœud,
+# qui n'écoute que sur 127.0.0.1:3001. En-têtes de sécurité (CSP, HSTS…) et limitation de débit : posés
+# par le nœud. Caddy remplace X-Forwarded-For par l'adresse du visiteur (en-tête reçu ignoré).
+{
+	# Aucune adresse IP de visiteur dans les journaux : pas de journal d'accès (aucune directive « log »
+	# dans les sites ci-dessous) ; les journaux internes qui citent l'adresse du client (erreurs de
+	# requête, du proxy, de poignée de main TLS) sont écartés. Restent ceux des certificats.
+	log default {
+		output stderr
+		format console
+		exclude http.log.error http.handlers.reverse_proxy http.stdlib
+	}
+}
+
+<HOSTNAME> {
+	bind <IP_VPS>
+	encode zstd gzip
+	header -Server
+	reverse_proxy 127.0.0.1:3001 {
+		# Le nœud n'accepte que le nom du site : jamais de port dans Host (https://<HOSTNAME>:443/…).
+		header_up Host {host}
+	}
+}
+
+# Variante avec www : renvoie vers le nom du site (le nœud n'accepte qu'un seul nom).
+www.<HOSTNAME> {
+	bind <IP_VPS>
+	redir https://<HOSTNAME>{uri} permanent
+}
