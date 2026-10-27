@@ -1,0 +1,11 @@
+# Fins de ligne LF dans toute copie du dépôt, quel que soit le réglage de Git (core.autocrlf sous
+# Windows). Le binaire embarque l'interface web, dont l'import map porte l'empreinte SRI de chaque
+# fichier : compilée depuis une copie convertie en CRLF, l'interface serait bloquée par le navigateur.
+* text=auto eol=lf
+
+# Binaires : jamais convertis.
+*.woff2 binary
+*.png binary
+
+# Données de test dont l'empreinte des octets exacts est vérifiée (oracle : publication INSEE).
+internal/oracle/testdata/** -text
