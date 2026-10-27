@@ -61,11 +61,23 @@ On your computer, at the root of the repository. First check the server's archit
 `uname -m`: `x86_64` means `GOARCH=amd64`, `aarch64` means `GOARCH=arm64`.
 
 ```sh
+go test ./web/
 GOOS=linux GOARCH=amd64 go build -trimpath -o etl-linux ./cmd/etl
 ```
 
 **`-trimpath` is mandatory.** Without it, the binary contains the paths of the files on your computer,
 including your user name.
+
+**`go test ./web/` must pass before any build.** It checks that the interface embedded in the binary
+matches the fingerprints the browser verifies. If it fails, the browser would block the site: do not
+deploy. Usual cause: a copy of the repository with Windows line endings (CRLF), made before
+`.gitattributes` was added. Converting it back to LF is enough:
+
+```sh
+git config core.autocrlf false
+git rm -r --cached -q .
+git reset --hard
+```
 
 Then copy the binary and the `deploy/` files to the server:
 
@@ -228,7 +240,8 @@ wallet, exchanges, explorer and CPI pages by itself: nothing to change in Caddy 
 
 ## 10. Update the software
 
-Build the new version with `-trimpath`, copy it to the server, then:
+Build the new version as in section 2 (`go test ./web/`, then `go build -trimpath`), copy it to the
+server, then:
 
 ```sh
 sudo install -m 0755 /tmp/etl-linux /usr/local/bin/etl

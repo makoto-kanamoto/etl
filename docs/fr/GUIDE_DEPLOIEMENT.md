@@ -61,11 +61,23 @@ Sur votre ordinateur, à la racine du dépôt. Vérifiez d'abord l'architecture 
 `x86_64` donne `GOARCH=amd64`, `aarch64` donne `GOARCH=arm64`.
 
 ```sh
+go test ./web/
 GOOS=linux GOARCH=amd64 go build -trimpath -o etl-linux ./cmd/etl
 ```
 
 **`-trimpath` est obligatoire.** Sans lui, le binaire contient les chemins des fichiers sur votre
 ordinateur, dont votre nom d'utilisateur.
+
+**`go test ./web/` doit réussir avant toute compilation.** Il vérifie que l'interface embarquée dans le
+binaire correspond aux empreintes que le navigateur contrôle. S'il échoue, le site serait bloqué par le
+navigateur : ne déployez pas. Cause habituelle : une copie du dépôt aux fins de ligne Windows (CRLF),
+faite avant l'ajout de `.gitattributes`. Il suffit de la remettre en LF :
+
+```sh
+git config core.autocrlf false
+git rm -r --cached -q .
+git reset --hard
+```
 
 Copiez ensuite le binaire et les fichiers de `deploy/` sur le serveur :
 
@@ -228,7 +240,8 @@ configuration.
 
 ## 10. Mettre à jour le logiciel
 
-Compiler la nouvelle version avec `-trimpath`, la copier sur le serveur, puis :
+Compiler la nouvelle version comme en section 2 (`go test ./web/`, puis `go build -trimpath`), la copier
+sur le serveur, puis :
 
 ```sh
 sudo install -m 0755 /tmp/etl-linux /usr/local/bin/etl
