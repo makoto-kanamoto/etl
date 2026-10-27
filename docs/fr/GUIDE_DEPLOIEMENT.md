@@ -22,12 +22,14 @@ Dans tout le guide, **remplacez les exemples par vos valeurs réelles** :
 
 | Espace réservé | Valeur | Exemple |
 |---|---|---|
-| `<HOSTNAME>` | votre nom de domaine réel | `etalon-etl.fr` |
+| `<HOSTNAME>` | votre nom de domaine réel | `etalon-etl.com` |
 | `<IP_VPS>` | l'adresse IPv4 publique de votre serveur | `203.0.113.7` |
+| `<ALT_HOSTNAME>` | un second nom de domaine, redirigé vers le site (facultatif) | `etalon-etl.org` |
 
-`etalon-etl.fr` et `etl1.etalon-etl.fr` sont les noms prévus pour ETL-FR, pas des valeurs imposées : le
-guide fonctionne avec n'importe quel nom de domaine. Les fichiers de `deploy/` contiennent les espaces
-réservés `<HOSTNAME>` et `<IP_VPS>`, remplacés à l'installation par les commandes ci-dessous.
+`etalon-etl.com`, `etl1.etalon-etl.com` et `etalon-etl.org` sont les noms d'ETL-FR, pas des valeurs
+imposées : le guide fonctionne avec n'importe quel nom de domaine. Les fichiers de `deploy/` contiennent
+les espaces réservés `<HOSTNAME>`, `<IP_VPS>` et `<ALT_HOSTNAME>`, remplacés à l'installation par les
+commandes ci-dessous.
 
 ---
 
@@ -43,6 +45,7 @@ réservés `<HOSTNAME>` et `<IP_VPS>`, remplacés à l'installation par les comm
   | `<HOSTNAME>` | le site |
   | `www.<HOSTNAME>` | redirigé vers le site |
   | `etl1.<HOSTNAME>` | le nœud d'amorçage du réseau pair à pair (section 6) |
+  | `<ALT_HOSTNAME>` et `www.<ALT_HOSTNAME>` | second domaine, redirigé vers le site (facultatif) |
 
   Le certificat HTTPS ne peut être obtenu qu'une fois ces enregistrements visibles :
   `dig +short <HOSTNAME>` doit renvoyer `<IP_VPS>`.
@@ -72,12 +75,13 @@ scp etl-linux deploy/config.toml deploy/etl.service deploy/Caddyfile deploy/fire
 
 ## 3. Installer le nœud
 
-Sur le serveur, renseignez d'abord vos deux valeurs ; les commandes des sections 3 et 4 les reprennent
-(dans la même session SSH, sinon redéfinissez-les) :
+Sur le serveur, renseignez d'abord vos valeurs ; les commandes des sections 3 et 4 les reprennent (dans
+la même session SSH, sinon redéfinissez-les) :
 
 ```sh
-SITE=etalon-etl.fr   # remplacez par votre nom de domaine réel
-IP=203.0.113.7       # remplacez par l'adresse IPv4 publique de votre serveur
+SITE=etalon-etl.com   # remplacez par votre nom de domaine réel
+IP=203.0.113.7        # remplacez par l'adresse IPv4 publique de votre serveur
+ALT=etalon-etl.org    # second domaine redirigé vers le site (facultatif)
 ```
 
 ```sh
@@ -119,17 +123,19 @@ Puis sa configuration :
 
 ```sh
 sudo install -m 0644 /tmp/Caddyfile /etc/caddy/Caddyfile
-sudo sed -i "s/<HOSTNAME>/$SITE/g; s/<IP_VPS>/$IP/g" /etc/caddy/Caddyfile
+sudo sed -i "s/<HOSTNAME>/$SITE/g; s/<IP_VPS>/$IP/g; s/<ALT_HOSTNAME>/$ALT/g" /etc/caddy/Caddyfile
 sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-Caddy obtient le certificat au premier accès au site, puis le renouvelle seul.
+Sans second domaine, supprimez le dernier bloc du Caddyfile (`<ALT_HOSTNAME>, www.<ALT_HOSTNAME> { … }`)
+avant `caddy validate`. Caddy obtient les certificats au premier accès, puis les renouvelle seul.
 
 Ce que fait ce Caddyfile :
 
 - il transmet toutes les requêtes au nœud (`127.0.0.1:3001`), avec le nom du site seul (sans port) ;
-- il redirige `www.<HOSTNAME>` et `http://` vers `https://<HOSTNAME>` ;
+- il redirige `www.<HOSTNAME>`, le second domaine (`<ALT_HOSTNAME>`, avec ou sans `www`) et `http://` vers
+  `https://<HOSTNAME>`, en gardant la page demandée ;
 - il remplace l'en-tête `X-Forwarded-For` par l'adresse du visiteur : un visiteur ne peut pas se faire
   passer pour un autre auprès de la limitation de débit du nœud ;
 - il n'écrit **aucune adresse IP de visiteur** (voir section 8).
@@ -150,7 +156,7 @@ port, modifiez `firewall.sh` **avant** de le lancer, sinon vous perdez l'accès 
 ## 6. Nœud d'amorçage (etl1)
 
 Un nouveau nœud doit trouver ses premiers pairs. Le logiciel contient une liste de nœuds d'amorçage
-(`bootstrap` dans `config.toml`), qui commence par `etl1.etalon-etl.fr:3000` : ce serveur. Rien à
+(`bootstrap` dans `config.toml`), qui commence par `etl1.etalon-etl.com:3000` : ce serveur. Rien à
 installer en plus — le nœud du site écoute déjà sur le port 3000, ouvert par le pare-feu. Il suffit que
 le nom `etl1.<HOSTNAME>` pointe vers `<IP_VPS>` (section 1).
 
@@ -161,7 +167,7 @@ dig +short etl1.<HOSTNAME>            # <IP_VPS>
 nc -vz etl1.<HOSTNAME> 3000           # connexion acceptée
 ```
 
-**Si votre nom de domaine n'est pas `etalon-etl.fr`**, la liste d'amorçage par défaut du logiciel ne
+**Si votre nom de domaine n'est pas `etalon-etl.com`**, la liste d'amorçage par défaut du logiciel ne
 désigne pas votre serveur : il faut la changer dans le code (`config/default.toml` et la fonction
 `Default` de `internal/config`) et publier une nouvelle version, sinon les nouveaux nœuds devront ajouter
 `etl1.<HOSTNAME>:3000` à la main dans leur `config.toml`.

@@ -124,7 +124,7 @@ pruning = false     # required: archive node (full explorer history)
 
 [public]
 enabled = true
-host    = "etalon-etl.fr"   # site name only, without https:// or a port
+host    = "etalon-etl.com"   # site name only, without https:// or a port
 read_per_minute  = 300      # API reads per IP address per minute
 write_per_minute = 6        # transfers and exchanges submitted per IP address per minute
 ```

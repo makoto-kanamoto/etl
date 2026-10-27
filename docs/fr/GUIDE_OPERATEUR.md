@@ -121,7 +121,7 @@ pruning = false     # obligatoire : nœud archive (historique complet de l'explo
 
 [public]
 enabled = true
-host    = "etalon-etl.fr"   # nom du site seul, sans https:// ni port
+host    = "etalon-etl.com"   # nom du site seul, sans https:// ni port
 read_per_minute  = 300      # lectures de l'API par adresse IP et par minute
 write_per_minute = 6        # transferts et échanges soumis par adresse IP et par minute
 ```

@@ -24,8 +24,8 @@
 | Stockage | bbolt (pur Go, transactions ACID) |
 | Racine d'état | `StateRoot` dans chaque en-tête, validé par vote 2/3 |
 | Dashboard local | localhost:3001 |
-| Site public | etalon-etl.fr |
-| Explorateur | etalon-etl.fr (onglet Explorateur du site public) |
+| Site public | etalon-etl.com |
+| Explorateur | etalon-etl.com (onglet Explorateur du site public) |
 | Référence IPC | Configurable — défaut : INSEE Série 011814630 (IPC base 2025, France entière), via l'API SDMX |
 | Fréquence IPC | Trimestrielle (passage au mensuel : objectif futur, par vote) |
 | Protocole | Forkable par toute communauté nationale |
@@ -65,7 +65,7 @@ Comme Linux — une base commune, des adaptations locales.
 
 ## Step 1 — Découverte
 
-- Site public : **etalon-etl.fr**
+- Site public : **etalon-etl.com**
 - Code source : **GitHub public** (comme Satoshi)
 - Manifeste disponible en FR / EN / JA / ZH (docs/fr/ docs/en/ docs/ja/ docs/zh/)
 - Deux versions : complète et courte
@@ -155,7 +155,7 @@ pruning = true
 
 [network]
 bootstrap = [
-  "etl1.etalon-etl.fr:3000",
+  "etl1.etalon-etl.com:3000",
 ]
 ```
 
@@ -259,7 +259,7 @@ Les jours sont des jours UTC (horodatage du bloc ÷ 86 400) : un jour sans bloc 
 
 ### Dashboard
 - **localhost:3001** pour l'opérateur
-- **etalon-etl.fr** pour les visiteurs : même interface en mode « site public » (voir *Site public* ci-dessous)
+- **etalon-etl.com** pour les visiteurs : même interface en mode « site public » (voir *Site public* ci-dessous)
 - Un seul codebase — deux contextes de déploiement
 - UX moderne, interactive
 - Servi par le nœud lui-même : interface embarquée dans le binaire, API JSON locale
@@ -334,7 +334,7 @@ Le navigateur de l'opérateur visite aussi d'autres sites : n'importe quelle pag
 - Les transactions et opérations d'escrow sont **signées dans le navigateur** : l'API ne fait que les transmettre au réseau.
 - Format JSON : montants en chaînes décimales d'unités (jamais de nombre à virgule), adresses `etl1q…`, identifiants en hexadécimal.
 
-#### Site public (etalon-etl.fr)
+#### Site public (etalon-etl.com)
 
 Le site public est servi par un nœud Étalon lancé avec la section `[public]` de `config.toml`, derrière
 un proxy HTTPS sur la même machine (Caddy, certificat Let's Encrypt). Le nœud écoute toujours sur
@@ -609,7 +609,7 @@ Toute signature porte sur `Blake3(chain_id | usage | message)` :
 
 ### Explorateur public
 
-Onglet Explorateur du site public (etalon-etl.fr). Chaque page a sa propre adresse, que l'on peut
+Onglet Explorateur du site public (etalon-etl.com). Chaque page a sa propre adresse, que l'on peut
 partager :
 
 | Page | Adresse | Contenu |
@@ -807,7 +807,7 @@ pourrait forker à partir du dernier état sain — le code est libre (GPL v3) e
 ETL ne touche pas au système bancaire. ETL sécurise uniquement **la partie ETL** de l'échange. La partie euros est hors-chaîne, libre choix des membres.
 
 ### Tableau d'annonces P2P
-- Disponible sur **etalon-etl.fr/echange** et **GitHub**
+- Disponible sur **etalon-etl.com/echange** et **GitHub**
 - Les membres publient leurs offres d'achat/vente
 - Contact direct entre membres — pas d'intermédiaire
 
@@ -890,9 +890,9 @@ Wallet etl1qxk9... — Réputation on-chain
 
 | Interface | URL | Audience |
 |---|---|---|
-| Site principal | etalon-etl.fr | Tous |
-| Explorateur blocs | etalon-etl.fr (onglet Explorateur) | Tous |
-| Échange P2P | etalon-etl.fr/echange | Membres |
+| Site principal | etalon-etl.com | Tous |
+| Explorateur blocs | etalon-etl.com (onglet Explorateur) | Tous |
+| Échange P2P | etalon-etl.com/echange | Membres |
 | Vote IPC | dashboard (section IPC) | Opérateurs nœuds |
 | Dashboard local | localhost:3001 | Opérateurs nœuds |
 | Code source | GitHub public | Tous |

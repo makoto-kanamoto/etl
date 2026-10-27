@@ -23,12 +23,13 @@ Throughout the guide, **replace the examples with your real values**:
 
 | Placeholder | Value | Example |
 |---|---|---|
-| `<HOSTNAME>` | your real domain name | `etalon-etl.fr` |
+| `<HOSTNAME>` | your real domain name | `etalon-etl.com` |
 | `<IP_VPS>` | your server's public IPv4 address | `203.0.113.7` |
+| `<ALT_HOSTNAME>` | a second domain name, redirected to the site (optional) | `etalon-etl.org` |
 
-`etalon-etl.fr` and `etl1.etalon-etl.fr` are the names planned for ETL-FR, not required values: the
-guide works with any domain name. The `deploy/` files contain the `<HOSTNAME>` and `<IP_VPS>`
-placeholders, replaced during installation by the commands below.
+`etalon-etl.com`, `etl1.etalon-etl.com` and `etalon-etl.org` are ETL-FR's names, not required values:
+the guide works with any domain name. The `deploy/` files contain the `<HOSTNAME>`, `<IP_VPS>` and
+`<ALT_HOSTNAME>` placeholders, replaced during installation by the commands below.
 
 ---
 
@@ -44,6 +45,7 @@ placeholders, replaced during installation by the commands below.
   | `<HOSTNAME>` | the site |
   | `www.<HOSTNAME>` | redirected to the site |
   | `etl1.<HOSTNAME>` | the bootstrap node of the peer-to-peer network (section 6) |
+  | `<ALT_HOSTNAME>` and `www.<ALT_HOSTNAME>` | second domain, redirected to the site (optional) |
 
   The HTTPS certificate can only be obtained once these records are visible: `dig +short <HOSTNAME>` must
   return `<IP_VPS>`.
@@ -73,12 +75,13 @@ scp etl-linux deploy/config.toml deploy/etl.service deploy/Caddyfile deploy/fire
 
 ## 3. Install the node
 
-On the server, first set your two values; the commands in sections 3 and 4 reuse them (in the same SSH
+On the server, first set your values; the commands in sections 3 and 4 reuse them (in the same SSH
 session, otherwise set them again):
 
 ```sh
-SITE=etalon-etl.fr   # replace with your real domain name
-IP=203.0.113.7       # replace with your server's public IPv4 address
+SITE=etalon-etl.com   # replace with your real domain name
+IP=203.0.113.7        # replace with your server's public IPv4 address
+ALT=etalon-etl.org    # second domain redirected to the site (optional)
 ```
 
 ```sh
@@ -121,17 +124,19 @@ Then its configuration:
 
 ```sh
 sudo install -m 0644 /tmp/Caddyfile /etc/caddy/Caddyfile
-sudo sed -i "s/<HOSTNAME>/$SITE/g; s/<IP_VPS>/$IP/g" /etc/caddy/Caddyfile
+sudo sed -i "s/<HOSTNAME>/$SITE/g; s/<IP_VPS>/$IP/g; s/<ALT_HOSTNAME>/$ALT/g" /etc/caddy/Caddyfile
 sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-Caddy obtains the certificate on the first visit to the site, then renews it on its own.
+Without a second domain, delete the last block of the Caddyfile (`<ALT_HOSTNAME>, www.<ALT_HOSTNAME> { … }`)
+before `caddy validate`. Caddy obtains the certificates on the first visit, then renews them on its own.
 
 What this Caddyfile does:
 
 - it forwards every request to the node (`127.0.0.1:3001`), with the bare site name (no port);
-- it redirects `www.<HOSTNAME>` and `http://` to `https://<HOSTNAME>`;
+- it redirects `www.<HOSTNAME>`, the second domain (`<ALT_HOSTNAME>`, with or without `www`) and
+  `http://` to `https://<HOSTNAME>`, keeping the requested page;
 - it replaces the `X-Forwarded-For` header with the visitor's address: a visitor cannot pose as someone
   else to the node's rate limiting;
 - it writes **no visitor IP address** (see section 8).
@@ -152,7 +157,7 @@ edit `firewall.sh` **before** running it, or you will lose access to the server.
 ## 6. Bootstrap node (etl1)
 
 A new node has to find its first peers. The software contains a list of bootstrap nodes (`bootstrap` in
-`config.toml`), which starts with `etl1.etalon-etl.fr:3000`: this server. Nothing more to install — the
+`config.toml`), which starts with `etl1.etalon-etl.com:3000`: this server. Nothing more to install — the
 site's node already listens on port 3000, opened by the firewall. The name `etl1.<HOSTNAME>` only has to
 point to `<IP_VPS>` (section 1).
 
@@ -163,7 +168,7 @@ dig +short etl1.<HOSTNAME>            # <IP_VPS>
 nc -vz etl1.<HOSTNAME> 3000           # connection accepted
 ```
 
-**If your domain name is not `etalon-etl.fr`**, the software's default bootstrap list does not point to
+**If your domain name is not `etalon-etl.com`**, the software's default bootstrap list does not point to
 your server: it has to be changed in the code (`config/default.toml` and the `Default` function in
 `internal/config`) and a new version published; otherwise new nodes must add `etl1.<HOSTNAME>:3000` by
 hand to their `config.toml`.
