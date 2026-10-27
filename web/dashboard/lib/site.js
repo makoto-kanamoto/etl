@@ -1,4 +1,4 @@
-// Site public (etalon-etl.fr) : routes de l'explorateur, liens vers la documentation du dépôt,
+// Site public (etalon-etl.com) : routes de l'explorateur, liens vers la documentation du dépôt,
 // formulations « il y a … », liens vers les pages de l'explorateur.
 
 import { h } from "./dom.js";

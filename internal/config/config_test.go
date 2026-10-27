@@ -173,9 +173,9 @@ func FuzzParse(f *testing.F) {
 
 // Site public : nœud archive et passif seulement, nom d'hôte seul, limites positives.
 func TestPublic(t *testing.T) {
-	const ok = "[node]\nwallet = \"\"\npruning = false\n[public]\nenabled = true\nhost = \"etalon-etl.fr\"\n"
+	const ok = "[node]\nwallet = \"\"\npruning = false\n[public]\nenabled = true\nhost = \"etalon-etl.com\"\n"
 	c, err := Parse(ok+"read_per_minute = 120\nwrite_per_minute = 2", "/h")
-	if err != nil || !c.Public.Enabled || c.Public.Host != "etalon-etl.fr" || c.Public.ReadPerMinute != 120 || c.Public.WritePerMinute != 2 {
+	if err != nil || !c.Public.Enabled || c.Public.Host != "etalon-etl.com" || c.Public.ReadPerMinute != 120 || c.Public.WritePerMinute != 2 {
 		t.Fatalf("site public : %+v %v", c.Public, err)
 	}
 	if d := Default("/h"); d.Public.Enabled || d.Public.ReadPerMinute != 300 || d.Public.WritePerMinute != 6 {
@@ -184,8 +184,8 @@ func TestPublic(t *testing.T) {
 	for name, src := range map[string]string{
 		"avec clé":         strings.Replace(ok, "wallet = \"\"\n", "", 1),
 		"élagué":           strings.Replace(ok, "pruning = false\n", "", 1),
-		"sans hôte":        strings.Replace(ok, "host = \"etalon-etl.fr\"\n", "", 1),
-		"URL pour hôte":    strings.Replace(ok, "etalon-etl.fr", "https://etalon-etl.fr", 1),
+		"sans hôte":        strings.Replace(ok, "host = \"etalon-etl.com\"\n", "", 1),
+		"URL pour hôte":    strings.Replace(ok, "etalon-etl.com", "https://etalon-etl.com", 1),
 		"lectures nulles":  ok + "read_per_minute = 0",
 		"écritures nulles": ok + "write_per_minute = 0",
 	} {
@@ -193,13 +193,13 @@ func TestPublic(t *testing.T) {
 			t.Errorf("%s : accepté", name)
 		}
 	}
-	for _, h := range []string{"https://etalon-etl.fr", "etalon-etl.fr:443", "etalon-etl.fr/", "Etalon-etl.fr", "localhost",
+	for _, h := range []string{"https://etalon-etl.com", "etalon-etl.com:443", "etalon-etl.com/", "Etalon-etl.com", "localhost",
 		"-a.fr", "a-.fr", "a..fr", ".fr", "fr.", "é.fr", "a_b.fr", strings.Repeat("a", 64) + ".fr", strings.Repeat("a.", 127) + "fr"} {
 		if validHost(h) {
 			t.Errorf("hôte %q accepté", h)
 		}
 	}
-	for _, h := range []string{"etalon-etl.fr", "www.etalon-etl.fr", "a1.b2.c3", strings.Repeat("a", 63) + ".fr"} {
+	for _, h := range []string{"etalon-etl.com", "www.etalon-etl.com", "a1.b2.c3", strings.Repeat("a", 63) + ".fr"} {
 		if !validHost(h) {
 			t.Errorf("hôte %q refusé", h)
 		}
@@ -220,11 +220,11 @@ func TestDeployConfig(t *testing.T) {
 	if _, err := Parse(string(data), "/h"); err == nil {
 		t.Fatal("espace réservé <HOSTNAME> accepté tel quel")
 	}
-	c, err := Parse(strings.ReplaceAll(string(data), "<HOSTNAME>", "etalon-etl.fr"), "/h")
+	c, err := Parse(strings.ReplaceAll(string(data), "<HOSTNAME>", "etalon-etl.com"), "/h")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !c.Public.Enabled || c.Public.Host != "etalon-etl.fr" || c.Node.Wallet != "" || c.Node.Pruning ||
+	if !c.Public.Enabled || c.Public.Host != "etalon-etl.com" || c.Node.Wallet != "" || c.Node.Pruning ||
 		c.Node.Network != "ETL-FR" || c.Dashboard.Port != 3001 || c.Node.Port != 3000 {
 		t.Fatalf("configuration du serveur : %+v", c)
 	}
@@ -252,6 +252,9 @@ func TestDeployConfig(t *testing.T) {
 		t.Fatal("service : configuration ou répertoire de données inattendus")
 	}
 	caddy, _ := os.ReadFile("../../deploy/Caddyfile")
+	if !strings.Contains(string(caddy), "<ALT_HOSTNAME>, www.<ALT_HOSTNAME> {") || !strings.Contains(string(caddy), "redir https://<HOSTNAME>{uri} permanent") {
+		t.Fatal("Caddyfile : redirection du second nom de domaine absente")
+	}
 	if !strings.Contains(string(caddy), fmt.Sprintf("reverse_proxy 127.0.0.1:%d", c.Dashboard.Port)) {
 		t.Fatal("Caddyfile : le proxy ne vise pas le port du nœud")
 	}

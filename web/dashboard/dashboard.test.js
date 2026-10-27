@@ -669,7 +669,7 @@ test("langues : nom dans la langue, conventions de dates, attribut lang de la pa
   assert.equal(t("zh", "list.and"), "和");
 });
 
-// --- site public (etalon-etl.fr) ---
+// --- site public (etalon-etl.com) ---
 
 import { parseRoute, route, searchTarget, ago, docURL, docFor, DOC_KEYS, DOC_LANGS, REPO, NAVS, modeOf, POLL_MS, shortHex } from "./lib/site.js";
 import { feedRows, weave, MARK } from "./lib/feed.js";

@@ -1,5 +1,5 @@
 # Configuration du nœud qui sert le SITE PUBLIC (serveur, derrière Caddy) — /etc/etl/config.toml.
-# Remplacer <HOSTNAME> par le nom du site (par exemple etalon-etl.fr). Guide : docs/fr/GUIDE_DEPLOIEMENT.md.
+# Remplacer <HOSTNAME> par le nom du site (par exemple etalon-etl.com). Guide : docs/fr/GUIDE_DEPLOIEMENT.md.
 # Nœud archive (historique complet de l'explorateur) et passif (aucune clé sur une machine exposée).
 #
 # Configuration LOCALE d'un nœud Étalon (ETL).
@@ -21,7 +21,7 @@ prune_keep_blocks = 90             # contenu des blocs conservé ; en-têtes et 
 
 [network]
 bootstrap = [
-  "etl1.etalon-etl.fr:3000",
+  "etl1.etalon-etl.com:3000",
 ]
 max_outbound = 8          # connexions sortantes
 max_inbound  = 64         # connexions entrantes (0 si le nœud n'est pas joignable de l'extérieur)

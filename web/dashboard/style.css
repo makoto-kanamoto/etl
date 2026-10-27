@@ -457,7 +457,7 @@ form.inline input { flex: 1; min-width: 0; }
   @keyframes rise { from { transform: translateY(6px); opacity: 0.6; } to { transform: none; opacity: 1; } }
 }
 
-/* --- Site public (etalon-etl.fr) : accueil visiteur, explorateur, rejoindre --- */
+/* --- Site public (etalon-etl.com) : accueil visiteur, explorateur, rejoindre --- */
 .dot.pending { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
 .banner { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; padding: 14px 16px; border-radius: var(--r); background: var(--brass-soft); border: 1px solid color-mix(in srgb, var(--brass) 40%, var(--line)); font-size: var(--t-sm); }
 .banner p { margin: 0; }

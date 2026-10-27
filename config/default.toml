@@ -17,7 +17,7 @@ prune_keep_blocks = 90             # contenu des blocs conservé ; en-têtes et 
 
 [network]
 bootstrap = [
-  "etl1.etalon-etl.fr:3000",
+  "etl1.etalon-etl.com:3000",
 ]
 max_outbound = 8          # connexions sortantes
 max_inbound  = 64         # connexions entrantes (0 si le nœud n'est pas joignable de l'extérieur)
@@ -39,6 +39,6 @@ token = "~/.etl/dashboard.token"   # jeton opérateur, régénéré à chaque d�
 
 [public]                  # site public (explorateur, portefeuille) derrière un proxy HTTPS, à la place du dashboard
 enabled = false           # true : nœud archive (pruning = false) et passif (wallet = "") obligatoires
-host    = ""              # nom d'hôte du site, par exemple "etalon-etl.fr"
+host    = ""              # nom d'hôte du site, par exemple "etalon-etl.com"
 read_per_minute  = 300    # lectures de l'API par adresse IP et par minute (en mémoire, aucun journal)
 write_per_minute = 6      # transferts et échanges soumis par adresse IP et par minute

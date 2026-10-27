@@ -1,6 +1,6 @@
 // Point d'entrée du dashboard et du site public : navigation, langue, état du nœud, notifications
 // (flux SSE sur le dashboard ; relecture toutes les 30 s sur le site public), verrouillage automatique
-// du portefeuille. Le mode vient de /api/status : public (site etalon-etl.fr) et launched (réseau lancé).
+// du portefeuille. Le mode vient de /api/status : public (site etalon-etl.com) et launched (réseau lancé).
 
 import { h, clear } from "./lib/dom.js";
 import { logo, icon } from "./lib/icons.js";

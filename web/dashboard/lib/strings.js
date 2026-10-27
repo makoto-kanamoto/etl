@@ -441,7 +441,7 @@ export const STRINGS = {
     "arbiter.sign": "Signer en tant qu'arbitre et soumettre",
     "arbiter.open": "Ouverture demandée par le vendeur",
 
-    // Site public (etalon-etl.fr) : accueil visiteur, explorateur, rejoindre.
+    // Site public (etalon-etl.com) : accueil visiteur, explorateur, rejoindre.
     "nav.explorer": "Explorateur",
     "nav.join": "Rejoindre",
     "ago.min": "il y a {n} min",
@@ -1038,7 +1038,7 @@ export const STRINGS = {
     "arbiter.sign": "Sign as arbiter and submit",
     "arbiter.open": "Opening requested by the seller",
 
-    // Site public (etalon-etl.fr) : accueil visiteur, explorateur, rejoindre.
+    // Site public (etalon-etl.com) : accueil visiteur, explorateur, rejoindre.
     "nav.explorer": "Explorer",
     "nav.join": "Join",
     "ago.min": "{n} min ago",
@@ -1623,7 +1623,7 @@ export const STRINGS = {
     "arbiter.open": "売り手が依頼した取引の開始",
     "list.and": "と",
 
-    // Site public (etalon-etl.fr) : accueil visiteur, explorateur, rejoindre.
+    // Site public (etalon-etl.com) : accueil visiteur, explorateur, rejoindre.
     "nav.explorer": "エクスプローラー",
     "nav.join": "参加する",
     "ago.min": "{n} 分前",
@@ -2208,7 +2208,7 @@ export const STRINGS = {
     "arbiter.open": "卖方请求开启交易",
     "list.and": "和",
 
-    // Site public (etalon-etl.fr) : accueil visiteur, explorateur, rejoindre.
+    // Site public (etalon-etl.com) : accueil visiteur, explorateur, rejoindre.
     "nav.explorer": "浏览器",
     "nav.join": "加入",
     "ago.min": "{n} 分钟前",

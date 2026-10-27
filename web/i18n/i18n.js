@@ -1,4 +1,4 @@
-// Détection de la langue du visiteur — partagé par le dashboard (localhost:3001) et etalon-etl.fr.
+// Détection de la langue du visiteur — partagé par le dashboard (localhost:3001) et etalon-etl.com.
 // Langues supportées : fr, en, ja, zh. Repli : en.
 // Aucune dépendance : rien à charger depuis un CDN, donc rien à vérifier par SRI.
 

@@ -1,6 +1,7 @@
 # Caddy devant le site public Étalon — /etc/caddy/Caddyfile.
-# Remplacer <HOSTNAME> (nom du site, par exemple etalon-etl.fr) et <IP_VPS> (adresse IPv4 publique du
-# serveur). Guide : docs/fr/GUIDE_DEPLOIEMENT.md.
+# Remplacer <HOSTNAME> (nom du site, par exemple etalon-etl.com), <IP_VPS> (adresse IPv4 publique du
+# serveur) et <ALT_HOSTNAME> (second nom de domaine redirigé vers le site, par exemple etalon-etl.org ;
+# sans second domaine, supprimer le dernier bloc). Guide : docs/fr/GUIDE_DEPLOIEMENT.md.
 #
 # Caddy obtient et renouvelle seul le certificat HTTPS (Let's Encrypt) et transmet les requêtes au nœud,
 # qui n'écoute que sur 127.0.0.1:3001. En-têtes de sécurité (CSP, HSTS…) et limitation de débit : posés
@@ -28,6 +29,12 @@
 
 # Variante avec www : renvoie vers le nom du site (le nœud n'accepte qu'un seul nom).
 www.<HOSTNAME> {
+	bind <IP_VPS>
+	redir https://<HOSTNAME>{uri} permanent
+}
+
+# Second nom de domaine (facultatif) : renvoie vers le site, avec ou sans www.
+<ALT_HOSTNAME>, www.<ALT_HOSTNAME> {
 	bind <IP_VPS>
 	redir https://<HOSTNAME>{uri} permanent
 }

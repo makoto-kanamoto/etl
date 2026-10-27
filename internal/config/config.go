@@ -50,7 +50,7 @@ type Config struct {
 	// dashboard de l'opérateur. Nœud archive et passif seulement : aucune clé sur une machine exposée.
 	Public struct {
 		Enabled        bool
-		Host           string // nom d'hôte du site (etalon-etl.fr), sans schéma ni port
+		Host           string // nom d'hôte du site (etalon-etl.com), sans schéma ni port
 		ReadPerMinute  int    // requêtes de lecture de l'API par adresse IP et par minute
 		WritePerMinute int    // soumissions (transferts, échanges) par adresse IP et par minute
 	}
@@ -66,7 +66,7 @@ func Default(home string) Config {
 	c.Node.Port = 3000
 	c.Node.Pruning = true
 	c.Node.PruneKeepBlocks = 90
-	c.Network.Bootstrap = []string{"etl1.etalon-etl.fr:3000"}
+	c.Network.Bootstrap = []string{"etl1.etalon-etl.com:3000"}
 	c.Network.MaxOutbound, c.Network.MaxInbound, c.Network.BanHours = 8, 64, 24
 	c.Mempool.MaxPerAccount, c.Mempool.MaxTotal, c.Mempool.MaxAgeDays = 16, 200_000, 7
 	c.Oracle.IPCURL = "https://api.insee.fr/series/BDM/V1/data/SERIES_BDM/011814630"
@@ -215,7 +215,7 @@ func (c *Config) check() error {
 	if c.Public.Enabled {
 		switch {
 		case !validHost(c.Public.Host):
-			return errors.New("config : public.host invalide (nom d'hôte seul, par exemple etalon-etl.fr)")
+			return errors.New("config : public.host invalide (nom d'hôte seul, par exemple etalon-etl.com)")
 		case c.Node.Wallet != "":
 			return errors.New("config : site public : nœud passif seulement (wallet = \"\"), aucune clé sur une machine exposée")
 		case c.Node.Pruning:

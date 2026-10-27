@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Public règle le site public (etalon-etl.fr) : le serveur est joint à travers un proxy HTTPS local
+// Public règle le site public (etalon-etl.com) : le serveur est joint à travers un proxy HTTPS local
 // (Caddy). Différences avec le dashboard de l'opérateur :
 //   - Host limité au nom du site, Origin à https://<nom> ; HSTS ;
 //   - aucune route de l'opérateur, aucun jeton écrit ; pas de flux SSE (les pages relisent l'API) ;

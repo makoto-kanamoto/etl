@@ -167,7 +167,7 @@ func TestGenesisAndRun(t *testing.T) {
 	p2p, dash := freePort(t), freePort(t)
 	writeTestConfig(t, home, "")
 	cfg := strings.NewReplacer("port    = 3000", fmt.Sprintf("port    = %d", p2p), "port  = 3001", fmt.Sprintf("port  = %d", dash),
-		`"etl1.etalon-etl.fr:3000",`, "").Replace(readFile(t, filepath.Join(home, "config.toml")))
+		`"etl1.etalon-etl.com:3000",`, "").Replace(readFile(t, filepath.Join(home, "config.toml")))
 	_ = os.WriteFile(filepath.Join(home, "config.toml"), []byte(cfg), 0o600)
 	passFile := filepath.Join(home, "pass")
 	_ = os.WriteFile(passFile, []byte(pass), 0o600)
