@@ -24,8 +24,10 @@ décrite dans [ARCHITECTURE.md](../ARCHITECTURE.md).
 - Pour compiler : Go (version indiquée dans `go.mod`).
 
 ```sh
-go build -o etl ./cmd/etl
+go build -trimpath -o etl ./cmd/etl
 ```
+
+`-trimpath` retire du programme les chemins de votre ordinateur, dont votre nom d'utilisateur.
 
 ## 2. Première mise en route
 

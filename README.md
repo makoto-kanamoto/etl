@@ -13,6 +13,8 @@ Une monnaie communautaire indexée sur les prix réels : quand les prix montent,
 <p align="center"><a href="#english">English</a> · <a href="docs/ja/SHORT_MANIFESTO.md">日本語</a> · <a href="docs/zh/SHORT_MANIFESTO.md">中文</a></p>
 
 > **Statut : en développement.** Le réseau ETL-FR n'est pas encore lancé. Un réseau de test permet déjà de l'essayer sur son ordinateur.
+>
+> **Site : [etalon-etl.com](https://etalon-etl.com)** — présentation du projet ; le portefeuille web et l'explorateur de la chaîne s'y ouvriront au lancement.
 
 ---
 
@@ -37,8 +39,9 @@ Le code est libre. Chaque bloc et chaque transaction sont vérifiables par tous.
 1. **Comprendre** — lisez le [manifeste court](docs/fr/MANIFESTE_COURT.md) : cinq minutes.
 2. **Essayer** — lancez un réseau de test de 4 nœuds sur votre ordinateur et ouvrez le tableau de bord : [guide de l'opérateur, section « Réseau de test »](docs/fr/GUIDE_OPERATEUR.md#réseau-de-test). Prérequis : [Go](https://go.dev/dl/) **1.27.2 ou plus récent** (Linux ou macOS).
    ```sh
-   go build -o etl ./cmd/etl
+   go build -trimpath -o etl ./cmd/etl
    ```
+   `-trimpath` retire du programme les chemins de votre ordinateur (dont votre nom d'utilisateur) : indispensable pour tout programme que vous copiez sur un serveur ou que vous partagez.
 3. **Devenir fondateur** — le réseau ETL-FR sera lancé par au moins 10 membres fondateurs indépendants, annoncés publiquement avant le lancement. Pour vous porter candidat : makoto.kanamoto@proton.me.
 
 ## Documentation
@@ -48,6 +51,7 @@ Le code est libre. Chaque bloc et chaque transaction sont vérifiables par tous.
 | Manifeste fondateur | [Lire](docs/fr/MANIFESTE_FONDATEUR.md) | [Read](docs/en/FOUNDERS_MANIFESTO.md) | [読む](docs/ja/FOUNDERS_MANIFESTO.md) | [阅读](docs/zh/FOUNDERS_MANIFESTO.md) |
 | Manifeste court | [Lire](docs/fr/MANIFESTE_COURT.md) | [Read](docs/en/SHORT_MANIFESTO.md) | [読む](docs/ja/SHORT_MANIFESTO.md) | [阅读](docs/zh/SHORT_MANIFESTO.md) |
 | Guide de l'opérateur de nœud | [Lire](docs/fr/GUIDE_OPERATEUR.md) | [Read](docs/en/OPERATOR_GUIDE.md) | — | — |
+| Déploiement du site public | [Lire](docs/fr/GUIDE_DEPLOIEMENT.md) | [Read](docs/en/DEPLOYMENT_GUIDE.md) | — | — |
 | Architecture technique | [Lire](docs/ARCHITECTURE.md) | — | — | — |
 | Tableau de bord du nœud | ✓ | ✓ | ✓ | ✓ |
 
@@ -59,7 +63,7 @@ Le code est libre. Chaque bloc et chaque transaction sont vérifiables par tous.
 
 ## In English
 
-**1 ETL = what €1 could buy on the day of the first block.** Étalon is a community currency indexed to the French consumer price index (INSEE CPI). **Status: in development** — the ETL-FR network has not launched yet; a test network already runs on your own computer.
+**1 ETL = what €1 could buy on the day of the first block.** Étalon is a community currency indexed to the French consumer price index (INSEE CPI). **Status: in development** — the ETL-FR network has not launched yet; a test network already runs on your own computer. **Website: [etalon-etl.com](https://etalon-etl.com)** — the project presentation; the web wallet and the chain explorer will open there at launch.
 
 **Why it is different**
 
@@ -74,10 +78,10 @@ Le code est libre. Chaque bloc et chaque transaction sont vérifiables par tous.
 **Join in 3 steps**
 
 1. **Understand** — read the [short manifesto](docs/en/SHORT_MANIFESTO.md): five minutes.
-2. **Try** — run a 4-node test network on your computer: [operator guide, “Test network”](docs/en/OPERATOR_GUIDE.md#test-network). Requires [Go](https://go.dev/dl/) **1.27.2 or later** (Linux or macOS).
+2. **Try** — run a 4-node test network on your computer: [operator guide, “Test network”](docs/en/OPERATOR_GUIDE.md#test-network). Requires [Go](https://go.dev/dl/) **1.27.2 or later** (Linux or macOS). Build with `go build -trimpath -o etl ./cmd/etl`: `-trimpath` removes your computer's paths (including your user name) from the program — essential for any program you copy to a server or share.
 3. **Become a founder** — ETL-FR will be launched by at least 10 independent founding members, announced publicly before launch. To apply: makoto.kanamoto@proton.me.
 
-**Documentation:** see the table above — manifestos in four languages, operator guide in French and English, technical architecture in French, node dashboard in all four languages. *If versions differ, the French version prevails.*
+**Documentation:** see the table above — manifestos in four languages, operator and deployment guides in French and English, technical architecture in French, node dashboard in all four languages. *If versions differ, the French version prevails.*
 
 ---
 

@@ -28,8 +28,10 @@ French version prevails.*
 - To build: Go (version given in `go.mod`).
 
 ```sh
-go build -o etl ./cmd/etl
+go build -trimpath -o etl ./cmd/etl
 ```
+
+`-trimpath` removes your computer's paths, including your user name, from the program.
 
 ## 2. First start
 
